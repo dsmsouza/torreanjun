@@ -1,0 +1,17 @@
+# Root ignore
+*.xlsx
+*.xls
+*.csv
+*.db
+*.log
+.env
+.next/
+node_modules/
+backend/venv/
+backend/__pycache__/
+frontend/.next/
+frontend/node_modules/
+node-portable/
+Banco de Dados/
+scratch/
+.agents/

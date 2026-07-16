@@ -1,0 +1,168 @@
+
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Otimização de Malha SP (Bairros)</title>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+        <style>
+            body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; height: 100vh; background: #f8fafc; }
+            #sidebar { width: 400px; height: 100vh; overflow-y: auto; background: white; box-shadow: 2px 0 10px rgba(0,0,0,0.1); z-index: 1000; display: flex; flex-direction: column; }
+            #map { flex: 1; height: 100vh; }
+            .header { padding: 20px; background: #0f172a; color: white; }
+            .header h1 { margin: 0; font-size: 1.2rem; }
+            .header p { margin: 5px 0 0 0; font-size: 0.85rem; opacity: 0.8; }
+            .list-container { padding: 15px; flex: 1; overflow-y: auto; }
+            .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; margin-bottom: 12px; cursor: pointer; transition: 0.2s; }
+            .card:hover { transform: translateY(-2px); box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-color: #cbd5e1; }
+            .card h3 { margin: 0 0 8px 0; font-size: 1rem; color: #1e293b; }
+            .card p { margin: 4px 0; font-size: 0.85rem; color: #64748b; }
+            .status { font-weight: 600; margin-top: 8px !important; padding: 4px 8px; border-radius: 4px; display: inline-block; font-size: 0.75rem !important; }
+            .status.easy { background: #fee2e2; color: #b91c1c; }
+            .status.extended { background: #fef3c7; color: #b45309; }
+            .status.desert { background: #f1f5f9; color: #0f172a; }
+            
+            /* Leaflet custom icons */
+            .custom-icon { text-align: center; line-height: 24px; font-weight: bold; color: white; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
+            .icon-target { background-color: #ef4444; }
+            .icon-extended { background-color: #f59e0b; }
+            .icon-desert { background-color: #0f172a; }
+            .icon-sub { background-color: #10b981; }
+        </style>
+    </head>
+    <body>
+
+        <div id="sidebar">
+            <div class="header">
+                <h1>📍 Otimização de Malha - SP Bairros</h1>
+                <p>Proposta de Fechamento de MDs com &lt; 1k pacotes e transferência para MDs > 2k.</p>
+            </div>
+            <div class="list-container">
+                
+        <div class="card border-l-4 border-black" onclick="map.setView([-23.4028, -46.7519], 15)">
+            <h3>SP-W-MD209 - Anjun_SP-W-MD209</h3>
+            <p><strong>Volume Mensal:</strong> 6 pct</p>
+            <p class="status desert">Sem substitutos num raio de 5km</p>
+        </div>
+        
+        <div class="card border-l-4 border-orange-500" onclick="map.setView([-23.468379, -46.684409], 15)">
+            <h3>MD-DAR-01 - Anjun_DECORE ARTESANATOS SP</h3>
+            <p><strong>Volume Mensal:</strong> 16 pct</p>
+            <p class="status extended">Substituto Forte entre 2km e 5km</p>
+        </div>
+        
+        <div class="card border-l-4 border-black" onclick="map.setView([-20.5162917, -47.4042356], 15)">
+            <h3>MD-FRA-13 - MD-FRA-13</h3>
+            <p><strong>Volume Mensal:</strong> 22 pct</p>
+            <p class="status desert">Sem substitutos num raio de 5km</p>
+        </div>
+        
+        <div class="card border-l-4 border-red-500" onclick="map.setView([-23.6107668, -46.6000274], 15)">
+            <h3>SP-W-MD142 - Anjun_SP-W-MD142</h3>
+            <p><strong>Volume Mensal:</strong> 45 pct</p>
+            <p class="status easy">Substituto Forte a menos de 2km</p>
+        </div>
+        
+        <div class="card border-l-4 border-red-500" onclick="map.setView([-23.482758, -46.708195], 15)">
+            <h3>MD-PFS-01 - Anjun_PAPELARIA FIVE STAR</h3>
+            <p><strong>Volume Mensal:</strong> 50 pct</p>
+            <p class="status easy">Substituto Forte a menos de 2km</p>
+        </div>
+        
+        <div class="card border-l-4 border-red-500" onclick="map.setView([-23.5948809, -46.5471036], 15)">
+            <h3>SP-W-MD012 - Anjun_SP-W-MD012</h3>
+            <p><strong>Volume Mensal:</strong> 78 pct</p>
+            <p class="status easy">Substituto Forte a menos de 2km</p>
+        </div>
+        
+        <div class="card border-l-4 border-red-500" onclick="map.setView([-23.5028, -46.6256], 15)">
+            <h3>SP-W-MD206 - Anjun_SP-W-MD206</h3>
+            <p><strong>Volume Mensal:</strong> 151 pct</p>
+            <p class="status easy">Substituto Forte a menos de 2km</p>
+        </div>
+        
+        <div class="card border-l-4 border-orange-500" onclick="map.setView([-23.667929, -46.763038], 15)">
+            <h3>MD-MJC-01 - Anjun_M&J Ponto Pack Embalagens e Logistica</h3>
+            <p><strong>Volume Mensal:</strong> 228 pct</p>
+            <p class="status extended">Substituto Forte entre 2km e 5km</p>
+        </div>
+        
+        <div class="card border-l-4 border-red-500" onclick="map.setView([-23.48419, -46.69142], 15)">
+            <h3>MD-TBU-01 - Anjun_Tecnologia buenos</h3>
+            <p><strong>Volume Mensal:</strong> 356 pct</p>
+            <p class="status easy">Substituto Forte a menos de 2km</p>
+        </div>
+        
+        <div class="card border-l-4 border-orange-500" onclick="map.setView([-23.51784, -46.69469], 15)">
+            <h3>MD-GZW-01 - Anjun_GZW PRESENTES LTDA</h3>
+            <p><strong>Volume Mensal:</strong> 621 pct</p>
+            <p class="status extended">Substituto Forte entre 2km e 5km</p>
+        </div>
+        
+            </div>
+        </div>
+
+        <div id="map"></div>
+
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+        <script>
+            // Centro de SP (aproximado)
+            var map = L.map('map').setView([-23.5505, -46.6333], 11);
+            
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+            }).addTo(map);
+            
+            // Draw Center Exclusion Zone
+            L.circle([-23.5489, -46.6388], {
+                color: '#94a3b8',
+                fillColor: '#94a3b8',
+                fillOpacity: 0.2,
+                radius: 4000
+            }).addTo(map).bindPopup("<b>Centro Expandido (Ignorado)</b><br>Raio de 4km excluído da análise.");
+
+            var targets = [{'lat': -23.4028, 'lon': -46.7519, 'md': 'SP-W-MD209', 'nome': 'Anjun_SP-W-MD209', 'vol': 6, 'color': 'black', 'category': 'desert'}, {'lat': -23.468379, 'lon': -46.684409, 'md': 'MD-DAR-01', 'nome': 'Anjun_DECORE ARTESANATOS SP', 'vol': 16, 'color': 'orange', 'category': 'extended'}, {'lat': -20.5162917, 'lon': -47.4042356, 'md': 'MD-FRA-13', 'nome': 'MD-FRA-13', 'vol': 22, 'color': 'black', 'category': 'desert'}, {'lat': -23.6107668, 'lon': -46.6000274, 'md': 'SP-W-MD142', 'nome': 'Anjun_SP-W-MD142', 'vol': 45, 'color': 'red', 'category': 'easy'}, {'lat': -23.482758, 'lon': -46.708195, 'md': 'MD-PFS-01', 'nome': 'Anjun_PAPELARIA FIVE STAR', 'vol': 50, 'color': 'red', 'category': 'easy'}, {'lat': -23.5948809, 'lon': -46.5471036, 'md': 'SP-W-MD012', 'nome': 'Anjun_SP-W-MD012', 'vol': 78, 'color': 'red', 'category': 'easy'}, {'lat': -23.5028, 'lon': -46.6256, 'md': 'SP-W-MD206', 'nome': 'Anjun_SP-W-MD206', 'vol': 151, 'color': 'red', 'category': 'easy'}, {'lat': -23.667929, 'lon': -46.763038, 'md': 'MD-MJC-01', 'nome': 'Anjun_M&J Ponto Pack Embalagens e Logistica', 'vol': 228, 'color': 'orange', 'category': 'extended'}, {'lat': -23.48419, 'lon': -46.69142, 'md': 'MD-TBU-01', 'nome': 'Anjun_Tecnologia buenos', 'vol': 356, 'color': 'red', 'category': 'easy'}, {'lat': -23.51784, 'lon': -46.69469, 'md': 'MD-GZW-01', 'nome': 'Anjun_GZW PRESENTES LTDA', 'vol': 621, 'color': 'orange', 'category': 'extended'}];
+            var subs = [{'md': 'MD-BEK-01', 'nome': "Anjun_LITTLE ANGEL'S BABY & KIDS II", 'vol': 2169, 'lat': -23.497567, 'lon': -46.689572, 'ender': 'R. Antônio de Couros, 444'}, {'md': 'MD-DEJ-01', 'nome': 'Anjun_LOJAS DEJANU', 'vol': 29560, 'lat': -23.616603, 'lon': -46.599982, 'ender': 'R. Santa Lucrécia, 75'}, {'md': 'MD-MJL-01', 'nome': 'Anjun_M J LAVANDERIA', 'vol': 9452, 'lat': -23.477139, 'lon': -46.719245, 'ender': 'Av. Miguel de Castro, 416'}, {'md': 'MD-COS-01', 'nome': 'Anjun_Costa embalagem', 'vol': 32902, 'lat': -23.597534, 'lon': -46.559556, 'ender': 'Rua Costa Barros, 2200'}, {'md': 'MD-UTI-01', 'nome': 'Anjun_UtilyDri', 'vol': 30470, 'lat': -23.595416, 'lon': -46.533282, 'ender': 'R. João Bernardes, 117'}, {'md': 'MD-PIC-01', 'nome': 'Anjun_PicPac', 'vol': 7806, 'lat': -23.505487, 'lon': -46.626312, 'ender': 'R. Voluntários da Pátria, 1771'}, {'md': 'MD-MVI-01', 'nome': 'Anjun_Mercado Vinato', 'vol': 10944, 'lat': -23.655775, 'lon': -46.732934, 'ender': 'R. Frederico Marcicano, 258'}];
+            var connections = [{'from': [-23.468379, -46.684409], 'to': [-23.497567, -46.689572], 'color': '#d97706', 'dist': 3.2879933455696384}, {'from': [-23.6107668, -46.6000274], 'to': [-23.616603, -46.599982], 'color': 'green', 'dist': 0.6489723153599002}, {'from': [-23.482758, -46.708195], 'to': [-23.477139, -46.719245], 'color': 'green', 'dist': 1.2885784380205036}, {'from': [-23.5948809, -46.5471036], 'to': [-23.597534, -46.559556], 'color': 'green', 'dist': 1.3027161062704153}, {'from': [-23.5948809, -46.5471036], 'to': [-23.595416, -46.533282], 'color': 'green', 'dist': 1.4096587464430799}, {'from': [-23.5028, -46.6256], 'to': [-23.505487, -46.626312], 'color': 'green', 'dist': 0.30747521860083177}, {'from': [-23.667929, -46.763038], 'to': [-23.655775, -46.732934], 'color': '#d97706', 'dist': 3.350638585535}, {'from': [-23.48419, -46.69142], 'to': [-23.497567, -46.689572], 'color': 'green', 'dist': 1.4993456708833452}, {'from': [-23.51784, -46.69469], 'to': [-23.497567, -46.689572], 'color': '#d97706', 'dist': 2.3138727026626102}];
+
+            // Plot Substitutes (Green)
+            subs.forEach(sub => {
+                var icon = L.divIcon({
+                    className: 'custom-icon icon-sub',
+                    html: 'S',
+                    iconSize: [24, 24]
+                });
+                
+                L.marker([sub.lat, sub.lon], {icon: icon}).addTo(map)
+                    .bindPopup("<b>" + sub.md + " - " + sub.nome + "</b><br>Volume: " + sub.vol + " pct<br><i>Substituto (Alto Volume)</i>");
+            });
+
+            // Plot Targets (Red/Orange/Black)
+            targets.forEach(tgt => {
+                var cls = tgt.category === 'easy' ? 'icon-target' : (tgt.category === 'extended' ? 'icon-extended' : 'icon-desert');
+                var icon = L.divIcon({
+                    className: 'custom-icon ' + cls,
+                    html: 'F',
+                    iconSize: [24, 24]
+                });
+                
+                L.marker([tgt.lat, tgt.lon], {icon: icon}).addTo(map)
+                    .bindPopup("<b>" + tgt.md + " - " + tgt.nome + "</b><br>Volume: " + tgt.vol + " pct<br><i>Candidato a Fechamento</i>");
+            });
+
+            // Draw Lines
+            connections.forEach(conn => {
+                var line = L.polyline([conn.from, conn.to], {
+                    color: conn.color,
+                    weight: 3,
+                    opacity: 0.7,
+                    dashArray: '5, 5'
+                }).addTo(map);
+                
+                line.bindTooltip("Distância: " + conn.dist.toFixed(2) + " km", {sticky: true});
+            });
+        </script>
+    </body>
+    </html>
+    
