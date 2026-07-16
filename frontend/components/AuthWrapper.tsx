@@ -1,14 +1,16 @@
 "use client";
 
 import React, { Suspense } from "react";
+import { usePathname } from "next/navigation";
 import { useAuth } from "../hooks/use-auth";
 import Sidebar from "./Sidebar";
 import { ShieldAlert, KeyRound } from "lucide-react";
 
 function AuthContent({ children }: { children: React.ReactNode }) {
   const { isAuthorized, isMaster, role } = useAuth();
+  const pathname = usePathname();
 
-  if (!isAuthorized) {
+  if (!isAuthorized && pathname !== "/login") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#090D16] p-6">
         <div className="max-w-md w-full glass-panel p-8 rounded-2xl border border-destructive/20 text-center space-y-6">

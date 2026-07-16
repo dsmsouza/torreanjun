@@ -16,7 +16,7 @@ export function useAuth(): AuthState {
   const masterKey = searchParams.get("master");
   const regionalKey = searchParams.get("regional") || searchParams.get("filial");
   
-  const isMaster = masterKey === "diego2026";
+  const isMaster = masterKey === "diego2026" || (typeof window !== "undefined" && !!localStorage.getItem("admin_token"));
   const isRegional = !!regionalKey;
   const isAuthorized = isMaster || isRegional;
 
