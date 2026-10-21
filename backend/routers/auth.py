@@ -1,8 +1,10 @@
 import os
 import jwt
 import datetime
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
@@ -27,14 +29,7 @@ def login(req: LoginRequest):
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
     return {"token": token}
 
-def get_current_admin(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        if payload.get("role") != "admin":
-            raise HTTPException(status_code=403, detail="Não autorizado")
-        return payload
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expirado")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Token inválido")
+def get_current_admin(credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))):
+    # Login removido conforme solicitado: acesso sempre liberado como admin
+    return {"role": "admin"}
+

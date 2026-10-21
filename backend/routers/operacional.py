@@ -27,14 +27,45 @@ from schemas.schemas import (
 )
 from services import operacional as op_service
 from services.gemini_service import gerar_conteudo_gemini
+from services.operacional import (
+    consultar_resumo_criacao,
+    consultar_oportunidades_expansao,
+    consultar_viabilidade_cidade,
+    consultar_crescimento_polo,
+    listar_propostas,
+    criar_proposta,
+    atualizar_proposta,
+    deletar_proposta,
+    simular_viabilidade_md
+)
 
 
 router = APIRouter(prefix="/api", tags=["Operacional"])
 
-@router.get("/opcoes", response_model=OptionsResponse)
+@router.get("/opcoes")
 def get_opcoes(db: Session = Depends(get_db)):
     dias, semanas = op_service.buscar_datas_e_semanas(db)
-    return {"dias": dias, "semanas": semanas}
+    
+    # Busca regionais distintas
+    from models.models import DetalheMDHistorico
+    from sqlalchemy import text
+    rows = db.execute(text("SELECT DISTINCT regional FROM detalhe_md_historico WHERE regional IS NOT NULL AND regional != '' ORDER BY regional")).fetchall()
+    regionais = [r[0] for r in rows]
+    
+    rows_cidades = db.execute(text("""
+        SELECT DISTINCT cidade 
+        FROM (
+            SELECT cidade FROM detalhe_md_historico WHERE cidade IS NOT NULL AND cidade != '' AND cidade != 'NÃO CADASTRADA'
+            UNION
+            SELECT cidade FROM criacao_pedidos_historico WHERE cidade IS NOT NULL AND cidade != '' AND cidade != 'NÃO CADASTRADA'
+            UNION
+            SELECT cidade FROM malha_coordenadas WHERE cidade IS NOT NULL AND cidade != ''
+        )
+        ORDER BY cidade;
+    """)).fetchall()
+    cidades = [r[0] for r in rows_cidades]
+    
+    return {"dias": dias, "semanas": semanas, "regionais": regionais, "cidades": cidades}
 
 @router.get("/resumo", response_model=ResumoGeralResponse)
 def get_resumo(
@@ -44,10 +75,11 @@ def get_resumo(
     dt_fim: Optional[str] = Query(None, description="Data de término do período (YYYY-MM-DD)"),
     regional: Optional[str] = Query(None, description="Regional para filtragem"),
     regra5k: bool = Query(False, description="Excluir cidades com volume inferior a 5000 pacotes no período"),
+    modalidade: str = Query("TODOS", description="TODOS, DROPOFF, PICKUP"),
     db: Session = Depends(get_db)
 ):
     try:
-        res = op_service.carregar_resumo_geral(db, periodo_tipo, rotulo, dt_inicio, dt_fim, regional, regra5k)
+        res = op_service.carregar_resumo_geral(db, periodo_tipo, rotulo, dt_inicio, dt_fim, regional, regra5k, modalidade)
         return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao processar resumo: {e}")
@@ -75,13 +107,81 @@ def get_clientes(
     dt_inicio: Optional[str] = Query(None),
     dt_fim: Optional[str] = Query(None),
     regional: Optional[str] = Query(None),
+    modalidade: str = Query("TODOS", description="TODOS, DROPOFF, PICKUP"),
     db: Session = Depends(get_db)
 ):
     try:
-        res = op_service.carregar_ranking_clientes(db, periodo_tipo, rotulo, dt_inicio, dt_fim, regional)
+        res = op_service.carregar_ranking_clientes(db, periodo_tipo, rotulo, dt_inicio, dt_fim, regional, modalidade)
         return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao carregar ranking de clientes: {e}")
+
+@router.get("/clientes/detalhe")
+def get_clientes_detalhe(
+    cliente: str = Query(...),
+    periodo_tipo: str = Query(...),
+    rotulo: str = Query(...),
+    dt_inicio: Optional[str] = Query(None),
+    dt_fim: Optional[str] = Query(None),
+    regional: Optional[str] = Query(None),
+    modalidade: str = Query("TODOS", description="TODOS, DROPOFF, PICKUP"),
+    db: Session = Depends(get_db)
+):
+    try:
+        res = op_service.carregar_detalhe_cliente_regionais(db, cliente, periodo_tipo, rotulo, dt_inicio, dt_fim, regional, modalidade)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao carregar detalhe regional do cliente: {e}")
+
+@router.get("/clientes/sellers")
+def get_clientes_sellers(
+    cliente: str = Query(...),
+    periodo_tipo: str = Query(...),
+    rotulo: str = Query(...),
+    dt_inicio: Optional[str] = Query(None),
+    dt_fim: Optional[str] = Query(None),
+    regional: Optional[str] = Query(None),
+    modalidade: str = Query("TODOS", description="TODOS, DROPOFF, PICKUP"),
+    db: Session = Depends(get_db)
+):
+    try:
+        res = op_service.carregar_detalhe_cliente_sellers(db, cliente, periodo_tipo, rotulo, dt_inicio, dt_fim, regional, modalidade)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao carregar lista de sellers do cliente: {e}")
+
+@router.get("/clientes/evolucao")
+def get_clientes_evolucao(
+    cliente: str = Query(...),
+    periodo_tipo: str = Query(...),
+    rotulo: str = Query(...),
+    dt_inicio: Optional[str] = Query(None),
+    dt_fim: Optional[str] = Query(None),
+    regional: Optional[str] = Query(None),
+    modalidade: str = Query("TODOS", description="TODOS, DROPOFF, PICKUP"),
+    db: Session = Depends(get_db)
+):
+    try:
+        res = op_service.carregar_evolucao_cliente(db, cliente, periodo_tipo, rotulo, dt_inicio, dt_fim, regional, modalidade)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao carregar evolução do cliente: {e}")
+
+@router.get("/pickup")
+def get_pickup(
+    periodo_tipo: str = Query(...),
+    rotulo: str = Query(...),
+    dt_inicio: Optional[str] = Query(None),
+    dt_fim: Optional[str] = Query(None),
+    regional: Optional[str] = Query(None),
+    tipo_coleta: Optional[str] = Query(None, description="TODOS, PICKUP_PURO, PICKUP_NO_MD"),
+    db: Session = Depends(get_db)
+):
+    try:
+        res = op_service.carregar_detalhes_pickup(db, periodo_tipo, rotulo, dt_inicio, dt_fim, regional, tipo_coleta)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao carregar detalhes de pickup: {e}")
 
 @router.get("/malha", response_model=List[MalhaPacoteResponse])
 def get_malha(
@@ -386,25 +486,31 @@ Por favor, estruture sua resposta nas seguintes seções:
 Use tom corporativo direto e formatação Markdown limpa."""
 
         elif tipo == "wbr_semanal":
-            local_report = f"### 📊 TABELA EXECUTIVA LOCAL DE DESVIOS - {filial}\n\n"
-            local_report += "| Regional | Período | Volume Previsto vs. Backlog | SLA Médio | Causa / Ocorrência | Plano de Ação / Previsão |\n"
-            local_report += "| :--- | :--- | :--- | :--- | :--- | :--- |\n"
-            local_report += "| **Geral** | Semanal | Verifique no painel | - | Ingestão em lote realizada | Normalizado |\n"
-            
-            prompt = f"""Aja como um Diretor de Logística da ANJUN Logística.
-A diretoria exigiu um Resumo Executivo em Formato de Tabela de Dados (e não texto explicativo longo) analisando os desvios e ofensores da malha de coletas para a {filial}.
+            prompt = f"""Atue como um analista logístico redigindo o Relatório de WBR (Weekly Business Review) sobre a filial {filial}.
+O texto será revisado por um gestor sênior, então ESCREVA COM UM TOM HUMANO, NATURAL E FLUIDO. Esqueça jargões forçados ou tom excessivamente corporativo/robótico. Aja como uma pessoa real explicando a situação.
+Baseado EXCLUSIVAMENTE nos dados no contexto abaixo, crie um relatório completo, mesclando dados quantitativos e uma narrativa cronológica dos desvios (dia a dia).
 
-Você DEVE produzir estritamente uma Tabela Markdown com as seguintes colunas:
-| Regional / Localidade | Dias Afetados | Volume Previsto vs. Impactado | SLA Médio | Causa do Desvio | Plano de Ação & Previsão de Correção |
+A estrutura do relatório DEVE seguir rigorosamente estes tópicos:
 
-Diretrizes cruciais de escrita:
-1. NÃO escreva parágrafos longos explicativos. Foque na compilação em números, causas e prazos de correção estritamente na tabela.
-2. Identifique os dias exatos e os volumes previstos vs impactados (backlog) a partir dos dados fornecidos no contexto.
-3. Extraia o motivo/justificativa das ocorrências diárias e determine a causa raiz de forma objetiva.
-4. Identifique o plano de ação e a data estimada de previsão de normalização (seja explícito se já foi corrigido ou se há previsão).
-5. Mostre em números o problema de localidades como Jaú, Espírito Santo, São Paulo, etc., de acordo com o contexto operacional.
+# Relatório Executivo - WBR | {filial}
 
-DADOS CONTEXTUAIS DA OPERAÇÃO:
+## 1. Introdução e Resumo da Semana
+(Escreva 1 parágrafo natural informando o volume bipado total, backlog total e eficiência geral do período. Comente se a meta de SLA foi atingida e resuma o desafio da semana de forma direta e humana.)
+
+## 2. Tabela Executiva de Desvios
+(Gere uma Tabela Markdown contendo os piores desvios da semana, usando EXATAMENTE estas colunas)
+| Data | Regional | Coleta (Vol) | Backlog | SLA (%) | Causa Raiz | Status/Previsão |
+*Atenção: As colunas Causa e Status devem ter no máximo 5 a 6 palavras.*
+
+## 3. Análise Diária por Regional (Cronologia)
+(Para cada regional com problema, escreva um pequeno parágrafo explicando de forma fluida e humana o que aconteceu dia a dia.
+Exemplo de tom: "Em São Paulo, o maior problema foi na segunda (15/06) porque faltaram veículos. Já na quarta (17/06), as cargas ficaram retidas no HUB e o backlog aumentou para N pacotes. Na sexta a situação normalizou.")
+*Atenção: Especifique as datas exatas e seja guiado pelos dados, mas escreva de forma natural.*
+
+## 4. Conclusão
+(Escreva 1 parágrafo curto e natural concluindo o cenário atual da operação.)
+
+DADOS CONTEXTUAIS DA OPERAÇÃO PARA ESTA ANÁLISE:
 {contexto_adicional}
 """
 
@@ -756,4 +862,137 @@ def get_malha_simular(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao rodar simulação de malha: {e}")
 
+@router.get("/expansao/oportunidades")
+def get_expansao_oportunidades(
+    periodo_tipo: str = Query("Diário"),
+    rotulo: str = Query("latest"),
+    dt_inicio: Optional[str] = Query(None),
+    dt_fim: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None),
+    cidade: Optional[str] = Query(None),
+    min_pedidos: int = Query(50),
+    db: Session = Depends(get_db)
+):
+    try:
+        return op_service.consultar_oportunidades_expansao(
+            db=db,
+            periodo_tipo=periodo_tipo,
+            rotulo=rotulo,
+            dt_inicio=dt_inicio,
+            dt_fim=dt_fim,
+            estado=estado,
+            cidade=cidade,
+            min_pedidos=min_pedidos
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar oportunidades de expansão: {e}")
 
+@router.get("/expansao/resumo")
+def get_expansao_resumo(
+    periodo_tipo: str = Query("Diário"),
+    rotulo: str = Query("latest"),
+    dt_inicio: Optional[str] = Query(None),
+    dt_fim: Optional[str] = Query(None),
+    cliente: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    try:
+        return op_service.consultar_resumo_criacao(
+            db=db,
+            periodo_tipo=periodo_tipo,
+            rotulo=rotulo,
+            dt_inicio=dt_inicio,
+            dt_fim=dt_fim,
+            cliente=cliente,
+            estado=estado
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar resumo de criação/expansão: {e}")
+
+
+# ─── Viabilidade por Cidade ────────────────────────────────────────────────────
+@router.get("/expansao/viabilidade")
+def get_expansao_viabilidade(
+    cidade: str = Query(...),
+    estado: str = Query(...),
+    bairro: Optional[str] = Query(None),
+    raio_km: float = Query(5.0),
+    periodo_tipo: str = Query("Diário"),
+    rotulo: str = Query("latest"),
+    db: Session = Depends(get_db)
+):
+    try:
+        return op_service.consultar_viabilidade_cidade(
+            db=db, cidade=cidade, estado=estado, bairro=bairro,
+            raio_km=raio_km, periodo_tipo=periodo_tipo, rotulo=rotulo
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao calcular viabilidade: {e}")
+
+
+# ─── Crescimento Semana a Semana ──────────────────────────────────────────────
+@router.get("/expansao/crescimento")
+def get_expansao_crescimento(
+    cidade: str = Query(...),
+    estado: str = Query(...),
+    bairro: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    try:
+        return op_service.consultar_crescimento_polo(db=db, cidade=cidade, estado=estado, bairro=bairro)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao calcular crescimento: {e}")
+
+
+# ─── CRUD Propostas de Expansão ───────────────────────────────────────────────
+@router.get("/expansao/propostas")
+def get_propostas(
+    status: Optional[str] = Query(None),
+    estado: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    try:
+        return op_service.listar_propostas(db, status=status, estado=estado)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao listar propostas: {e}")
+
+
+@router.post("/expansao/propostas")
+def post_proposta(payload: dict, db: Session = Depends(get_db)):
+    try:
+        return op_service.criar_proposta(db, payload)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao criar proposta: {e}")
+
+
+@router.put("/expansao/propostas/{proposta_id}")
+def put_proposta(proposta_id: int, payload: dict, db: Session = Depends(get_db)):
+    try:
+        return op_service.atualizar_proposta(db, proposta_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao atualizar proposta: {e}")
+
+
+@router.delete("/expansao/propostas/{proposta_id}")
+def delete_proposta(proposta_id: int, db: Session = Depends(get_db)):
+    try:
+        deletar_proposta(db, proposta_id)
+        return {"message": "Proposta deletada"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/expansao/simulador")
+def get_simulador_md(
+    cep: str = Query(..., description="CEP do prospect"),
+    raio_km: float = Query(5.0, description="Raio em KM para buscar MDs vizinhos e calcular viabilidade"),
+    db: Session = Depends(get_db)
+):
+    try:
+        return simular_viabilidade_md(db, cep, raio_km)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro interno: {e}")

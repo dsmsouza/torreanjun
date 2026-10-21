@@ -54,6 +54,7 @@ class MDRankingResponse(BaseModel):
     status_saude: Optional[str] = "N/A" # Decisions: Approved, Alert, Suspended
     observacao_fixa: Optional[str] = ""
     divisao: Optional[str] = None
+    status_coleta: Optional[str] = None
 
 # Clients Performance Ranking
 class ClienteRankingResponse(BaseModel):

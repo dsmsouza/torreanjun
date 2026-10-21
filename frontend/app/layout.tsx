@@ -7,6 +7,9 @@ export const metadata: Metadata = {
   description: "Torre de Controle Operacional da ANJUN Logística - First Mile Monitor",
 };
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export default function RootLayout({
   children,
 }: Readonly<{

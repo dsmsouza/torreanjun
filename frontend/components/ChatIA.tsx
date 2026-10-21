@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Loader2, Sparkles, Trash2 } from "lucide-react";
+import { Send, Bot, User, Loader2, Sparkles, Trash2, Download, FileWarning } from "lucide-react";
 import { generateIAReport } from "../lib/api";
 
 interface Message {
@@ -28,6 +28,7 @@ export default function ChatIA({ filial, contextoData, isWeeklyMode = false }: C
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [pdfLoadingId, setPdfLoadingId] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto scroll to bottom
@@ -113,6 +114,56 @@ export default function ChatIA({ filial, contextoData, isWeeklyMode = false }: C
       ]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const exportToPDF = async (messageIndex: number) => {
+    try {
+      const element = document.getElementById(`msg-content-${messageIndex}`);
+      if (!element) return;
+      
+      setPdfLoadingId(messageIndex);
+      
+      // Dynamic import to avoid SSR window errors
+      const html2pdf = (await import("html2pdf.js")).default;
+      
+      const opt = {
+        margin:       10,
+        filename:     `Relatorio_WBR_${filial.replace(/[^a-z0-9]/gi, '_')}.pdf`,
+        image:        { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#0F172A' },
+        jsPDF:        { unit: 'mm' as const, format: 'a4', orientation: 'portrait' as const }
+      };
+      
+      const pdfBlob = await (html2pdf() as any).set(opt).from(element).output('blob');
+      
+      try {
+        if ('showSaveFilePicker' in window) {
+          const handle = await (window as any).showSaveFilePicker({
+            suggestedName: opt.filename,
+            types: [{ description: 'PDF Document', accept: {'application/pdf': ['.pdf']} }],
+          });
+          const writable = await handle.createWritable();
+          await writable.write(pdfBlob);
+          await writable.close();
+        } else {
+          // Fallback if browser doesn't support File System Access API
+          const blobUrl = URL.createObjectURL(pdfBlob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = opt.filename;
+          a.click();
+          URL.revokeObjectURL(blobUrl);
+        }
+      } catch (err: any) {
+        if (err.name !== 'AbortError') {
+          console.error("Erro ao salvar:", err);
+        }
+      }
+    } catch (e) {
+      console.error("Erro ao gerar PDF:", e);
+    } finally {
+      setPdfLoadingId(null);
     }
   };
 
@@ -242,14 +293,24 @@ export default function ChatIA({ filial, contextoData, isWeeklyMode = false }: C
       {/* Shortcuts buttons */}
       <div className="p-3 border-b border-border bg-[#0C101B]/20 flex flex-wrap gap-2">
         {isWeeklyMode ? (
-          <button
-            onClick={() => handleAction("wbr")}
-            disabled={loading}
-            className="px-3 py-1.5 text-[10px] font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Tabela Executiva de Desvios (WBR)</span>
-          </button>
+          <>
+            <button
+              onClick={() => handleAction("wbr")}
+              disabled={loading}
+              className="px-3 py-1.5 text-[10px] font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Gerar Resumo Executivo da Semana</span>
+            </button>
+            <button
+              onClick={() => handleAction("qualidade")}
+              disabled={loading}
+              className="px-3 py-1.5 text-[10px] font-bold text-purple-400 bg-purple-500/10 border border-purple-500/20 rounded-lg hover:bg-purple-500/20 transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1"
+            >
+              <FileWarning className="w-3.5 h-3.5" />
+              <span>Analista de Qualidade Jr.</span>
+            </button>
+          </>
         ) : (
           <>
             <button
@@ -299,7 +360,31 @@ export default function ChatIA({ filial, contextoData, isWeeklyMode = false }: C
                 ? "bg-[#1E293B] border-border text-slate-200 rounded-tr-none max-w-fit ml-auto"
                 : "bg-[#131926] border-border text-slate-300 rounded-tl-none text-xs"
             }`}>
-              {parseMarkdown(msg.content)}
+              <div id={`msg-content-${index}`}>
+                {parseMarkdown(msg.content)}
+              </div>
+              
+              {msg.role === "assistant" && msg.content.includes("|") && !loading && (
+                <div className="mt-4 flex justify-end">
+                  <button 
+                    onClick={() => exportToPDF(index)}
+                    disabled={pdfLoadingId === index}
+                    className="text-[10px] flex items-center gap-1.5 text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700/80 px-3 py-1.5 rounded-md transition-all cursor-pointer border border-slate-600 disabled:opacity-50"
+                  >
+                    {pdfLoadingId === index ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Gerando Arquivo...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-3.5 h-3.5" />
+                        Salvar como PDF
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         ))}

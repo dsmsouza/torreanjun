@@ -17,7 +17,13 @@ import {
   Map,
   Sun,
   Moon,
-  TrendingUp
+  TrendingUp,
+  Truck,
+  Search,
+  PackageSearch,
+  Sparkles,
+  Route,
+  Rocket
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -68,80 +74,89 @@ export default function Sidebar() {
     window.dispatchEvent(new Event("themechange"));
   };
 
-  const menuItems = [
-    { name: "Visão Geral", path: "/", icon: LayoutDashboard, roleRequired: "Guest" },
-    { name: "Perf. Regionais", path: "/regionais", icon: Globe, roleRequired: "Guest" },
-    { name: "Filtro por Filial", path: "/filial", icon: MapPin, roleRequired: "Guest" },
-    { name: "Clientes Mktplace", path: "/clientes", icon: Users, roleRequired: "Guest" },
-    { name: "Saúde dos MDs", path: "/score-md", icon: Activity, roleRequired: "Guest" },
-    { name: "Evolução", path: "/evolucao", icon: TrendingUp, roleRequired: "Guest" },
-    { name: "Pacotes em Aberto", path: "/malha?tab=radar", icon: Shield, roleRequired: "Guest" },
-    { name: "MAP", path: "/malha?tab=mapa", icon: Map, roleRequired: "Guest" },
-    { name: "MISSCAN", path: "/misscan", icon: Package, roleRequired: "Guest" },
-    { name: "Configurações", path: "/config", icon: Settings, roleRequired: "Master" },
+  const menuCategories = [
+    {
+      title: "Operação & Coleta",
+      items: [
+        { name: "Central de Coletas", path: "/", icon: Truck, roleRequired: "Guest" },
+        { name: "No Dia (Tempo Real)", path: "/no-dia", icon: Activity, roleRequired: "Guest" },
+        { name: "D2D SP", path: "/d2d-sp", icon: Route, roleRequired: "Guest" },
+      ]
+    },
+    {
+      title: "Implantação FM",
+      items: [
+        { name: "Fluxo de Novas Solicitações", path: "/solicitacoes", icon: Rocket, roleRequired: "Guest" },
+        { name: "Mapa da Malha", path: "/mapa", icon: Map, roleRequired: "Guest" },
+      ]
+    },
+    {
+      title: "Ferramentas & Admin",
+      items: [
+        { name: "Configurações", path: "/config", icon: Settings, roleRequired: "Master" },
+      ]
+    }
   ];
 
   return (
     <aside className="w-16 md:w-64 h-screen fixed left-0 top-0 bg-[#0C101B] border-r border-border flex flex-col justify-between z-30 transition-all duration-300">
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col h-full overflow-y-auto">
         {/* Logo/Header */}
         <div className="h-16 flex items-center justify-center md:justify-start px-6 border-b border-border gap-3 bg-[#0C101B] shrink-0">
-          <MapPin className="w-6 h-6 text-primary animate-pulse" />
+          <MapPin className="w-6 h-6 text-emerald-400 animate-pulse" />
           <span className="hidden md:inline font-bold text-base text-white tracking-wider">
             Torre ANJUN
           </span>
         </div>
 
         {/* Profile Card */}
-        <div className="hidden md:flex m-4 p-4 rounded-xl bg-[#131926]/80 border border-border items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center">
-            <Shield className={`w-5 h-5 ${isMaster ? "text-amber-500" : "text-blue-500"}`} />
+        <div className="hidden md:flex m-3 p-3 rounded-xl bg-[#131926]/80 border border-border items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center">
+            <Shield className={`w-4 h-4 ${isMaster ? "text-amber-500" : "text-blue-500"}`} />
           </div>
           <div>
-            <p className="text-xs text-muted-foreground font-medium">Perfil Conectado</p>
-            <p className="text-sm font-semibold text-white">
+            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Perfil Operacional</p>
+            <p className="text-xs font-semibold text-white">
               {isMaster ? "Diretoria Master" : `Regional: ${activeRegional}`}
             </p>
           </div>
         </div>
 
         {/* Navigation Menu */}
-        <nav className="px-2 md:px-4 py-2 space-y-1 mt-4 md:mt-0">
-          {menuItems.map((item) => {
-            // Hide admin menu items if user has regional role
-            if (item.roleRequired === "Master" && !isMaster) {
-              return null;
-            }
+        <nav className="px-2 md:px-3 py-2 space-y-4">
+          {menuCategories.map((cat, catIdx) => (
+            <div key={catIdx} className="space-y-1">
+              <p className="hidden md:block text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1">
+                {cat.title}
+              </p>
+              {cat.items.map((item) => {
+                if (item.roleRequired === "Master" && !isMaster) return null;
 
-            const isTabMapaItem = item.path.includes("tab=mapa");
-            const isTabRadarItem = item.path.includes("tab=radar");
-            const isActive = isTabMapaItem
-              ? (pathname === "/malha" && currentTab === "mapa")
-              : isTabRadarItem
-                ? (pathname === "/malha" && currentTab === "radar")
-                : (pathname === item.path.split("?")[0] && pathname !== "/malha");
+                const currentPath = pathname.split("?")[0];
+                const isActive = currentPath === item.path || (item.path === "/" && (currentPath === "/" || currentPath === "/coletas"));
+                const Icon = item.icon;
+                const baseHref = item.path.includes("?")
+                  ? `${item.path}${searchParamsStr ? `&${searchParamsStr.slice(1)}` : ""}`
+                  : `${item.path}${searchParamsStr}`;
 
-            const Icon = item.icon;
-
-            const baseHref = item.path.includes("?")
-              ? `${item.path}${searchParamsStr ? `&${searchParamsStr.slice(1)}` : ""}`
-              : `${item.path}${searchParamsStr}`;
-
-            return (
-              <Link
-                key={item.path}
-                href={baseHref}
-                className={`flex items-center justify-center md:justify-start gap-3 px-3 py-3 md:px-4 rounded-lg text-sm font-medium transition-all ${
-                  isActive
-                    ? "bg-primary text-white shadow-lg shadow-blue-500/10"
-                    : "text-muted-foreground hover:text-white hover:bg-slate-800/40"
-                }`}
-              >
-                <Icon className="w-4 h-4 shrink-0" />
-                <span className="hidden md:inline">{item.name}</span>
-              </Link>
-            );
-          })}
+                return (
+                  <Link
+                    key={item.path}
+                    href={baseHref}
+                    prefetch={true}
+                    className={`flex items-center justify-center md:justify-start gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
+                      isActive
+                        ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/10 font-bold"
+                        : "text-slate-400 hover:text-white hover:bg-slate-800/40"
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span className="hidden md:inline">{item.name}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
       </div>
 
@@ -164,13 +179,17 @@ export default function Sidebar() {
           )}
         </button>
 
-        <Link
-          href="/"
-          className="flex items-center justify-center md:justify-start gap-3 px-3 py-3 md:px-4 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-all"
+        <button
+          onClick={() => {
+            document.cookie = 'admin_token=; Max-Age=-99999999; path=/';
+            localStorage.removeItem('admin_token');
+            window.location.href = '/login';
+          }}
+          className="w-full flex items-center justify-center md:justify-start gap-3 px-3 py-3 md:px-4 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-all cursor-pointer"
         >
           <LogOut className="w-4 h-4 shrink-0" />
           <span className="hidden md:inline">Sair da Sessão</span>
-        </Link>
+        </button>
       </div>
     </aside>
   );

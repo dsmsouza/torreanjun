@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { memo } from "react";
 import { RegionalResumo } from "../lib/api";
 import { ArrowUpDown } from "lucide-react";
 
@@ -11,7 +11,7 @@ interface DataTableProps {
   loading?: boolean;
 }
 
-export default function DataTable({
+function DataTableComponent({
   data,
   selectedRegional,
   onSelectRegional,
@@ -173,3 +173,6 @@ export default function DataTable({
     </div>
   );
 }
+
+const DataTable = memo(DataTableComponent);
+export default DataTable;

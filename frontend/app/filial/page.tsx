@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useTransition } from "react";
+import Link from "next/link";
 import { useAuth } from "../../hooks/use-auth";
 import { fetchOptions, fetchResumo, ResumoGeral, OptionsData, API_URL } from "../../lib/api";
 import StitchCard from "../../components/StitchCard";
@@ -28,6 +29,7 @@ interface MDPerformance {
   taxa_coleta: number;
   status_saude: string;
   observacao_fixa: string;
+  status_coleta?: string;
   divisao?: string;
 }
 
@@ -484,7 +486,7 @@ export default function FilialPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* MDs Performance Table */}
-        <div className="lg:col-span-2 glass-panel rounded-2xl border border-border overflow-hidden flex flex-col justify-between">
+        <div className="lg:col-span-3 glass-panel rounded-2xl border border-border overflow-hidden flex flex-col justify-between">
           <div>
             <div className="p-6 border-b border-border bg-[#0C101B]/40">
               <h2 className="text-lg font-semibold text-white">Desempenho dos Micro-Distribuidores (MDs)</h2>
@@ -515,6 +517,9 @@ export default function FilialPage() {
                     <th className="py-4 px-6 text-right cursor-pointer hover:text-white transition-all select-none" onClick={() => handleSort("taxa_coleta")}>
                       <div className="flex items-center justify-end gap-1"><span>Eficiência</span><ArrowUpDown className="w-3 h-3" /></div>
                     </th>
+                    <th className="py-4 px-6 text-center cursor-pointer hover:text-white transition-all select-none" onClick={() => handleSort("status_coleta")}>
+                      <div className="flex items-center justify-center gap-1"><span>Status Caminhão</span><ArrowUpDown className="w-3 h-3" /></div>
+                    </th>
                     <th className="py-4 px-6 text-left cursor-pointer hover:text-white transition-all select-none" onClick={() => handleSort("observacao_fixa")}>
                       <div className="flex items-center gap-1"><span>Alerta Permanente</span><ArrowUpDown className="w-3 h-3" /></div>
                     </th>
@@ -541,7 +546,11 @@ export default function FilialPage() {
                   ) : (
                     sortedMds.map((row) => (
                       <tr key={row.md} className="hover:bg-slate-800/30 transition-all">
-                        <td className="py-3.5 px-6 font-semibold text-white">{row.md}</td>
+                        <td className="py-3.5 px-6 font-semibold">
+                          <Link href={`/ponto/${row.md}`} className="text-white hover:text-blue-400 hover:underline transition-colors block">
+                            {row.md}
+                          </Link>
+                        </td>
                         <td className="py-3.5 px-6 font-medium text-slate-400">{row.divisao || "Sem Divisão"}</td>
                         <td className="py-3.5 px-6">{row.cidade}</td>
                         <td className="py-3.5 px-6 text-right font-mono">{(row.total ?? 0).toLocaleString()}</td>
@@ -550,6 +559,38 @@ export default function FilialPage() {
                           <span className={(row.taxa_coleta ?? 0) >= 98 ? "text-success" : (row.taxa_coleta ?? 0) >= 90 ? "text-warning" : "text-destructive"}>
                             {(row.taxa_coleta ?? 0).toFixed(2)}%
                           </span>
+                        </td>
+                        <td className="py-3.5 px-6 text-center">
+                          {row.status_coleta === "Coleta Normal" && (
+                            <span className="px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-semibold border border-emerald-500/20">
+                              {row.status_coleta}
+                            </span>
+                          )}
+                          {row.status_coleta === "Bipagem Pós-Coleta" && (
+                            <span className="px-2 py-1 rounded bg-fuchsia-500/10 text-fuchsia-400 text-[10px] font-semibold border border-fuchsia-500/20">
+                              {row.status_coleta}
+                            </span>
+                          )}
+                          {row.status_coleta === "Erro Op. (Não Confirmou Placa)" && (
+                            <span className="px-2 py-1 rounded bg-amber-500/10 text-amber-400 text-[10px] font-semibold border border-amber-500/20">
+                              Erro Placa
+                            </span>
+                          )}
+                          {row.status_coleta === "Erro Op. (MD Sem Saída)" && (
+                            <span className="px-2 py-1 rounded bg-amber-500/10 text-amber-400 text-[10px] font-semibold border border-amber-500/20">
+                              Sem Saída
+                            </span>
+                          )}
+                          {row.status_coleta === "Não Teve Coleta" && (
+                            <span className="px-2 py-1 rounded bg-rose-500/10 text-rose-400 text-[10px] font-semibold border border-rose-500/20">
+                              {row.status_coleta}
+                            </span>
+                          )}
+                          {!["Coleta Normal", "Bipagem Pós-Coleta", "Erro Op. (Não Confirmou Placa)", "Erro Op. (MD Sem Saída)", "Não Teve Coleta"].includes(row.status_coleta || "") && (
+                            <span className="px-2 py-1 rounded bg-slate-500/10 text-slate-400 text-[10px] font-semibold border border-slate-500/20">
+                              {row.status_coleta || "-"}
+                            </span>
+                          )}
                         </td>
                         <td className="py-3.5 px-6 text-left text-xs max-w-[220px] truncate" title={row.observacao_fixa || ""}>
                           {row.observacao_fixa ? (
@@ -579,16 +620,29 @@ export default function FilialPage() {
         </div>
 
         {/* Dedicated IA Chat Widget */}
-        <div>
+        <div className="lg:col-span-3">
           {selectedFilial && (
-            <ChatIA
-              filial={selectedFilial}
-              contextoData={{ 
-                total: vol, 
-                backlog: bk,
-                mds: sortedMds 
-              }}
-            />
+            <details className="group glass-panel rounded-2xl border border-border overflow-hidden">
+              <summary className="p-4 bg-[#0C101B]/60 text-white font-semibold cursor-pointer select-none flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+                  <span>Assistente IA de Análise de Filial (Clique para abrir)</span>
+                </div>
+                <div className="text-muted-foreground group-open:rotate-180 transition-transform">
+                  <ArrowUpDown className="w-4 h-4" />
+                </div>
+              </summary>
+              <div className="p-4 border-t border-border bg-[#0C101B]/20">
+                <ChatIA
+                  filial={selectedFilial}
+                  contextoData={{ 
+                    total: vol, 
+                    backlog: bk,
+                    mds: sortedMds 
+                  }}
+                />
+              </div>
+            </details>
           )}
         </div>
 

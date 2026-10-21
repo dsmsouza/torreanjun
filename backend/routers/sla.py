@@ -15,7 +15,7 @@ def parse_date(date_str):
     try:
         # Example: "2026-07-01 14:30:00"
         return pd.to_datetime(date_str)
-    except:
+    except (ValueError, TypeError):
         return None
 
 @router.post("/importar_abertos")
@@ -71,7 +71,7 @@ def get_abertos(db: Session = Depends(get_db)):
                     dt = pd.to_datetime(r.tempo_coleta)
                     delta = now - dt
                     dias_parados = max(0, delta.days)
-                except:
+                except (ValueError, TypeError):
                     pass
                     
             results.append({

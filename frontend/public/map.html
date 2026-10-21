@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    body, html { margin: 0; padding: 0; height: 100%; background-color: #0F172A; }
+    #map { width: 100%; height: 100%; }
+    .custom-circle-icon {
+      background: transparent;
+      border: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    let map = L.map('map', {
+      center: [-14.2350, -51.9253],
+      zoom: 5,
+      zoomControl: true
+    });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    let markersLayer = L.layerGroup().addTo(map);
+
+    function createCircleIcon(color) {
+      return L.divIcon({
+        className: 'custom-circle-icon',
+        html: `<div style="background-color: ${color}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.5);"></div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7]
+      });
+    }
+
+    const activeIcon = createCircleIcon("#10b981");
+    const inactiveIcon = createCircleIcon("#ef4444");
+
+    // Listen for data from parent window
+    window.addEventListener("message", (event) => {
+      const data = event.data;
+      if (data && data.type === 'UPDATE_POINTS') {
+        const points = data.points;
+        markersLayer.clearLayers();
+        
+        points.forEach(pt => {
+          if (typeof pt.latitude !== 'number' || typeof pt.longitude !== 'number' || isNaN(pt.latitude) || isNaN(pt.longitude)) {
+            // Attempt to parse if string
+            pt.latitude = parseFloat(pt.latitude);
+            pt.longitude = parseFloat(pt.longitude);
+            if (isNaN(pt.latitude) || isNaN(pt.longitude)) return;
+          }
+
+          const isEnable = pt.status === "enable";
+          const marker = L.marker([pt.latitude, pt.longitude], {
+            icon: isEnable ? activeIcon : inactiveIcon
+          });
+          
+          const popupContent = `
+            <div style="font-family: sans-serif; color: #0C101B; min-width: 200px;">
+              <div style="font-weight: bold; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 4px;">${pt.iata}</div>
+              <div style="font-size: 12px;"><strong>Nome:</strong> ${pt.name}</div>
+              <div style="font-size: 12px;"><strong>Local:</strong> ${pt.cidade} - ${pt.estado}</div>
+              ${pt.cep ? `<div style="font-size: 12px;"><strong>CEP:</strong> ${pt.cep}</div>` : ''}
+              ${pt.horario ? `<div style="font-size: 12px;"><strong>Horário:</strong> ${pt.horario}</div>` : ''}
+              <div style="margin-top: 8px; font-size: 12px; font-weight: bold;">
+                Status: <span style="background-color: ${isEnable ? '#10b981' : '#ef4444'}; color: white; padding: 2px 6px; border-radius: 4px; margin-left: 4px;">${pt.status.toUpperCase()}</span>
+              </div>
+            </div>
+          `;
+          
+          marker.bindPopup(popupContent);
+          markersLayer.addLayer(marker);
+        });
+      }
+    });
+
+    // Notify parent we are ready
+    window.parent.postMessage({ type: 'MAP_READY' }, '*');
+  </script>
+</body>
+</html>

@@ -12,8 +12,8 @@ export default function PacotesAbertoPage() {
   
   const [pacotes, setPacotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
+  
+  
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -38,26 +38,7 @@ export default function PacotesAbertoPage() {
     loadPacotes();
   }, []);
 
-  const handleUpload = async () => {
-    if (!file) return;
-    setUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-
-    try {
-      const res = await fetch(`${API_URL}/api/sla/importar_abertos`, {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      alert(`Importados com sucesso!`);
-      loadPacotes();
-    } catch (e) {
-      alert("Erro ao importar planilha");
-    } finally {
-      setUploading(false);
-    }
-  };
+  
 
   const filtered = pacotes.filter(p => {
     if (searchQuery && !p.barcode?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
@@ -88,21 +69,7 @@ export default function PacotesAbertoPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <input
-            type="file"
-            accept=".xlsx"
-            onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)}
-            className="text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/20 file:text-primary hover:file:bg-primary/30"
-          />
-          <button
-            onClick={handleUpload}
-            disabled={!file || uploading}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 disabled:opacity-50 text-sm font-semibold"
-          >
-            {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Importar Planilha"}
-          </button>
-        </div>
+        
       </div>
 
       {/* Filters */}
