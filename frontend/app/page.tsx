@@ -40,6 +40,7 @@ import {
   fetchMdsColetas,
   fetchSellersColetas,
   fetchHorariosColetas,
+  fetchClienteDetalhes,
   cadastrarPontoColeta,
   otimizarPlanilha
 } from "@/lib/api";
@@ -92,6 +93,23 @@ export default function CentralColetasPage() {
     longitude: "",
   });
   const [sucessoMsg, setSucessoMsg] = useState<string | null>(null);
+
+  // Estados da Seção de Clientes (Marketplaces + Demais Clientes com Busca & Dropdown + Modal de Pacotes)
+  const [buscaOutrosClientes, setBuscaOutrosClientes] = useState<string>("");
+  const [mostrarClientesZero, setMostrarClientesZero] = useState<boolean>(false);
+  const [limiteOutrosClientes, setLimiteOutrosClientes] = useState<number>(12);
+
+  // Modal de Pacotes e Detalhes do Cliente
+  const [modalClienteOpen, setModalClienteOpen] = useState<boolean>(false);
+  const [clienteDetalheAlvo, setClienteDetalheAlvo] = useState<string>("");
+  const [clienteDetalheData, setClienteDetalheData] = useState<any>(null);
+  const [loadingClienteDetalhe, setLoadingClienteDetalhe] = useState<boolean>(false);
+  const [abaModalCliente, setAbaModalCliente] = useState<"pacotes" | "pontos" | "sellers">("pacotes");
+  const [filtroModalidadeCli, setFiltroModalidadeCli] = useState<string>("TODOS");
+  const [filtroStatusCli, setFiltroStatusCli] = useState<string>("TODOS");
+  const [filtroPontoCli, setFiltroPontoCli] = useState<string>("TODOS");
+  const [buscaPacoteCli, setBuscaPacoteCli] = useState<string>("");
+
 
   
   // 1. Carrega lista de datas disponíveis (com auto-recuperação caso o backend esteja iniciando)
@@ -330,6 +348,71 @@ export default function CentralColetasPage() {
   const kpis = resumo?.kpis || resumo?.totais;
   const alertas = resumo?.alertas;
   const clientesBreakdown = resumo?.clientes_breakdown || [];
+
+  const ehClienteMarketplaceUI = (cli: any): boolean => {
+    if (cli?.is_marketplace !== undefined) return Boolean(cli.is_marketplace);
+    const n = String(cli?.cliente || cli?.nome_cliente || "").toLowerCase();
+    return n.includes("shein") || n.includes("temu") || n.includes("tiktok") || n.includes("kwai");
+  };
+
+  const marketplacesList = useMemo(() => {
+    return clientesBreakdown.filter((c: any) => ehClienteMarketplaceUI(c));
+  }, [clientesBreakdown]);
+
+  const outrosClientesList = useMemo(() => {
+    const base = clientesBreakdown.filter((c: any) => !ehClienteMarketplaceUI(c));
+    return base.filter((c: any) => {
+      const vol = Number(c.volume || 0);
+      if (!mostrarClientesZero && !buscaOutrosClientes.trim() && vol === 0) return false;
+      if (buscaOutrosClientes.trim()) {
+        const q = buscaOutrosClientes.trim().toLowerCase();
+        const nome = String(c.cliente || c.nome_cliente || "").toLowerCase();
+        const ids = Array.isArray(c.cliente_ids) ? c.cliente_ids.join(" ").toLowerCase() : "";
+        return nome.includes(q) || ids.includes(q);
+      }
+      return true;
+    });
+  }, [clientesBreakdown, mostrarClientesZero, buscaOutrosClientes]);
+
+  const carregarDetalhesCliente = async (
+    nomeCli: string,
+    mod = filtroModalidadeCli,
+    st = filtroStatusCli,
+    pt = filtroPontoCli,
+    q = buscaPacoteCli
+  ) => {
+    if (!nomeCli) return;
+    setLoadingClienteDetalhe(true);
+    try {
+      const res = await fetchClienteDetalhes({
+        cliente: nomeCli,
+        dia: selectedDia,
+        regional: selectedRegional,
+        modalidade: mod,
+        status_filtro: st,
+        ponto_filtro: pt,
+        search: q,
+        limit: 150,
+      });
+      setClienteDetalheData(res);
+    } catch (err) {
+      console.warn("Erro ao carregar detalhes do cliente:", err);
+    } finally {
+      setLoadingClienteDetalhe(false);
+    }
+  };
+
+  const abrirModalCliente = (nomeCli: string, modalidadeInicial = "TODOS") => {
+    setClienteDetalheAlvo(nomeCli);
+    setFiltroModalidadeCli(modalidadeInicial);
+    setFiltroStatusCli("TODOS");
+    setFiltroPontoCli("TODOS");
+    setBuscaPacoteCli("");
+    setAbaModalCliente("pacotes");
+    setModalClienteOpen(true);
+    carregarDetalhesCliente(nomeCli, modalidadeInicial, "TODOS", "TODOS", "");
+  };
+
 
   return (
     <div className="flex h-screen bg-[#090D16] text-slate-100 font-sans overflow-hidden">
@@ -707,103 +790,407 @@ export default function CentralColetasPage() {
                 </div>
               </div>
 
-              {/* Seção de Clientes Breakdown */}
-              <div className="p-5 rounded-2xl bg-[#131926]/80 border border-slate-800 space-y-4">
-                <div className="flex items-center justify-between">
+              {/* ============================================================ */}
+              {/* SEÇÃO 1: MARKETPLACES OFICIAIS (SHEIN • TEMU • TIKTOK • KWAI) */}
+              {/* Cards separados tanto para W2D (Coleta/Pickup) quanto D2D (Dropoff/MD) */}
+              {/* ============================================================ */}
+              <div className="p-5 rounded-2xl bg-gradient-to-b from-[#131926] to-[#0E1420] border border-indigo-500/30 space-y-4 shadow-xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
                   <div>
-                    <h3 className="text-sm font-bold text-white tracking-wide">
-                      Distribuição por Embarcador / Cliente
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+                        Marketplaces Oficiais
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        Shein • Temu • TikTok • Kwai
+                      </span>
+                    </div>
+                    <h3 className="text-sm md:text-base font-bold text-white tracking-wide mt-1">
+                      Painel de Marketplaces — Separação W2D (Coleta) & D2D (Dropoff MD)
                     </h3>
                     <p className="text-xs text-slate-400">
-                      Volume de coletas e taxa de atendimento segregados por conta comercial
+                      Clique em qualquer card de Marketplace ou na modalidade W2D / D2D para abrir os pacotes, pontos (MDs/HUBs) e sellers
                     </p>
                   </div>
-                  <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                    {clientesBreakdown.length} Contas Ativas
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {selectedCliente && (
+                      <button
+                        onClick={() => setSelectedCliente("")}
+                        className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" /> Limpar Filtro ({selectedCliente})
+                      </button>
+                    )}
+                    <span className="text-xs font-mono text-indigo-300 bg-indigo-500/10 px-2.5 py-1 rounded-lg border border-indigo-500/25">
+                      {marketplacesList.filter((m: any) => Number(m.volume || 0) > 0).length} / {marketplacesList.length} Contas Marketplace
+                    </span>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {clientesBreakdown.map((cli: any, idx: number) => {
-                    const nomeCli = cli.cliente || cli.nome_cliente || `Cliente ${idx + 1}`;
+                {/* Cards de Contas Marketplace (Shein W2D/Normal, Shein D2D, Shein W2S, Temu D2D, Temu W2D, Temu XBorder, TikTok, Kwai) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                  {marketplacesList.map((cli: any, idx: number) => {
+                    const nomeCli = cli.cliente || cli.nome_cliente || `Marketplace ${idx + 1}`;
                     const volCli = Number(cli.volume) || 0;
                     const colCli = cli.coletados !== undefined ? Number(cli.coletados) : volCli;
                     const bklCli = Number(cli.backlog) || 0;
+                    const dpCli = Number(cli.vol_dropoff) || 0;
+                    const pkCli = Number(cli.vol_pickup) || 0;
                     const taxaCli = cli.taxa_pct !== undefined ? Number(cli.taxa_pct) : 100;
-                    const pctCli = cli.pct_total !== undefined ? Number(cli.pct_total) : (cli.share_pct !== undefined ? Number(cli.share_pct) : 0);
+                    const pctCli = cli.pct_total !== undefined ? Number(cli.pct_total) : 0;
+                    const nLow = nomeCli.toLowerCase();
+                    const isD2dCard = nLow.includes("d2d");
+                    const isW2dCard = nLow.includes("w2d") || nLow.includes("w2s") || nLow === "shein";
+                    const grupo =
+                      cli.marketplace_grupo ||
+                      (nLow.includes("shein")
+                        ? "SHEIN"
+                        : nLow.includes("temu")
+                        ? "TEMU"
+                        : nLow.includes("tiktok")
+                        ? "TIKTOK"
+                        : "KWAI");
+
+                    const badgeColor =
+                      grupo === "SHEIN"
+                        ? "bg-pink-500/20 text-pink-300 border-pink-500/40"
+                        : grupo === "TEMU"
+                        ? "bg-orange-500/20 text-orange-300 border-orange-500/40"
+                        : grupo === "TIKTOK"
+                        ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
+                        : "bg-amber-500/20 text-amber-300 border-amber-500/40";
 
                     return (
                       <div
                         key={nomeCli + idx}
-                        className="p-3.5 rounded-xl bg-slate-900/70 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between"
+                        onClick={() => abrirModalCliente(nomeCli, "TODOS")}
+                        className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between group ${
+                          volCli > 0
+                            ? "bg-slate-900/90 border-slate-700/80 hover:border-indigo-400/70 hover:shadow-lg hover:shadow-indigo-950/30"
+                            : "bg-slate-900/40 border-slate-800/70 opacity-75 hover:opacity-100 hover:border-slate-700"
+                        }`}
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-white text-xs tracking-wide">
-                            {nomeCli}
-                          </span>
-                          <span className="text-[11px] font-mono text-slate-400">
-                            {pctCli}% do total
-                          </span>
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase border ${badgeColor}`}>
+                              {grupo}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${
+                                isD2dCard
+                                  ? "bg-cyan-500/15 text-cyan-300 border-cyan-500/30"
+                                  : isW2dCard
+                                  ? "bg-indigo-500/15 text-indigo-300 border-indigo-500/30"
+                                  : "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                              }`}
+                            >
+                              {cli.modalidade_tag || (isD2dCard ? "D2D" : isW2dCard ? "W2D" : "W2D & D2D")}
+                            </span>
+                          </div>
+
+                          <div className="mt-2.5 flex items-baseline justify-between gap-2">
+                            <h4 className="font-bold text-white text-sm tracking-wide truncate group-hover:text-indigo-300 transition-colors">
+                              {nomeCli}
+                            </h4>
+                            <span className="text-[11px] font-mono text-slate-400 shrink-0">
+                              {pctCli}% share
+                            </span>
+                          </div>
+                          {Array.isArray(cli.cliente_ids) && cli.cliente_ids.length > 0 && (
+                            <p className="text-[10px] font-mono text-slate-500 mt-0.5">
+                              Nº Cliente: {cli.cliente_ids.join(", ")}
+                            </p>
+                          )}
+
+                          {/* Volume Principal */}
+                          <div className="mt-3 pt-2.5 border-t border-slate-800/80 space-y-1.5 text-xs">
+                            <div className="flex justify-between items-center">
+                              <span className="text-slate-400">Volume Total:</span>
+                              <span className="font-extrabold text-white text-sm">
+                                {volCli.toLocaleString("pt-BR")}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-emerald-400">Coletados:</span>
+                              <span className="font-semibold text-emerald-400">
+                                {colCli.toLocaleString("pt-BR")} ({taxaCli}%)
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-amber-400">Backlog Retido:</span>
+                              <span className="font-semibold text-amber-400">
+                                {bklCli.toLocaleString("pt-BR")}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Divisão clicável W2D vs D2D dentro do Card */}
+                          <div className="mt-3 grid grid-cols-2 gap-1.5 pt-2 border-t border-slate-800/60">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                abrirModalCliente(nomeCli, "W2D");
+                              }}
+                              className="p-1.5 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/25 text-left transition-colors cursor-pointer"
+                              title="Clique para ver apenas pacotes W2D (Pickup/Coleta) deste Marketplace"
+                            >
+                              <div className="text-[10px] text-indigo-300 font-semibold flex items-center justify-between">
+                                <span>🚛 W2D (Pickup)</span>
+                                <ArrowUpRight className="w-2.5 h-2.5" />
+                              </div>
+                              <div className="text-xs font-bold text-white mt-0.5 font-mono">
+                                {pkCli.toLocaleString("pt-BR")}
+                              </div>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                abrirModalCliente(nomeCli, "D2D");
+                              }}
+                              className="p-1.5 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/25 text-left transition-colors cursor-pointer"
+                              title="Clique para ver apenas pacotes D2D (Dropoff/MD) deste Marketplace"
+                            >
+                              <div className="text-[10px] text-cyan-300 font-semibold flex items-center justify-between">
+                                <span>🏪 D2D (Dropoff)</span>
+                                <ArrowUpRight className="w-2.5 h-2.5" />
+                              </div>
+                              <div className="text-xs font-bold text-white mt-0.5 font-mono">
+                                {dpCli.toLocaleString("pt-BR")}
+                              </div>
+                            </button>
+                          </div>
                         </div>
 
-                        <div className="my-3 space-y-1">
-                          <div className="flex justify-between text-xs">
-                            <span className="text-slate-400">Volume Total:</span>
-                            <span className="font-semibold text-white">
-                              {volCli.toLocaleString("pt-BR")}
-                            </span>
+                        <div className="mt-3 space-y-2">
+                          <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                            <div
+                              className="bg-emerald-500 h-full rounded-full"
+                              style={{ width: `${Math.min(100, taxaCli)}%` }}
+                            />
                           </div>
-                          <div className="flex justify-between text-xs">
-                            <span className="text-emerald-400">Coletados:</span>
-                            <span className="font-semibold text-emerald-400">
-                              {colCli.toLocaleString("pt-BR")} ({taxaCli}%)
-                            </span>
+                          <div className="flex items-center justify-between text-[11px] text-indigo-300 font-semibold pt-0.5">
+                            <span>Ver pacotes, MDs e sellers</span>
+                            <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                           </div>
-                          <div className="flex justify-between text-xs">
-                            <span className="text-amber-400">Backlog no MD:</span>
-                            <span className="font-semibold text-amber-400">
-                              {bklCli.toLocaleString("pt-BR")}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Barra de Progresso */}
-                        <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                          <div
-                            className="bg-emerald-500 h-full rounded-full"
-                            style={{ width: `${Math.min(100, taxaCli)}%` }}
-                          />
                         </div>
                       </div>
                     );
                   })}
                 </div>
               </div>
+
+              {/* ============================================================ */}
+              {/* SEÇÃO 2: DEMAIS CLIENTES / EMBARCADORES (COM DROPDOWN E BUSCA LEVE) */}
+              {/* ============================================================ */}
+              <div className="p-5 rounded-2xl bg-[#131926]/80 border border-slate-800 space-y-4">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
+                      <span>Demais Clientes & Embarcadores Cadastrados</span>
+                      <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                        {outrosClientesList.length} exibidos
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Use o menu dropdown ou a barra de busca abaixo para consultar rapidamente qualquer um dos 125+ clientes sem pesar a tela
+                    </p>
+                  </div>
+
+                  {/* Controles Leves: Dropdown Direto + Busca + Toggle Zero */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Menu Dropdown de Seleção Rápida de Cliente */}
+                    <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-1.5 text-xs">
+                      <Filter className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            abrirModalCliente(e.target.value, "TODOS");
+                          }
+                        }}
+                        className="bg-transparent text-white font-medium focus:outline-none cursor-pointer max-w-[230px]"
+                      >
+                        <option value="" className="bg-slate-900 text-slate-400">
+                          📂 Abrir pacotes do cliente (Dropdown)...
+                        </option>
+                        {clientesBreakdown.map((c: any, i: number) => {
+                          const nm = c.cliente || c.nome_cliente;
+                          const vl = Number(c.volume || 0);
+                          const idTxt = Array.isArray(c.cliente_ids) && c.cliente_ids.length > 0 ? ` [${c.cliente_ids[0]}]` : "";
+                          return (
+                            <option key={nm + i} value={nm} className="bg-slate-900 text-white">
+                              {nm}{idTxt} — {vl.toLocaleString("pt-BR")} pcts
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    {/* Input de Busca Rápida de Clientes */}
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-3 top-2 text-slate-400" />
+                      <input
+                        type="text"
+                        value={buscaOutrosClientes}
+                        onChange={(e) => {
+                          setBuscaOutrosClientes(e.target.value);
+                          setLimiteOutrosClientes(24);
+                        }}
+                        placeholder="Buscar cliente ou código (ex: shopmulti, 24596)..."
+                        className="bg-slate-900 border border-slate-700/80 rounded-xl pl-8 pr-7 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/60 w-64"
+                      />
+                      {buscaOutrosClientes && (
+                        <button
+                          onClick={() => setBuscaOutrosClientes("")}
+                          className="absolute right-2 top-2 text-slate-400 hover:text-white cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Botão para exibir/ocultar clientes sem pacotes no dia */}
+                    <button
+                      type="button"
+                      onClick={() => setMostrarClientesZero(!mostrarClientesZero)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors cursor-pointer ${
+                        mostrarClientesZero
+                          ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-semibold"
+                          : "bg-slate-900 text-slate-400 border-slate-700/80 hover:text-white"
+                      }`}
+                    >
+                      {mostrarClientesZero ? "Mostrando Todos (125+)" : "Ver Todos os 125+ Cadastrados"}
+                    </button>
+                  </div>
+                </div>
+
+                {outrosClientesList.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-slate-400 bg-slate-900/40 rounded-xl border border-slate-800/60">
+                    Nenhum cliente encontrado com o filtro atual. Clique em <b>"Ver Todos os 125+ Cadastrados"</b> para listar também as contas sem bipagem nesta data.
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                      {outrosClientesList.slice(0, limiteOutrosClientes).map((cli: any, idx: number) => {
+                        const nomeCli = cli.cliente || cli.nome_cliente || `Cliente ${idx + 1}`;
+                        const volCli = Number(cli.volume) || 0;
+                        const colCli = cli.coletados !== undefined ? Number(cli.coletados) : volCli;
+                        const bklCli = Number(cli.backlog) || 0;
+                        const dpCli = Number(cli.vol_dropoff) || 0;
+                        const pkCli = Number(cli.vol_pickup) || 0;
+                        const taxaCli = cli.taxa_pct !== undefined ? Number(cli.taxa_pct) : 100;
+                        const pctCli = cli.pct_total !== undefined ? Number(cli.pct_total) : (cli.share_pct !== undefined ? Number(cli.share_pct) : 0);
+
+                        return (
+                          <div
+                            key={nomeCli + idx}
+                            onClick={() => abrirModalCliente(nomeCli, "TODOS")}
+                            className="p-3.5 rounded-xl bg-slate-900/70 border border-slate-800 hover:border-emerald-500/50 hover:bg-slate-900 transition-all flex flex-col justify-between cursor-pointer group"
+                          >
+                            <div>
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <span className="font-bold text-white text-xs tracking-wide block truncate group-hover:text-emerald-300 transition-colors">
+                                    {nomeCli}
+                                  </span>
+                                  {Array.isArray(cli.cliente_ids) && cli.cliente_ids.length > 0 && (
+                                    <span className="text-[10px] font-mono text-slate-500 block">
+                                      ID: {cli.cliente_ids.join(", ")}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[10px] font-mono text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded shrink-0">
+                                  {pctCli}%
+                                </span>
+                              </div>
+
+                              <div className="my-2.5 space-y-1 text-xs">
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">Volume Total:</span>
+                                  <span className="font-bold text-white">
+                                    {volCli.toLocaleString("pt-BR")}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-emerald-400">Coletados:</span>
+                                  <span className="font-semibold text-emerald-400">
+                                    {colCli.toLocaleString("pt-BR")} ({taxaCli}%)
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-amber-400">Backlog:</span>
+                                  <span className="font-semibold text-amber-400">
+                                    {bklCli.toLocaleString("pt-BR")}
+                                  </span>
+                                </div>
+                                {(dpCli > 0 || pkCli > 0) && (
+                                  <div className="flex justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800/70 font-mono">
+                                    <span>W2D: {pkCli.toLocaleString("pt-BR")}</span>
+                                    <span>D2D: {dpCli.toLocaleString("pt-BR")}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                <div
+                                  className="bg-emerald-500 h-full rounded-full"
+                                  style={{ width: `${Math.min(100, taxaCli)}%` }}
+                                />
+                              </div>
+                              <div className="flex items-center justify-between text-[10px] text-slate-400 group-hover:text-emerald-300">
+                                <span>Clique p/ ver pacotes</span>
+                                <ChevronRight className="w-3 h-3" />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {outrosClientesList.length > limiteOutrosClientes && (
+                      <div className="flex justify-center pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setLimiteOutrosClientes((prev) => prev + 24)}
+                          className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 cursor-pointer transition-colors"
+                        >
+                          Carregar mais clientes ({outrosClientesList.length - limiteOutrosClientes} restantes)
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           )}
 
           {/* ============================================================ */}
-          {/* ABA 2: PONTOS DE COLETA (MDs) */}
+          {/* ABA 2: PONTOS DE COLETA (MDs) & HUBS SEPARADOS */}
           {/* ============================================================ */}
           {activeTab === "mds" && (
             <div className="space-y-4">
               {/* Barra de Filtros e Busca */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                 {/* Filtros Rápidos */}
-                <div className="flex items-center gap-1.5 p-1 bg-[#131926] rounded-xl border border-slate-800 text-xs">
+                <div className="flex flex-wrap items-center gap-1.5 p-1 bg-[#131926] rounded-xl border border-slate-800 text-xs">
                   <button
                     onClick={() => setMdsFiltro("todos")}
-                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
                       mdsFiltro === "todos"
                         ? "bg-slate-700 text-white font-bold"
                         : "text-slate-400 hover:text-white"
                     }`}
                   >
-                    Todos
+                    🏪 Todos os MDs
                   </button>
                   <button
                     onClick={() => setMdsFiltro("bipando")}
-                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
                       mdsFiltro === "bipando"
                         ? "bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30"
                         : "text-slate-400 hover:text-white"
@@ -813,7 +1200,7 @@ export default function CentralColetasPage() {
                   </button>
                   <button
                     onClick={() => setMdsFiltro("sem_bipagem")}
-                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
                       mdsFiltro === "sem_bipagem"
                         ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40"
                         : "text-slate-400 hover:text-white"
@@ -823,7 +1210,7 @@ export default function CentralColetasPage() {
                   </button>
                   <button
                     onClick={() => setMdsFiltro("backlog")}
-                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
                       mdsFiltro === "backlog"
                         ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30"
                         : "text-slate-400 hover:text-white"
@@ -833,7 +1220,7 @@ export default function CentralColetasPage() {
                   </button>
                   <button
                     onClick={() => setMdsFiltro("primeira_bipagem")}
-                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
                       mdsFiltro === "primeira_bipagem"
                         ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30"
                         : "text-slate-400 hover:text-white"
@@ -843,7 +1230,7 @@ export default function CentralColetasPage() {
                   </button>
                   <button
                     onClick={() => setMdsFiltro("desvio_pickup")}
-                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
                       mdsFiltro === "desvio_pickup"
                         ? "bg-purple-500/20 text-purple-300 font-bold border border-purple-500/40"
                         : "text-slate-400 hover:text-white"
@@ -853,13 +1240,24 @@ export default function CentralColetasPage() {
                   </button>
                   <button
                     onClick={() => setMdsFiltro("nao_cadastrado")}
-                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
                       mdsFiltro === "nao_cadastrado"
                         ? "bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30"
                         : "text-slate-400 hover:text-white"
                     }`}
                   >
                     ⚠️ Não Cadastrados
+                  </button>
+                  <button
+                    onClick={() => setMdsFiltro("hubs")}
+                    className={`px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
+                      mdsFiltro === "hubs"
+                        ? "bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/40"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                    title="Visualizar HUBs de Transferência (como SP-Z-H005) separadamente dos MDs"
+                  >
+                    🏭 HUBs (SP-Z-H005, etc.)
                   </button>
                 </div>
 
@@ -885,18 +1283,18 @@ export default function CentralColetasPage() {
                 </div>
               </div>
 
-              {/* Tabela de MDs */}
+              {/* Tabela de MDs / HUBs */}
               <div className="rounded-2xl border border-slate-800 bg-[#131926]/70 overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead>
                       <tr className="border-b border-slate-800 bg-slate-900/60 text-slate-400 font-semibold">
-                        <th className="py-3 px-4">Ponto (MD)</th>
+                        <th className="py-3 px-4">{mdsFiltro === "hubs" ? "Unidade (HUB)" : "Ponto (MD)"}</th>
                         <th className="py-3 px-4">Localização / Regional</th>
                         <th className="py-3 px-4 text-center">Alertas / Status</th>
                         <th className="py-3 px-4 text-right">Volume Bipado</th>
                         <th className="py-3 px-4 text-right">Coletado ANJUN</th>
-                        <th className="py-3 px-4 text-right">Backlog no MD</th>
+                        <th className="py-3 px-4 text-right">{mdsFiltro === "hubs" ? "Backlog no HUB" : "Backlog no MD"}</th>
                         <th className="py-3 px-4 text-center">Taxa de Coleta</th>
                         <th className="py-3 px-4 text-center">Ações</th>
                       </tr>
@@ -907,24 +1305,42 @@ export default function CentralColetasPage() {
                           <td colSpan={8} className="py-12 text-center text-slate-400">
                             <div className="flex flex-col items-center justify-center gap-2">
                               <RefreshCw className="w-5 h-5 animate-spin text-emerald-400" />
-                              <span>Carregando pontos de coleta...</span>
+                              <span>Carregando unidades...</span>
                             </div>
                           </td>
                         </tr>
                       ) : mdsList.length === 0 ? (
                         <tr>
                           <td colSpan={8} className="py-12 text-center text-slate-400">
-                            Nenhum ponto de coleta encontrado para os filtros selecionados.
+                            Nenhuma unidade encontrada para os filtros selecionados.
                           </td>
                         </tr>
                       ) : (
-                        mdsList.map((md: any) => (
-                          <tr key={md.md_codigo} className="hover:bg-slate-800/30 transition-colors">
-                            {/* Código MD */}
-                            <td className="py-3 px-4 font-mono font-bold text-white flex items-center gap-2">
-                              <Store className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                              <span>{md.md_codigo}</span>
-                            </td>
+                        mdsList.map((md: any) => {
+                          const isHubRow =
+                            md.is_md === false ||
+                            String(md.tipo_ponto || "").toUpperCase().includes("HUB") ||
+                            String(md.md_codigo || "").toUpperCase().includes("-H");
+                          return (
+                            <tr key={md.md_codigo} className="hover:bg-slate-800/30 transition-colors">
+                              {/* Código MD ou HUB */}
+                              <td className="py-3 px-4 font-mono font-bold text-white flex items-center gap-2">
+                                {isHubRow ? (
+                                  <Building2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                                ) : (
+                                  <Store className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                                )}
+                                <span>{md.md_codigo}</span>
+                                <span
+                                  className={`px-1.5 py-0.5 rounded text-[9px] font-sans font-bold uppercase ${
+                                    isHubRow
+                                      ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
+                                      : "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
+                                  }`}
+                                >
+                                  {isHubRow ? "HUB" : "MD"}
+                                </span>
+                              </td>
 
                             {/* Cidade / Regional */}
                             <td className="py-3 px-4">
@@ -1033,7 +1449,8 @@ export default function CentralColetasPage() {
                               )}
                             </td>
                           </tr>
-                        ))
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
@@ -1588,7 +2005,479 @@ export default function CentralColetasPage() {
           </div>
         )}
 
-              </main>
+        {/* ============================================================ */}
+        {/* MODAL DE PACOTES, PONTOS (MD/HUB) E SELLERS DO CLIENTE */}
+        {/* ============================================================ */}
+        {modalClienteOpen && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 md:p-6">
+            <div className="bg-[#0F1522] border border-slate-700/80 rounded-2xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+              {/* Cabeçalho do Modal */}
+              <div className="px-6 py-4 border-b border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900/80">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+                      {clienteDetalheData?.is_marketplace ? `Marketplace • ${clienteDetalheData?.marketplace_grupo}` : "Cliente / Embarcador"}
+                    </span>
+                    {Array.isArray(clienteDetalheData?.cliente_ids) && clienteDetalheData.cliente_ids.length > 0 && (
+                      <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-slate-800 text-slate-300 border border-slate-700">
+                        Nº Cliente: {clienteDetalheData.cliente_ids.join(", ")}
+                      </span>
+                    )}
+                    <span className="text-xs text-slate-400 font-mono">
+                      • Data: {selectedDia}
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2 mt-1">
+                    <Package className="w-5 h-5 text-emerald-400" />
+                    <span>Pacotes & Operação — {clienteDetalheAlvo}</span>
+                  </h3>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {/* Trocar de Cliente rapidamente via Dropdown dentro do Modal */}
+                  <select
+                    value={clienteDetalheAlvo}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        abrirModalCliente(e.target.value, "TODOS");
+                      }
+                    }}
+                    className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white font-medium focus:outline-none focus:border-emerald-500 cursor-pointer max-w-[210px]"
+                    title="Alternar para outro cliente rapidamente"
+                  >
+                    {clientesBreakdown.map((c: any, i: number) => {
+                      const nm = c.cliente || c.nome_cliente;
+                      const vl = Number(c.volume || 0);
+                      return (
+                        <option key={nm + i} value={nm} className="bg-slate-900 text-white">
+                          {nm} ({vl.toLocaleString("pt-BR")})
+                        </option>
+                      );
+                    })}
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCliente(clienteDetalheAlvo);
+                      setModalClienteOpen(false);
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 text-xs font-semibold cursor-pointer transition-colors"
+                  >
+                    Filtrar Painel por este Cliente
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setModalClienteOpen(false)}
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* KPIs do Cliente */}
+              <div className="px-6 py-3 bg-[#131926] border-b border-slate-800 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs">
+                <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800">
+                  <span className="text-slate-400 text-[11px] block">Total de Pacotes</span>
+                  <span className="text-base font-extrabold text-white font-mono">
+                    {(clienteDetalheData?.resumo?.total_pedidos || 0).toLocaleString("pt-BR")}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-900/80 border border-emerald-500/30">
+                  <span className="text-emerald-400 text-[11px] block">Coletados ANJUN</span>
+                  <span className="text-base font-extrabold text-emerald-400 font-mono">
+                    {(clienteDetalheData?.resumo?.coletados || 0).toLocaleString("pt-BR")}{" "}
+                    <span className="text-[11px] font-normal">({clienteDetalheData?.resumo?.taxa_coleta_pct || 0}%)</span>
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-900/80 border border-amber-500/30">
+                  <span className="text-amber-400 text-[11px] block">Backlog Pendente</span>
+                  <span className="text-base font-extrabold text-amber-400 font-mono">
+                    {(clienteDetalheData?.resumo?.backlog || 0).toLocaleString("pt-BR")}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-900/80 border border-indigo-500/30">
+                  <span className="text-indigo-300 text-[11px] block">🚛 W2D (Pickup)</span>
+                  <span className="text-base font-extrabold text-white font-mono">
+                    {(clienteDetalheData?.resumo?.vol_pickup || 0).toLocaleString("pt-BR")}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-900/80 border border-cyan-500/30">
+                  <span className="text-cyan-300 text-[11px] block">🏪 D2D (Dropoff)</span>
+                  <span className="text-base font-extrabold text-white font-mono">
+                    {(clienteDetalheData?.resumo?.vol_dropoff || 0).toLocaleString("pt-BR")}
+                  </span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800">
+                  <span className="text-slate-400 text-[11px] block">Unidades / Sellers</span>
+                  <span className="text-sm font-bold text-slate-200 font-mono">
+                    {clienteDetalheData?.resumo?.qtd_pontos || 0} pts • {clienteDetalheData?.resumo?.qtd_sellers || 0} sellers
+                  </span>
+                </div>
+              </div>
+
+              {/* Barra de Filtros Dropdown + Busca de Pacotes */}
+              <div className="px-6 py-3 bg-[#0C101B] border-b border-slate-800 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+                {/* Abas Internas do Modal */}
+                <div className="flex items-center gap-1.5 bg-[#131926] p-1 rounded-xl border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setAbaModalCliente("pacotes")}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
+                      abaModalCliente === "pacotes"
+                        ? "bg-emerald-600 text-white"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    📦 Pacotes / Lotes ({clienteDetalheData?.pacotes?.length || 0})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAbaModalCliente("pontos")}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
+                      abaModalCliente === "pontos"
+                        ? "bg-emerald-600 text-white"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    🏪 Por Ponto MD / HUB ({clienteDetalheData?.por_ponto?.length || 0})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAbaModalCliente("sellers")}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition-colors cursor-pointer ${
+                      abaModalCliente === "sellers"
+                        ? "bg-emerald-600 text-white"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    🏢 Por Seller ({clienteDetalheData?.por_seller?.length || 0})
+                  </button>
+                </div>
+
+                {/* Dropdowns de Filtro + Busca */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Dropdown Modalidade */}
+                  <select
+                    value={filtroModalidadeCli}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFiltroModalidadeCli(v);
+                      carregarDetalhesCliente(clienteDetalheAlvo, v, filtroStatusCli, filtroPontoCli, buscaPacoteCli);
+                    }}
+                    className="bg-[#131926] border border-slate-700 rounded-xl px-2.5 py-1.5 text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                  >
+                    <option value="TODOS">Modalidade: Todas (W2D & D2D)</option>
+                    <option value="W2D">🚛 Apenas W2D (Pickup / Coleta)</option>
+                    <option value="D2D">🏪 Apenas D2D (Dropoff / MD)</option>
+                  </select>
+
+                  {/* Dropdown Status */}
+                  <select
+                    value={filtroStatusCli}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFiltroStatusCli(v);
+                      carregarDetalhesCliente(clienteDetalheAlvo, filtroModalidadeCli, v, filtroPontoCli, buscaPacoteCli);
+                    }}
+                    className="bg-[#131926] border border-slate-700 rounded-xl px-2.5 py-1.5 text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
+                  >
+                    <option value="TODOS">Status: Todos</option>
+                    <option value="COLETADOS">🟢 Coletados ANJUN</option>
+                    <option value="BACKLOG">⚠️ Backlog Pendente</option>
+                  </select>
+
+                  {/* Dropdown Ponto (MD / HUB) */}
+                  <select
+                    value={filtroPontoCli}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setFiltroPontoCli(v);
+                      carregarDetalhesCliente(clienteDetalheAlvo, filtroModalidadeCli, filtroStatusCli, v, buscaPacoteCli);
+                    }}
+                    className="bg-[#131926] border border-slate-700 rounded-xl px-2.5 py-1.5 text-white focus:outline-none focus:border-emerald-500 cursor-pointer max-w-[180px]"
+                  >
+                    <option value="TODOS">Ponto (MD/HUB): Todos</option>
+                    {(clienteDetalheData?.pontos_disponiveis || []).map((pt: string) => (
+                      <option key={pt} value={pt}>
+                        {pt}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Busca de Pacote / Barcode / Seller / Saca */}
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={buscaPacoteCli}
+                      onChange={(e) => setBuscaPacoteCli(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          carregarDetalhesCliente(
+                            clienteDetalheAlvo,
+                            filtroModalidadeCli,
+                            filtroStatusCli,
+                            filtroPontoCli,
+                            buscaPacoteCli
+                          );
+                        }
+                      }}
+                      placeholder="Buscar pacote, código, saca, seller..."
+                      className="bg-[#131926] border border-slate-700 rounded-xl pl-8 pr-16 py-1.5 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 w-60"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        carregarDetalhesCliente(
+                          clienteDetalheAlvo,
+                          filtroModalidadeCli,
+                          filtroStatusCli,
+                          filtroPontoCli,
+                          buscaPacoteCli
+                        )
+                      }
+                      className="absolute right-1.5 top-1 px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-bold cursor-pointer"
+                    >
+                      Buscar
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Corpo Rolável do Modal */}
+              <div className="flex-1 overflow-y-auto p-5">
+                {loadingClienteDetalhe ? (
+                  <div className="py-16 flex flex-col items-center justify-center gap-3 text-slate-400 text-xs">
+                    <RefreshCw className="w-6 h-6 animate-spin text-emerald-400" />
+                    <span>Carregando pacotes e operação de {clienteDetalheAlvo}...</span>
+                  </div>
+                ) : abaModalCliente === "pacotes" ? (
+                  <div className="rounded-xl border border-slate-800 overflow-hidden bg-slate-900/50">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-800 bg-slate-900 text-slate-400 font-semibold">
+                            <th className="py-2.5 px-3">Código de Barras / Lote</th>
+                            <th className="py-2.5 px-3">Nº Pacote / Saca</th>
+                            <th className="py-2.5 px-3">Seller / Remetente</th>
+                            <th className="py-2.5 px-3">Unidade (MD / HUB)</th>
+                            <th className="py-2.5 px-3">Modalidade</th>
+                            <th className="py-2.5 px-3">Status</th>
+                            <th className="py-2.5 px-3">Origem → Destino</th>
+                            <th className="py-2.5 px-3 text-right">Qtd / Horário</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                          {(clienteDetalheData?.pacotes || []).length === 0 ? (
+                            <tr>
+                              <td colSpan={8} className="py-10 text-center text-slate-400">
+                                Nenhum pacote encontrado para este filtro.
+                              </td>
+                            </tr>
+                          ) : (
+                            (clienteDetalheData?.pacotes || []).map((pct: any, i: number) => {
+                              const isHub = pct.is_md === false || String(pct.ponto_colecao || "").includes("-H");
+                              return (
+                                <tr key={pct.codigo_barras + i} className="hover:bg-slate-800/40">
+                                  <td className="py-2.5 px-3 font-mono font-bold text-white">
+                                    {pct.codigo_barras}
+                                  </td>
+                                  <td className="py-2.5 px-3 font-mono text-[11px] text-slate-300">
+                                    <div>{pct.numero_pacote}</div>
+                                    {pct.numero_saca && pct.numero_saca !== "-" && (
+                                      <div className="text-[10px] text-slate-500">Saca: {pct.numero_saca}</div>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-3 max-w-[200px] truncate" title={pct.merchant_nome}>
+                                    {pct.merchant_nome}
+                                  </td>
+                                  <td className="py-2.5 px-3 font-mono">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-bold text-white">{pct.ponto_colecao}</span>
+                                      <span
+                                        className={`px-1.5 py-0.5 rounded text-[9px] font-sans font-bold uppercase ${
+                                          isHub
+                                            ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
+                                            : "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
+                                        }`}
+                                      >
+                                        {isHub ? "HUB" : "MD"}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    <span
+                                      className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                        String(pct.modalidade || "").includes("W2D")
+                                          ? "bg-indigo-500/15 text-indigo-300 border border-indigo-500/30"
+                                          : "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
+                                      }`}
+                                    >
+                                      {pct.modalidade}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-200 text-[11px]">
+                                      {pct.status_pedido}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-[11px] text-slate-300">
+                                    {pct.origem} → {pct.destino}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono text-[11px]">
+                                    <div className="font-bold text-emerald-400">
+                                      {(pct.qtd_pacotes || 1).toLocaleString("pt-BR")} pct(s)
+                                    </div>
+                                    <div className="text-[10px] text-slate-500">{pct.tempo_coleta}</div>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : abaModalCliente === "pontos" ? (
+                  <div className="rounded-xl border border-slate-800 overflow-hidden bg-slate-900/50">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-800 bg-slate-900 text-slate-400 font-semibold">
+                            <th className="py-2.5 px-4">Unidade (MD ou HUB)</th>
+                            <th className="py-2.5 px-4">Tipo de Ponto</th>
+                            <th className="py-2.5 px-4">Cidade / UF</th>
+                            <th className="py-2.5 px-4 text-right">Volume Total</th>
+                            <th className="py-2.5 px-4 text-right">W2D (Pickup)</th>
+                            <th className="py-2.5 px-4 text-right">D2D (Dropoff)</th>
+                            <th className="py-2.5 px-4 text-right">Coletados</th>
+                            <th className="py-2.5 px-4 text-right">Backlog</th>
+                            <th className="py-2.5 px-4 text-center">Taxa</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                          {(clienteDetalheData?.por_ponto || []).map((pt: any, i: number) => {
+                            const isHub = pt.is_md === false || String(pt.ponto_colecao || "").includes("-H");
+                            return (
+                              <tr
+                                key={pt.ponto_colecao + i}
+                                onClick={() => {
+                                  setFiltroPontoCli(pt.ponto_colecao);
+                                  setAbaModalCliente("pacotes");
+                                  carregarDetalhesCliente(
+                                    clienteDetalheAlvo,
+                                    filtroModalidadeCli,
+                                    filtroStatusCli,
+                                    pt.ponto_colecao,
+                                    buscaPacoteCli
+                                  );
+                                }}
+                                className="hover:bg-slate-800/40 cursor-pointer"
+                                title="Clique para filtrar os pacotes desta unidade"
+                              >
+                                <td className="py-2.5 px-4 font-mono font-bold text-white">
+                                  {pt.ponto_colecao}
+                                </td>
+                                <td className="py-2.5 px-4">
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                      isHub
+                                        ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
+                                        : "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
+                                    }`}
+                                  >
+                                    {isHub ? "🏭 HUB (Transferência)" : "🏪 MD (Ponto de Coleta)"}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-4 text-slate-300">
+                                  {pt.cidade} - {pt.estado}
+                                </td>
+                                <td className="py-2.5 px-4 text-right font-mono font-bold text-white">
+                                  {(pt.volume || 0).toLocaleString("pt-BR")}
+                                </td>
+                                <td className="py-2.5 px-4 text-right font-mono text-indigo-300">
+                                  {(pt.vol_pickup || 0).toLocaleString("pt-BR")}
+                                </td>
+                                <td className="py-2.5 px-4 text-right font-mono text-cyan-300">
+                                  {(pt.vol_dropoff || 0).toLocaleString("pt-BR")}
+                                </td>
+                                <td className="py-2.5 px-4 text-right font-mono text-emerald-400 font-semibold">
+                                  {(pt.coletados || 0).toLocaleString("pt-BR")}
+                                </td>
+                                <td className="py-2.5 px-4 text-right font-mono text-amber-400 font-semibold">
+                                  {(pt.backlog || 0).toLocaleString("pt-BR")}
+                                </td>
+                                <td className="py-2.5 px-4 text-center font-mono font-bold text-white">
+                                  {pt.taxa_coleta_pct}%
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-slate-800 overflow-hidden bg-slate-900/50">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-800 bg-slate-900 text-slate-400 font-semibold">
+                            <th className="py-2.5 px-4">Seller / Comerciante</th>
+                            <th className="py-2.5 px-4">Unidade (MD / HUB)</th>
+                            <th className="py-2.5 px-4">Cidade / UF</th>
+                            <th className="py-2.5 px-4">Modalidade</th>
+                            <th className="py-2.5 px-4 text-right">Volume</th>
+                            <th className="py-2.5 px-4 text-right">Coletados</th>
+                            <th className="py-2.5 px-4 text-right">Backlog</th>
+                            <th className="py-2.5 px-4 text-center">Taxa</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                          {(clienteDetalheData?.por_seller || []).map((sl: any, i: number) => (
+                            <tr key={sl.merchant_nome + i} className="hover:bg-slate-800/40">
+                              <td className="py-2.5 px-4 font-semibold text-white">
+                                {sl.merchant_nome}
+                              </td>
+                              <td className="py-2.5 px-4 font-mono text-cyan-300">
+                                {sl.ponto_colecao}
+                              </td>
+                              <td className="py-2.5 px-4 text-slate-300">
+                                {sl.cidade} - {sl.estado}
+                              </td>
+                              <td className="py-2.5 px-4">
+                                <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] font-semibold">
+                                  {sl.modalidade}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-mono font-bold text-white">
+                                {(sl.volume || 0).toLocaleString("pt-BR")}
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-mono text-emerald-400">
+                                {(sl.coletados || 0).toLocaleString("pt-BR")}
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-mono text-amber-400">
+                                {(sl.backlog || 0).toLocaleString("pt-BR")}
+                              </td>
+                              <td className="py-2.5 px-4 text-center font-mono font-bold text-white">
+                                {sl.taxa_coleta_pct}%
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+      </main>
     </div>
   );
 }

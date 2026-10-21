@@ -55,6 +55,24 @@ def salvar_json(nome_arquivo: str, dados: any):
     return caminho.stat().st_size
 
 
+def sincronizar_mapeamentos_banco(db):
+    """Aplica automaticamente qualquer edição recente de cliente_mapping ou malha antes de exportar."""
+    try:
+        from sqlalchemy import text
+        rows_cli = db.execute(text("SELECT cliente_id, nome_exibicao FROM cliente_mapping WHERE ativo = 1;")).fetchall()
+        for cid, nome in rows_cli:
+            if cid and nome:
+                cid_str = str(cid).strip()
+                nome_str = str(nome).strip()
+                db.execute(
+                    text("UPDATE criacao_pedidos_historico SET nome_cliente = :nome WHERE nome_cliente = :antigo;"),
+                    {"nome": nome_str, "antigo": f"Cliente {cid_str}"},
+                )
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
 def gerar_snapshots(max_dias: int = 5) -> dict:
     t0 = time.time()
     SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
@@ -63,6 +81,7 @@ def gerar_snapshots(max_dias: int = 5) -> dict:
     bytes_totais = 0
 
     try:
+        sincronizar_mapeamentos_banco(db)
         print("\n📸 [1/4] Extraindo calendário operacional do banco local...")
         info_dias = get_dias_coletas(db=db)
         todos_dias = info_dias.get("dias", [])
@@ -92,14 +111,20 @@ def gerar_snapshots(max_dias: int = 5) -> dict:
                 bytes_totais += salvar_json("resumo_latest.json", resumo)
 
             # 2. Lista de MDs & HUBs
-            mds = get_coletas_mds(dia=d, cliente=None, regional=None, search=None, filtro_tipo=None, db=db)
+            mds = get_coletas_mds(dia=d, cliente=None, regional=None, search=None, filtro_tipo="todos", db=db)
             bytes_totais += salvar_json(f"mds_{safe_d}.json", mds)
             arquivos_gerados += 1
             if idx == 0:
                 bytes_totais += salvar_json("mds_latest.json", mds)
 
-            # 3. Sellers
-            sellers = get_coletas_sellers(dia=d, cliente=None, regional=None, search=None, limit=400, db=db)
+            hubs = get_coletas_mds(dia=d, cliente=None, regional=None, search=None, filtro_tipo="hubs", db=db)
+            bytes_totais += salvar_json(f"hubs_{safe_d}.json", hubs)
+            arquivos_gerados += 1
+            if idx == 0:
+                bytes_totais += salvar_json("hubs_latest.json", hubs)
+
+            # 3. Sellers (limite ampliado para alimentar drill-down por cliente online)
+            sellers = get_coletas_sellers(dia=d, cliente=None, regional=None, search=None, limit=2000, db=db)
             bytes_totais += salvar_json(f"sellers_{safe_d}.json", sellers)
             arquivos_gerados += 1
             if idx == 0:

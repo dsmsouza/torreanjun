@@ -433,21 +433,22 @@ def processar_arquivo_streaming(
             if cid and nome:
                 cid_str = str(cid).strip()
                 nome_str = str(nome).replace("'", "''").strip()
-                case_clientes_lista.append(f"WHEN numero_cliente = '{cid_str}' THEN '{nome_str}'")
+                case_clientes_lista.append(f"WHEN TRIM(numero_cliente) = '{cid_str}' THEN '{nome_str}'")
     except Exception:
         pass
 
     if not case_clientes_lista:
         case_clientes_lista = [
-            "WHEN numero_cliente = '24005' THEN 'Shein'",
-            "WHEN numero_cliente = '24147' THEN 'Shein D2D'",
-            "WHEN numero_cliente = '24189' THEN 'temud2d'",
-            "WHEN numero_cliente = '24218' THEN 'temuw2d'",
-            "WHEN numero_cliente = '24343' THEN 'temuxborder'",
-            "WHEN numero_cliente = '24009' THEN 'Kwai'",
-            "WHEN numero_cliente = '24324' THEN 'tiktok'",
-            "WHEN numero_cliente = '24020' THEN 'szanjun(internacional)'",
-            "WHEN numero_cliente = '24323' THEN 'Shopee'"
+            "WHEN TRIM(numero_cliente) = '24005' THEN 'shein'",
+            "WHEN TRIM(numero_cliente) = '24147' THEN 'sheind2d'",
+            "WHEN TRIM(numero_cliente) = '24289' THEN 'sheinw2s'",
+            "WHEN TRIM(numero_cliente) = '24189' THEN 'temud2d'",
+            "WHEN TRIM(numero_cliente) = '24218' THEN 'temuw2d'",
+            "WHEN TRIM(numero_cliente) = '24343' THEN 'temuxborder'",
+            "WHEN TRIM(numero_cliente) = '24009' THEN 'kwai'",
+            "WHEN TRIM(numero_cliente) = '24324' THEN 'tiktok logistics brazil ltda'",
+            "WHEN TRIM(numero_cliente) = '24020' THEN 'szanjun'",
+            "WHEN TRIM(numero_cliente) = '24323' THEN 'b4a serviços de tecnologia e comercio s. a.'"
         ]
 
     sql_case_clientes = "\n                ".join(case_clientes_lista)
@@ -465,12 +466,10 @@ def processar_arquivo_streaming(
             semana_base,
             CASE 
                 {sql_case_clientes}
-                WHEN numero_cliente >= '24245' AND numero_cliente <= '24273' THEN 'C&A'
-                WHEN LOWER(remetente_nome) LIKE '%shein%' OR LOWER(merchant_nome) LIKE '%shein%' THEN 'Shein'
+                WHEN LOWER(remetente_nome) LIKE '%shein%' OR LOWER(merchant_nome) LIKE '%shein%' THEN 'shein'
                 WHEN LOWER(remetente_nome) LIKE '%temu%' OR LOWER(merchant_nome) LIKE '%temu%' THEN 'temud2d'
-                WHEN LOWER(remetente_nome) LIKE '%kwai%' OR LOWER(merchant_nome) LIKE '%kwai%' THEN 'Kwai'
-                WHEN LOWER(remetente_nome) LIKE '%tiktok%' OR LOWER(merchant_nome) LIKE '%tiktok%' THEN 'tiktok'
-                WHEN LOWER(ponto_colecao) LIKE '%d2d%' THEN 'D2D'
+                WHEN LOWER(remetente_nome) LIKE '%kwai%' OR LOWER(merchant_nome) LIKE '%kwai%' THEN 'kwai'
+                WHEN LOWER(remetente_nome) LIKE '%tiktok%' OR LOWER(merchant_nome) LIKE '%tiktok%' THEN 'tiktok logistics brazil ltda'
                 WHEN numero_cliente IS NOT NULL AND TRIM(numero_cliente) != '' THEN 'Cliente ' || TRIM(numero_cliente)
                 ELSE 'Outros'
             END as nome_cliente,

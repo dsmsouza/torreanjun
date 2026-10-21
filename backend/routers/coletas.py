@@ -35,7 +35,34 @@ def eh_md(codigo: str) -> bool:
     if not codigo:
         return False
     c = str(codigo).strip().upper()
+    if "-H" in c or c.startswith("HUB") or "GLP" in c:
+        return False
     return bool(c.startswith("MD-") or re.match(r"^[A-Z]{2}-W-MD", c))
+
+
+def eh_cliente_marketplace(nome_cliente: str) -> bool:
+    """Verifica se o cliente pertence aos 4 grandes Marketplaces (Shein, Temu, TikTok, Kwai)."""
+    if not nome_cliente:
+        return False
+    n = str(nome_cliente).strip().lower()
+    return any(k in n for k in ["shein", "temu", "tiktok", "kwai"])
+
+
+def classificar_marketplace_grupo(nome_cliente: str) -> str:
+    """Retorna a marca principal do Marketplace ou 'OUTROS'."""
+    if not nome_cliente:
+        return "OUTROS"
+    n = str(nome_cliente).strip().lower()
+    if "shein" in n:
+        return "SHEIN"
+    if "temu" in n:
+        return "TEMU"
+    if "tiktok" in n:
+        return "TIKTOK"
+    if "kwai" in n:
+        return "KWAI"
+    return "OUTROS"
+
 
 
 def determinar_tipo_ponto(codigo: str) -> str:
@@ -125,16 +152,18 @@ def get_resumo_coletas(
 
     where_sql = "WHERE " + " AND ".join(clauses)
 
-    # 2. Obter totais da tabela criacao_pedidos_historico
+    # 2. Obter totais da tabela criacao_pedidos_historico (separando estritamente MDs de HUBs como SP-Z-H005)
     tot_row = db.execute(text(f"""
         SELECT 
             COALESCE(SUM(total_pedidos), 0) as total,
-            COUNT(DISTINCT CASE WHEN ponto_colecao IS NOT NULL AND trim(ponto_colecao) != '' THEN ponto_colecao END) as total_mds,
+            COUNT(DISTINCT CASE WHEN (UPPER(TRIM(ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(ponto_colecao)) LIKE '__-W-MD%') AND UPPER(TRIM(ponto_colecao)) NOT LIKE '%-H%' THEN UPPER(TRIM(ponto_colecao)) END) as total_mds,
             COUNT(DISTINCT CASE WHEN merchant_nome IS NOT NULL AND trim(merchant_nome) != '' THEN merchant_nome END) as total_sellers,
             SUM(CASE WHEN LOWER(status_pedido) IN ('circuito fechado', 'carregamento', 'descarregamento') THEN total_pedidos ELSE 0 END) as coletados,
-            SUM(CASE WHEN LOWER(status_pedido) IN ('coleta', 'coletado', 'saco selado', 'foi assinado', 'pendente', 'aguardando') THEN total_pedidos ELSE 0 END) as backlog,
+            SUM(CASE WHEN LOWER(status_pedido) IN ('coleta', 'coletado', 'saco selado', 'foi assinado', 'pendente', 'aguardando') THEN total_pedidos ELSE 0 END) as backlog_geral,
             SUM(CASE WHEN LOWER(maneira_coleta) LIKE '%entrega%' OR LOWER(maneira_coleta) LIKE '%dropoff%' THEN total_pedidos ELSE 0 END) as vol_dropoff,
-            SUM(CASE WHEN LOWER(maneira_coleta) LIKE '%coleta%' OR LOWER(maneira_coleta) LIKE '%pickup%' THEN total_pedidos ELSE 0 END) as vol_pickup
+            SUM(CASE WHEN LOWER(maneira_coleta) LIKE '%coleta%' OR LOWER(maneira_coleta) LIKE '%pickup%' THEN total_pedidos ELSE 0 END) as vol_pickup,
+            SUM(CASE WHEN (UPPER(TRIM(ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(ponto_colecao)) LIKE '__-W-MD%') AND UPPER(TRIM(ponto_colecao)) NOT LIKE '%-H%' AND LOWER(status_pedido) IN ('coleta', 'coletado', 'saco selado', 'foi assinado', 'pendente', 'aguardando') THEN total_pedidos ELSE 0 END) as backlog_estrito_md,
+            COUNT(DISTINCT CASE WHEN NOT ((UPPER(TRIM(ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(ponto_colecao)) LIKE '__-W-MD%') AND UPPER(TRIM(ponto_colecao)) NOT LIKE '%-H%') THEN UPPER(TRIM(ponto_colecao)) END) as total_hubs
         FROM criacao_pedidos_historico
         {where_sql};
     """), params).fetchone()
@@ -146,13 +175,15 @@ def get_resumo_coletas(
     backlog = int(tot_row[4] or 0)
     vol_dropoff = int(tot_row[5] or 0)
     vol_pickup = int(tot_row[6] or 0)
+    backlog_estrito_md = int(tot_row[7] or 0)
+    total_hubs = int(tot_row[8] or 0)
 
     # Fallback para detalhe_md_historico se criacao_pedidos_historico estiver vazio nesta data
     if total_pedidos == 0:
         row_md_tot = db.execute(text("""
             SELECT 
                 COALESCE(SUM(total), 0) as total,
-                COUNT(DISTINCT CASE WHEN md IS NOT NULL AND trim(md) != '' THEN md END) as total_mds,
+                COUNT(DISTINCT CASE WHEN (UPPER(TRIM(md)) LIKE 'MD-%' OR UPPER(TRIM(md)) LIKE '__-W-MD%') THEN md END) as total_mds,
                 COALESCE(SUM(carregamento + descarregamento), 0) as coletados,
                 COALESCE(SUM(backlog), 0) as backlog
             FROM detalhe_md_historico
@@ -163,6 +194,7 @@ def get_resumo_coletas(
             total_mds = int(row_md_tot[1] or 0)
             coletados = int(row_md_tot[2] or 0)
             backlog = int(row_md_tot[3] or 0)
+            backlog_estrito_md = backlog
             vol_dropoff = total_pedidos
             vol_pickup = 0
 
@@ -201,6 +233,8 @@ def get_resumo_coletas(
         if ponto not in cadastrados_set and "SP-R-TFK001" not in ponto and "ANJUN" not in ponto:
             pontos_nao_cadastrados.append({
                 "md_codigo": ponto,
+                "tipo_ponto": determinar_tipo_ponto(ponto),
+                "is_md": eh_md(ponto),
                 "volume": vol
             })
     pontos_nao_cadastrados.sort(key=lambda x: x["volume"], reverse=True)
@@ -224,6 +258,8 @@ def get_resumo_coletas(
                 if ponto not in pontos_anteriores_set and vol > 0:
                     pontos_primeira_bipagem.append({
                         "md_codigo": ponto,
+                        "tipo_ponto": determinar_tipo_ponto(ponto),
+                        "is_md": eh_md(ponto),
                         "volume": vol
                     })
             pontos_primeira_bipagem.sort(key=lambda x: x["volume"], reverse=True)
@@ -264,47 +300,134 @@ def get_resumo_coletas(
     except Exception:
         pass
 
-    # 4. Distribuição de Clientes
+    # 4. Distribuição de Clientes (com separação de Marketplaces W2D / D2D e Demais Clientes)
     clientes_rows = db.execute(text(f"""
         SELECT 
             nome_cliente, 
             SUM(total_pedidos) as volume,
             SUM(CASE WHEN LOWER(status_pedido) IN ('circuito fechado', 'carregamento', 'descarregamento') THEN total_pedidos ELSE 0 END) as coletados,
-            SUM(CASE WHEN LOWER(status_pedido) IN ('coleta', 'coletado', 'saco selado', 'foi assinado', 'pendente', 'aguardando') THEN total_pedidos ELSE 0 END) as backlog
+            SUM(CASE WHEN LOWER(status_pedido) IN ('coleta', 'coletado', 'saco selado', 'foi assinado', 'pendente', 'aguardando') THEN total_pedidos ELSE 0 END) as backlog,
+            SUM(CASE WHEN LOWER(maneira_coleta) LIKE '%entrega%' OR LOWER(maneira_coleta) LIKE '%dropoff%' THEN total_pedidos ELSE 0 END) as vol_dropoff,
+            SUM(CASE WHEN LOWER(maneira_coleta) LIKE '%coleta%' OR LOWER(maneira_coleta) LIKE '%pickup%' THEN total_pedidos ELSE 0 END) as vol_pickup,
+            COUNT(DISTINCT UPPER(TRIM(ponto_colecao))) as qtd_pontos,
+            COUNT(DISTINCT merchant_nome) as qtd_sellers
         FROM criacao_pedidos_historico
         {where_sql}
         GROUP BY nome_cliente
         ORDER BY SUM(total_pedidos) DESC;
     """), params).fetchall()
 
+    # Mapear IDs dos clientes cadastrados em cliente_mapping
+    cli_id_map: Dict[str, List[str]] = {}
+    todos_clientes_cad: List[str] = []
+    try:
+        rows_cm = db.execute(text("SELECT cliente_id, nome_exibicao FROM cliente_mapping WHERE ativo = 1 ORDER BY nome_exibicao;")).fetchall()
+        for cid, cnome in rows_cm:
+            if cnome:
+                k_low = cnome.strip().lower()
+                if cid:
+                    cli_id_map.setdefault(k_low, []).append(str(cid).strip())
+                if cnome.strip() not in todos_clientes_cad:
+                    todos_clientes_cad.append(cnome.strip())
+    except Exception:
+        pass
+
     clientes_breakdown = []
+    clientes_vistos_low = set()
+
     for c in clientes_rows:
-        c_nome = c[0] or "Outros"
+        c_nome = (c[0] or "Outros").strip()
+        clientes_vistos_low.add(c_nome.lower())
         c_vol = int(c[1] or 0)
         c_col = int(c[2] or 0)
         c_bkl = int(c[3] or 0)
+        c_dp = int(c[4] or 0)
+        c_pk = int(c[5] or 0)
+        c_pts = int(c[6] or 0)
+        c_sel = int(c[7] or 0)
         if c_col == 0 and c_bkl == 0 and c_vol > 0:
             c_col = c_vol
         c_pct = round((c_vol / max(total_pedidos, 1) * 100), 1)
-        c_taxa = round((c_col / max(c_vol, 1) * 100), 1)
+        c_taxa = round((c_col / max(c_vol, 1) * 100), 1) if c_vol > 0 else 0.0
+        is_mkt = eh_cliente_marketplace(c_nome)
+        mkt_grupo = classificar_marketplace_grupo(c_nome)
+        n_low = c_nome.lower()
+        if "d2d" in n_low:
+            mod_tag = "D2D"
+        elif "w2d" in n_low or "w2s" in n_low:
+            mod_tag = "W2D / W2S"
+        elif "xborder" in n_low:
+            mod_tag = "Cross-Border"
+        elif c_dp > 0 and c_pk == 0:
+            mod_tag = "D2D (Dropoff)"
+        elif c_pk > 0 and c_dp == 0:
+            mod_tag = "W2D (Pickup)"
+        else:
+            mod_tag = "W2D & D2D"
+
         clientes_breakdown.append({
             "cliente": c_nome,
             "nome_cliente": c_nome,
+            "cliente_ids": cli_id_map.get(n_low, []),
+            "is_marketplace": is_mkt,
+            "marketplace_grupo": mkt_grupo,
+            "modalidade_tag": mod_tag,
             "volume": c_vol,
             "coletados": c_col,
             "backlog": c_bkl,
+            "vol_dropoff": c_dp,
+            "vol_pickup": c_pk,
+            "qtd_pontos": c_pts,
+            "qtd_sellers": c_sel,
             "taxa_pct": c_taxa,
             "pct_total": c_pct,
             "share_pct": c_pct
         })
 
+    # Incluir também os clientes cadastrados em cliente_mapping que tiveram 0 pedidos no dia (se não houver filtro de cliente único)
+    if not cliente or cliente.strip().upper() in ["TODOS", ""]:
+        for c_cad in todos_clientes_cad:
+            if c_cad.lower() not in clientes_vistos_low:
+                clientes_vistos_low.add(c_cad.lower())
+                is_mkt = eh_cliente_marketplace(c_cad)
+                mkt_grupo = classificar_marketplace_grupo(c_cad)
+                n_low = c_cad.lower()
+                if "d2d" in n_low:
+                    mod_tag = "D2D"
+                elif "w2d" in n_low or "w2s" in n_low:
+                    mod_tag = "W2D / W2S"
+                elif "xborder" in n_low:
+                    mod_tag = "Cross-Border"
+                else:
+                    mod_tag = "Cadastrado"
+                clientes_breakdown.append({
+                    "cliente": c_cad,
+                    "nome_cliente": c_cad,
+                    "cliente_ids": cli_id_map.get(n_low, []),
+                    "is_marketplace": is_mkt,
+                    "marketplace_grupo": mkt_grupo,
+                    "modalidade_tag": mod_tag,
+                    "volume": 0,
+                    "coletados": 0,
+                    "backlog": 0,
+                    "vol_dropoff": 0,
+                    "vol_pickup": 0,
+                    "qtd_pontos": 0,
+                    "qtd_sellers": 0,
+                    "taxa_pct": 0.0,
+                    "pct_total": 0.0,
+                    "share_pct": 0.0
+                })
+
     kpis_data = {
         "total_pedidos": total_pedidos,
         "total_mds": total_mds,
+        "total_hubs": total_hubs,
         "total_sellers": total_sellers,
         "total_coletados": coletados,
         "coletados": coletados,
-        "backlog_md": backlog,
+        "backlog_md": backlog_estrito_md,
+        "backlog_hub": max(0, backlog - backlog_estrito_md),
         "backlog": backlog,
         "taxa_coleta_pct": taxa_coleta,
         "taxa_coleta": taxa_coleta,
@@ -492,16 +615,25 @@ def get_coletas_mds(
             is_sem_bipagem = dias_sem >= 5
             tag_bipagem = f"⚠️ Sem Bipagem ({dias_sem}d)" if is_sem_bipagem else "🟢 Bipando Constante"
 
-        # Filtros rápidos
+        # Filtros rápidos (Por padrão, a aba de MDs mostra APENAS MDs estritos; HUBs como SP-Z-H005 ficam no filtro HUBS)
         filtro_upper = (filtro_tipo or "").strip().upper()
+        is_unidade_md = eh_md(md)
+
+        if filtro_upper in ["HUBS", "HUB", "GALPOES"]:
+            if is_unidade_md:
+                continue
+        else:
+            if not is_unidade_md:
+                continue
+
         if filtro_upper in ["BACKLOG", "COM_BACKLOG"] and bk_p == 0:
             continue
         if filtro_upper in ["PRIMEIRA_BIPAGEM", "PRIMEIRA_VEZ", "1A_BIPAGEM"] and not is_primeira:
             continue
         vol_pk = int(r[7] or 0)
         vol_dp = int(r[8] or 0)
-        tipo_pt = determinar_tipo_ponto(md) if (not cad_info.get("tipo_ponto") or "-H" in md or "HUB" in md or eh_md(md)) else (cad_info.get("tipo_ponto") or "MD (Ponto de Coleta)")
-        is_desvio_pk = (eh_md(md) and vol_pk > 0)
+        tipo_pt = determinar_tipo_ponto(md)
+        is_desvio_pk = (is_unidade_md and vol_pk > 0)
 
         if filtro_upper in ["NAO_CADASTRADOS", "NAO_CADASTRADO"] and is_cadastrado:
             continue
@@ -519,6 +651,7 @@ def get_coletas_mds(
             "estado": cad_info.get("estado") or r[1] or "SP",
             "cidade": cad_info.get("cidade") or r[2] or "São Paulo",
             "tipo_ponto": tipo_pt,
+            "is_md": is_unidade_md,
             "total_pedidos": total_p,
             "volume": total_p,
             "vol_pickup": vol_pk,
@@ -537,11 +670,13 @@ def get_coletas_mds(
             "data_ultima_bipagem": data_u_str
         })
 
-    # Incluir pontos cadastrados que não biparam no dia mas estão sem bipagem há 5+ dias (se filtro permitir)
+    # Incluir pontos cadastrados que não biparam no dia mas estão sem bipagem há 5+ dias (se filtro permitir, apenas para MDs)
     filtro_upper = (filtro_tipo or "").strip().upper()
     if filtro_upper in ["TODOS", "", "SEM_BIPAGEM", "DORMENTE"]:
         for md_cad, c_info in cad_map.items():
             if md_cad in mds_processados_set or "TFK" in md_cad or "ANJUN" in md_cad:
+                continue
+            if not eh_md(md_cad):
                 continue
             info_u = mapa_ultimas_bipagens.get(md_cad)
             if info_u and info_u[0]:
@@ -571,7 +706,8 @@ def get_coletas_mds(
                     "regional": c_info.get("regional") or "SP",
                     "estado": c_info.get("estado") or "SP",
                     "cidade": c_info.get("cidade") or "São Paulo",
-                    "tipo_ponto": c_info.get("tipo_ponto") or "MD (Ponto de Coleta)",
+                    "tipo_ponto": determinar_tipo_ponto(md_cad),
+                    "is_md": True,
                     "total_pedidos": 0,
                     "volume": 0,
                     "coletados": 0,
@@ -596,6 +732,347 @@ def get_coletas_mds(
         "total_bipando_constante": tot_bipando,
         "total_sem_bipagem": tot_sem_bipagem
     }
+
+
+@router.get("/cliente-detalhes")
+def get_cliente_detalhes(
+    cliente: str = Query(..., description="Nome do cliente (ex: shein, sheind2d, temud2d, shopmulti)"),
+    dia: Optional[str] = Query(None),
+    regional: Optional[str] = Query(None),
+    modalidade: Optional[str] = Query("TODOS"),
+    status_filtro: Optional[str] = Query("TODOS"),
+    ponto_filtro: Optional[str] = Query("TODOS"),
+    search: Optional[str] = Query(None),
+    limit: int = Query(150),
+    db: Session = Depends(get_db)
+):
+    """
+    Drill-down completo de um cliente específico:
+    Retorna KPIs do cliente (W2D vs D2D, Coletados vs Backlog), distribuição por Ponto (MDs e HUBs),
+    distribuição por Seller e listagem de pacotes com filtro dropdown e busca rápida.
+    """
+    if not dia or dia.strip().upper() in ["", "TODOS"]:
+        row_dia = db.execute(text("SELECT dia_base FROM criacao_pedidos_historico ORDER BY SUBSTR(dia_base, 7, 4) || '-' || SUBSTR(dia_base, 4, 2) || '-' || SUBSTR(dia_base, 1, 2) DESC LIMIT 1;")).fetchone()
+        dia = row_dia[0] if row_dia else "20/10/2026"
+
+    cli_clean = cliente.strip()
+    cli_low = cli_clean.lower()
+
+    # Descobrir cliente_ids associados em cliente_mapping
+    rows_ids = db.execute(text("SELECT cliente_id FROM cliente_mapping WHERE LOWER(TRIM(nome_exibicao)) = :c AND ativo = 1;"), {"c": cli_low}).fetchall()
+    cliente_ids = [str(r[0]).strip() for r in rows_ids if r[0]]
+
+    clauses_hist = [
+        "dia_base = :dia",
+        "LOWER(TRIM(nome_cliente)) = :cli",
+        "ponto_colecao IS NOT NULL",
+        "TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')",
+        "UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'",
+        "UPPER(ponto_colecao) NOT LIKE '%ANJUN%'"
+    ]
+    params_hist: Dict[str, Any] = {"dia": dia, "cli": cli_low}
+
+    if regional and regional.strip().upper() not in ["TODOS", ""]:
+        clauses_hist.append("LOWER(estado) = :reg")
+        params_hist["reg"] = regional.strip().lower()
+
+    if modalidade and modalidade.strip().upper() not in ["TODOS", ""]:
+        mod_up = modalidade.strip().upper()
+        if mod_up in ["D2D", "DROPOFF", "ENTREGA"]:
+            clauses_hist.append("(LOWER(maneira_coleta) LIKE '%entrega%' OR LOWER(maneira_coleta) LIKE '%dropoff%')")
+        elif mod_up in ["W2D", "PICKUP", "COLETA"]:
+            clauses_hist.append("(LOWER(maneira_coleta) LIKE '%coleta%' OR LOWER(maneira_coleta) LIKE '%pickup%')")
+
+    if status_filtro and status_filtro.strip().upper() not in ["TODOS", ""]:
+        st_up = status_filtro.strip().upper()
+        if st_up == "COLETADOS":
+            clauses_hist.append("LOWER(status_pedido) IN ('circuito fechado', 'carregamento', 'descarregamento')")
+        elif st_up == "BACKLOG":
+            clauses_hist.append("LOWER(status_pedido) IN ('coleta', 'coletado', 'saco selado', 'foi assinado', 'pendente', 'aguardando')")
+
+    if ponto_filtro and ponto_filtro.strip().upper() not in ["TODOS", ""]:
+        clauses_hist.append("UPPER(TRIM(ponto_colecao)) = :pt")
+        params_hist["pt"] = ponto_filtro.strip().upper()
+
+    if search and search.strip():
+        clauses_hist.append("(LOWER(merchant_nome) LIKE :q OR LOWER(ponto_colecao) LIKE :q OR LOWER(cidade) LIKE :q OR LOWER(cep_remetente) LIKE :q)")
+        params_hist["q"] = f"%{search.strip().lower()}%"
+
+    where_hist = "WHERE " + " AND ".join(clauses_hist)
+
+    # 1. Resumo Geral do Cliente
+    row_res = db.execute(text(f"""
+        SELECT 
+            COALESCE(SUM(total_pedidos), 0) as total,
+            SUM(CASE WHEN LOWER(status_pedido) IN ('circuito fechado', 'carregamento', 'descarregamento') THEN total_pedidos ELSE 0 END) as coletados,
+            SUM(CASE WHEN LOWER(status_pedido) IN ('coleta', 'coletado', 'saco selado', 'foi assinado', 'pendente', 'aguardando') THEN total_pedidos ELSE 0 END) as backlog,
+            SUM(CASE WHEN LOWER(maneira_coleta) LIKE '%entrega%' OR LOWER(maneira_coleta) LIKE '%dropoff%' THEN total_pedidos ELSE 0 END) as vol_dropoff,
+            SUM(CASE WHEN LOWER(maneira_coleta) LIKE '%coleta%' OR LOWER(maneira_coleta) LIKE '%pickup%' THEN total_pedidos ELSE 0 END) as vol_pickup,
+            COUNT(DISTINCT UPPER(TRIM(ponto_colecao))) as qtd_pontos,
+            COUNT(DISTINCT merchant_nome) as qtd_sellers
+        FROM criacao_pedidos_historico
+        {where_hist};
+    """), params_hist).fetchone()
+
+    tot_cli = int(row_res[0] or 0)
+    col_cli = int(row_res[1] or 0)
+    bkl_cli = int(row_res[2] or 0)
+    dp_cli = int(row_res[3] or 0)
+    pk_cli = int(row_res[4] or 0)
+    pts_cli = int(row_res[5] or 0)
+    sel_cli = int(row_res[6] or 0)
+    taxa_cli = round((col_cli / max(tot_cli, 1)) * 100, 1) if tot_cli > 0 else 0.0
+
+    # 2. Distribuição por Ponto (MD vs HUB)
+    rows_pts = db.execute(text(f"""
+        SELECT 
+            UPPER(TRIM(ponto_colecao)) as ponto,
+            MAX(cidade) as cidade,
+            MAX(estado) as estado,
+            SUM(total_pedidos) as volume,
+            SUM(CASE WHEN LOWER(status_pedido) IN ('circuito fechado', 'carregamento', 'descarregamento') THEN total_pedidos ELSE 0 END) as coletados,
+            SUM(CASE WHEN LOWER(status_pedido) IN ('coleta', 'coletado', 'saco selado', 'foi assinado', 'pendente', 'aguardando') THEN total_pedidos ELSE 0 END) as backlog,
+            SUM(CASE WHEN LOWER(maneira_coleta) LIKE '%entrega%' OR LOWER(maneira_coleta) LIKE '%dropoff%' THEN total_pedidos ELSE 0 END) as vol_dropoff,
+            SUM(CASE WHEN LOWER(maneira_coleta) LIKE '%coleta%' OR LOWER(maneira_coleta) LIKE '%pickup%' THEN total_pedidos ELSE 0 END) as vol_pickup,
+            COUNT(DISTINCT merchant_nome) as qtd_sellers
+        FROM criacao_pedidos_historico
+        {where_hist}
+        GROUP BY UPPER(TRIM(ponto_colecao))
+        ORDER BY SUM(total_pedidos) DESC
+        LIMIT 100;
+    """), params_hist).fetchall()
+
+    por_ponto = []
+    pontos_disponiveis = []
+    for rp in rows_pts:
+        pt_cod = rp[0] or "N/A"
+        pontos_disponiveis.append(pt_cod)
+        v_p = int(rp[3] or 0)
+        c_p = int(rp[4] or 0)
+        b_p = int(rp[5] or 0)
+        por_ponto.append({
+            "ponto_colecao": pt_cod,
+            "tipo_ponto": determinar_tipo_ponto(pt_cod),
+            "is_md": eh_md(pt_cod),
+            "cidade": rp[1] or "São Paulo",
+            "estado": rp[2] or "SP",
+            "volume": v_p,
+            "coletados": c_p,
+            "backlog": b_p,
+            "vol_dropoff": int(rp[6] or 0),
+            "vol_pickup": int(rp[7] or 0),
+            "qtd_sellers": int(rp[8] or 0),
+            "taxa_coleta_pct": round((c_p / max(v_p, 1)) * 100, 1)
+        })
+
+    # 3. Distribuição por Seller
+    rows_sel = db.execute(text(f"""
+        SELECT 
+            COALESCE(merchant_nome, 'Seller Não Identificado') as seller,
+            MAX(merchant_id) as merchant_id,
+            MAX(cidade) as cidade,
+            MAX(estado) as estado,
+            MAX(UPPER(TRIM(ponto_colecao))) as ponto,
+            MAX(maneira_coleta) as maneira,
+            SUM(total_pedidos) as volume,
+            SUM(CASE WHEN LOWER(status_pedido) IN ('circuito fechado', 'carregamento', 'descarregamento') THEN total_pedidos ELSE 0 END) as coletados,
+            SUM(CASE WHEN LOWER(status_pedido) IN ('coleta', 'coletado', 'saco selado', 'foi assinado', 'pendente', 'aguardando') THEN total_pedidos ELSE 0 END) as backlog
+        FROM criacao_pedidos_historico
+        {where_hist}
+        GROUP BY COALESCE(merchant_nome, 'Seller Não Identificado'), UPPER(TRIM(ponto_colecao))
+        ORDER BY SUM(total_pedidos) DESC
+        LIMIT 100;
+    """), params_hist).fetchall()
+
+    por_seller = []
+    for rs in rows_sel:
+        v_s = int(rs[6] or 0)
+        c_s = int(rs[7] or 0)
+        b_s = int(rs[8] or 0)
+        man_s = rs[5] or "Dropoff"
+        por_seller.append({
+            "merchant_nome": rs[0],
+            "merchant_id": rs[1] or "N/A",
+            "cidade": rs[2] or "",
+            "estado": rs[3] or "",
+            "ponto_colecao": rs[4] or "N/A",
+            "tipo_ponto": determinar_tipo_ponto(rs[4] or ""),
+            "maneira_coleta": man_s,
+            "modalidade": "W2D / Pickup" if ("coleta" in man_s.lower() or "pickup" in man_s.lower()) else "D2D / Dropoff",
+            "volume": v_s,
+            "coletados": c_s,
+            "backlog": b_s,
+            "taxa_coleta_pct": round((c_s / max(v_s, 1)) * 100, 1)
+        })
+
+    # 4. Listagem de Pacotes Individuais (de operacional_pedidos_completo se disponível para a data, ou lotes de criacao_pedidos_historico)
+    pacotes = []
+    usa_pacotes_individuais = False
+    try:
+        clauses_op = [
+            "dia_base = :dia",
+            "ponto_colecao IS NOT NULL",
+            "TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')",
+            "UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'",
+            "UPPER(ponto_colecao) NOT LIKE '%ANJUN%'"
+        ]
+        params_op: Dict[str, Any] = {"dia": dia, "limit": min(limit, 300)}
+
+        if cliente_ids:
+            id_list_sql = ", ".join([f"'{cid}'" for cid in cliente_ids])
+            clauses_op.append(f"TRIM(numero_cliente) IN ({id_list_sql})")
+        else:
+            clauses_op.append("(LOWER(remetente_nome) LIKE :cli_like OR LOWER(merchant_nome) LIKE :cli_like OR TRIM(numero_cliente) = :cli_raw)")
+            params_op["cli_like"] = f"%{cli_low}%"
+            params_op["cli_raw"] = cli_clean.replace("Cliente ", "").strip()
+
+        if regional and regional.strip().upper() not in ["TODOS", ""]:
+            clauses_op.append("LOWER(remetente_uf) = :reg")
+            params_op["reg"] = regional.strip().lower()
+
+        if modalidade and modalidade.strip().upper() not in ["TODOS", ""]:
+            mod_up = modalidade.strip().upper()
+            if mod_up in ["D2D", "DROPOFF", "ENTREGA"]:
+                clauses_op.append("(LOWER(maneira_coleta) LIKE '%entrega%' OR LOWER(maneira_coleta) LIKE '%dropoff%')")
+            elif mod_up in ["W2D", "PICKUP", "COLETA"]:
+                clauses_op.append("(LOWER(maneira_coleta) LIKE '%coleta%' OR LOWER(maneira_coleta) LIKE '%pickup%')")
+
+        if status_filtro and status_filtro.strip().upper() not in ["TODOS", ""]:
+            st_up = status_filtro.strip().upper()
+            if st_up == "COLETADOS":
+                clauses_op.append("LOWER(status_pedido) IN ('circuito fechado', 'carregamento', 'descarregamento')")
+            elif st_up == "BACKLOG":
+                clauses_op.append("LOWER(status_pedido) IN ('coleta', 'coletado', 'saco selado', 'foi assinado', 'pendente', 'aguardando')")
+
+        if ponto_filtro and ponto_filtro.strip().upper() not in ["TODOS", ""]:
+            clauses_op.append("UPPER(TRIM(ponto_colecao)) = :pt")
+            params_op["pt"] = ponto_filtro.strip().upper()
+
+        if search and search.strip():
+            clauses_op.append("(LOWER(codigo_barras) LIKE :q OR LOWER(pedido_cliente) LIKE :q OR LOWER(numero_pacote) LIKE :q OR LOWER(numero_saca) LIKE :q OR LOWER(merchant_nome) LIKE :q OR LOWER(ponto_colecao) LIKE :q OR LOWER(destinatario_cidade) LIKE :q)")
+            params_op["q"] = f"%{search.strip().lower()}%"
+
+        where_op = "WHERE " + " AND ".join(clauses_op)
+        rows_op = db.execute(text(f"""
+            SELECT 
+                codigo_barras,
+                pedido_cliente,
+                numero_pacote,
+                numero_saca,
+                COALESCE(merchant_nome, remetente_nome, 'N/A') as seller,
+                UPPER(TRIM(ponto_colecao)) as ponto,
+                maneira_coleta,
+                status_pedido,
+                tempo_criacao,
+                tempo_coleta,
+                remetente_cidade,
+                remetente_uf,
+                destinatario_cidade,
+                destinatario_uf,
+                peso_kg,
+                valor_declarado
+            FROM operacional_pedidos_completo
+            {where_op}
+            ORDER BY tempo_coleta DESC, id DESC
+            LIMIT :limit;
+        """), params_op).fetchall()
+
+        if rows_op:
+            usa_pacotes_individuais = True
+            for ro in rows_op:
+                pt_c = ro[5] or "N/A"
+                man_c = ro[6] or ""
+                pacotes.append({
+                    "codigo_barras": ro[0] or "-",
+                    "pedido_cliente": ro[1] or "-",
+                    "numero_pacote": ro[2] or "-",
+                    "numero_saca": ro[3] or "-",
+                    "merchant_nome": ro[4] or "-",
+                    "ponto_colecao": pt_c,
+                    "tipo_ponto": determinar_tipo_ponto(pt_c),
+                    "is_md": eh_md(pt_c),
+                    "maneira_coleta": man_c,
+                    "modalidade": "W2D / Pickup" if ("coleta" in man_c.lower() or "pickup" in man_c.lower()) else "D2D / Dropoff",
+                    "status_pedido": ro[7] or "-",
+                    "tempo_criacao": ro[8] or "-",
+                    "tempo_coleta": ro[9] or "-",
+                    "origem": f"{ro[10] or ''}/{ro[11] or ''}".strip("/"),
+                    "destino": f"{ro[12] or ''}/{ro[13] or ''}".strip("/"),
+                    "peso_kg": round(float(ro[14] or 0.0), 3),
+                    "valor_declarado": round(float(ro[15] or 0.0), 2),
+                    "qtd_pacotes": 1
+                })
+    except Exception:
+        pass
+
+    # Fallback para lotes de criacao_pedidos_historico se operacional_pedidos_completo não tiver linhas na data
+    if not pacotes:
+        rows_lotes = db.execute(text(f"""
+            SELECT 
+                COALESCE(merchant_nome, 'Seller') as seller,
+                COALESCE(merchant_id, '-') as mid,
+                UPPER(TRIM(ponto_colecao)) as ponto,
+                COALESCE(maneira_coleta, 'Dropoff') as maneira,
+                COALESCE(status_pedido, '-') as status,
+                COALESCE(cidade, '') as cid,
+                COALESCE(estado, '') as uf,
+                COALESCE(cep_remetente, '-') as cep,
+                SUM(total_pedidos) as qtd
+            FROM criacao_pedidos_historico
+            {where_hist}
+            GROUP BY merchant_nome, merchant_id, UPPER(TRIM(ponto_colecao)), maneira_coleta, status_pedido, cidade, estado, cep_remetente
+            ORDER BY SUM(total_pedidos) DESC
+            LIMIT :limit;
+        """), {**params_hist, "limit": min(limit, 300)}).fetchall()
+
+        for idx_l, rl in enumerate(rows_lotes):
+            pt_c = rl[2] or "N/A"
+            man_c = rl[3] or ""
+            pacotes.append({
+                "codigo_barras": f"LOTE-{idx_l + 1:03d} ({rl[8]} pcts)",
+                "pedido_cliente": cli_clean,
+                "numero_pacote": f"{rl[8]} pacotes",
+                "numero_saca": f"CEP {rl[7]}",
+                "merchant_nome": rl[0],
+                "ponto_colecao": pt_c,
+                "tipo_ponto": determinar_tipo_ponto(pt_c),
+                "is_md": eh_md(pt_c),
+                "maneira_coleta": man_c,
+                "modalidade": "W2D / Pickup" if ("coleta" in man_c.lower() or "pickup" in man_c.lower()) else "D2D / Dropoff",
+                "status_pedido": rl[4],
+                "tempo_criacao": dia,
+                "tempo_coleta": dia,
+                "origem": f"{rl[5]}/{rl[6]}".strip("/"),
+                "destino": "Malha ANJUN",
+                "peso_kg": 0.0,
+                "valor_declarado": 0.0,
+                "qtd_pacotes": int(rl[8] or 0)
+            })
+
+    return {
+        "status": "success",
+        "cliente": cli_clean,
+        "cliente_ids": cliente_ids,
+        "is_marketplace": eh_cliente_marketplace(cli_clean),
+        "marketplace_grupo": classificar_marketplace_grupo(cli_clean),
+        "dia_selecionado": dia,
+        "usa_pacotes_individuais": usa_pacotes_individuais,
+        "resumo": {
+            "total_pedidos": tot_cli,
+            "coletados": col_cli,
+            "backlog": bkl_cli,
+            "taxa_coleta_pct": taxa_cli,
+            "vol_dropoff": dp_cli,
+            "vol_pickup": pk_cli,
+            "qtd_pontos": pts_cli,
+            "qtd_sellers": sel_cli
+        },
+        "pontos_disponiveis": pontos_disponiveis,
+        "por_ponto": por_ponto,
+        "por_seller": por_seller,
+        "pacotes": pacotes
+    }
+
 
 
 @router.get("/sellers")
@@ -1631,6 +2108,11 @@ def get_d2d_sp_analise(
           AND TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')
           AND UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'
           AND UPPER(ponto_colecao) NOT LIKE '%ANJUN%'
+          AND UPPER(ponto_colecao) NOT LIKE '%-H%'
+          AND (
+              UPPER(TRIM(ponto_colecao)) LIKE 'MD-%'
+              OR UPPER(TRIM(ponto_colecao)) LIKE '__-W-MD%'
+          )
         GROUP BY dia_base, UPPER(TRIM(ponto_colecao));
     """), params_q).fetchall()
 
@@ -1860,13 +2342,15 @@ def get_d2d_sp_analise(
         "tempo_medio_perus_fmt": _formatar_horas_perus(media_horas_pilotos) or "N/A"
     }
 
-    # 7. Construir Fase 2: Candidatos de Expansão (Outros MDs de SP)
+    # 7. Construir Fase 2: Candidatos de Expansão (Outros MDs de SP — nunca HUBs como SP-Z-H005)
     candidatos_lista = []
     for curto, meta in meta_por_md.items():
         if curto in pilotos_set:
             continue
+        if not eh_md(meta["md_codigo"]):
+            continue
         # Filtrar apenas SP
-        if meta["estado"].upper() != "SP" and not meta["md_codigo"].startswith(("SP-", "MD-")):
+        if meta["estado"].upper() != "SP" and not meta["md_codigo"].startswith(("SP-W-MD", "MD-")):
             continue
 
         item = _calcular_metricas_md(curto)
@@ -2159,6 +2643,11 @@ def get_metricas_completas(dia: Optional[str] = None, db: Session = Depends(get_
             WHERE dia_base = :dia
               AND ponto_colecao IS NOT NULL
               AND TRIM(ponto_colecao) NOT IN ('', 'NAN', 'NONE', 'NULL', '-')
+              AND UPPER(ponto_colecao) NOT LIKE '%-H%'
+              AND (
+                  UPPER(TRIM(ponto_colecao)) LIKE 'MD-%'
+                  OR UPPER(TRIM(ponto_colecao)) LIKE '__-W-MD%'
+              )
             GROUP BY ponto_colecao
             HAVING backlog_retido > 0
             ORDER BY backlog_retido DESC

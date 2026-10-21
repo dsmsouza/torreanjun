@@ -80,12 +80,40 @@ async function resolveSnapshotRequest(urlStr: string): Promise<Response | null> 
     }
 
     if (path === "/api/coletas/mds") {
+      const ft = (params.get("filtro_tipo") || "").trim().toUpperCase();
+      if (["HUBS", "HUB", "GALPOES"].includes(ft)) {
+        const dataHubs = await fetchStaticSnapshot(`hubs_${safeDia}.json`, "hubs_latest.json");
+        if (dataHubs && Array.isArray(dataHubs.mds)) {
+          let hList = [...dataHubs.mds];
+          const reg = (params.get("regional") || "").trim().toLowerCase();
+          const search = (params.get("search") || "").trim().toLowerCase();
+          if (reg && reg !== "todos") {
+            hList = hList.filter((m: any) => (m.estado || "").toLowerCase() === reg || (m.regional || "").toLowerCase() === reg);
+          }
+          if (search) {
+            hList = hList.filter(
+              (m: any) =>
+                (m.md_codigo || "").toLowerCase().includes(search) ||
+                (m.cidade || "").toLowerCase().includes(search) ||
+                (m.estado || "").toLowerCase().includes(search)
+            );
+          }
+          return jsonResponse({
+            mds: hList,
+            total_mds: hList.length,
+            total_bipando_constante: hList.length,
+            total_sem_bipagem: 0,
+          });
+        }
+      }
       const data = await fetchStaticSnapshot(`mds_${safeDia}.json`, "mds_latest.json");
       if (data && Array.isArray(data.mds)) {
-        let list = [...data.mds];
+        let list = data.mds.filter((m: any) => {
+          const cd = String(m.md_codigo || "").toUpperCase();
+          return !cd.includes("-H") && !cd.startsWith("HUB") && !cd.includes("GLP");
+        });
         const reg = (params.get("regional") || "").trim().toLowerCase();
         const search = (params.get("search") || "").trim().toLowerCase();
-        const ft = (params.get("filtro_tipo") || "").trim().toUpperCase();
 
         if (reg && reg !== "todos") {
           list = list.filter((m: any) => (m.estado || "").toLowerCase() === reg || (m.regional || "").toLowerCase() === reg);
@@ -123,6 +151,170 @@ async function resolveSnapshotRequest(urlStr: string): Promise<Response | null> 
           total_sem_bipagem: totSemBipagem,
         });
       }
+    }
+
+    if (path === "/api/coletas/cliente-detalhes") {
+      const cliAlvo = (params.get("cliente") || "").trim();
+      const cliLow = cliAlvo.toLowerCase();
+      const modFiltro = (params.get("modalidade") || "TODOS").trim().toUpperCase();
+      const stFiltro = (params.get("status_filtro") || "TODOS").trim().toUpperCase();
+      const ptFiltro = (params.get("ponto_filtro") || "TODOS").trim().toUpperCase();
+      const search = (params.get("search") || "").trim().toLowerCase();
+
+      const [resumoData, sellersData] = await Promise.all([
+        fetchStaticSnapshot(`resumo_${safeDia}.json`, "resumo_latest.json"),
+        fetchStaticSnapshot(`sellers_${safeDia}.json`, "sellers_latest.json"),
+      ]);
+
+      const cBreakdown = (resumoData?.clientes_breakdown || []).find(
+        (c: any) => (c.cliente || c.nome_cliente || "").toLowerCase() === cliLow
+      );
+
+      let sList = (sellersData?.sellers || []).filter(
+        (s: any) => (s.nome_cliente || s.cliente || "").toLowerCase() === cliLow
+      );
+
+      const pontosDisponiveis = Array.from(
+        new Set(sList.map((s: any) => String(s.ponto_colecao || "N/A").toUpperCase()))
+      ).filter(Boolean);
+
+      if (modFiltro === "D2D" || modFiltro === "DROPOFF") {
+        sList = sList.filter(
+          (s: any) =>
+            (s.maneira_coleta || "").toLowerCase().includes("entrega") ||
+            (s.maneira_coleta || "").toLowerCase().includes("dropoff")
+        );
+      } else if (modFiltro === "W2D" || modFiltro === "PICKUP") {
+        sList = sList.filter(
+          (s: any) =>
+            (s.maneira_coleta || "").toLowerCase().includes("coleta") ||
+            (s.maneira_coleta || "").toLowerCase().includes("pickup")
+        );
+      }
+
+      if (stFiltro === "COLETADOS") {
+        sList = sList.filter((s: any) => (s.coletados || 0) > 0);
+      } else if (stFiltro === "BACKLOG") {
+        sList = sList.filter((s: any) => (s.backlog || 0) > 0);
+      }
+
+      if (ptFiltro && ptFiltro !== "TODOS") {
+        sList = sList.filter((s: any) => String(s.ponto_colecao || "").toUpperCase() === ptFiltro);
+      }
+
+      if (search) {
+        sList = sList.filter(
+          (s: any) =>
+            (s.merchant_nome || "").toLowerCase().includes(search) ||
+            (s.ponto_colecao || "").toLowerCase().includes(search) ||
+            (s.cidade || "").toLowerCase().includes(search)
+        );
+      }
+
+      const pontoMap: Record<string, any> = {};
+      for (const s of sList) {
+        const pt = String(s.ponto_colecao || "N/A").toUpperCase();
+        const isMd = (pt.startsWith("MD-") || /^[A-Z]{2}-W-MD/.test(pt)) && !pt.includes("-H");
+        if (!pontoMap[pt]) {
+          pontoMap[pt] = {
+            ponto_colecao: pt,
+            tipo_ponto: isMd ? "MD (Ponto de Coleta)" : "HUB (Transferência)",
+            is_md: isMd,
+            cidade: s.cidade || "São Paulo",
+            estado: s.estado || "SP",
+            volume: 0,
+            coletados: 0,
+            backlog: 0,
+            vol_dropoff: 0,
+            vol_pickup: 0,
+            qtd_sellers: 0,
+            taxa_coleta_pct: 100,
+          };
+        }
+        const v = Number(s.volume || 0);
+        const c = Number(s.coletados || 0);
+        const b = Number(s.backlog || 0);
+        const isPk = (s.maneira_coleta || "").toLowerCase().includes("coleta") || (s.maneira_coleta || "").toLowerCase().includes("pickup");
+        pontoMap[pt].volume += v;
+        pontoMap[pt].coletados += c;
+        pontoMap[pt].backlog += b;
+        if (isPk) pontoMap[pt].vol_pickup += v;
+        else pontoMap[pt].vol_dropoff += v;
+        pontoMap[pt].qtd_sellers += 1;
+        pontoMap[pt].taxa_coleta_pct = Math.round((pontoMap[pt].coletados / Math.max(pontoMap[pt].volume, 1)) * 1000) / 10;
+      }
+
+      const porPonto = Object.values(pontoMap).sort((a: any, b: any) => b.volume - a.volume);
+      const porSeller = sList.slice(0, 100).map((s: any) => ({
+        merchant_nome: s.merchant_nome || s.seller_nome || "Seller",
+        merchant_id: s.merchant_id || "N/A",
+        cidade: s.cidade || "",
+        estado: s.estado || "",
+        ponto_colecao: s.ponto_colecao || "N/A",
+        tipo_ponto:
+          (String(s.ponto_colecao || "").startsWith("MD-") || /^[A-Z]{2}-W-MD/.test(String(s.ponto_colecao || ""))) &&
+          !String(s.ponto_colecao || "").includes("-H")
+            ? "MD (Ponto de Coleta)"
+            : "HUB (Transferência)",
+        maneira_coleta: s.maneira_coleta || "Dropoff",
+        modalidade:
+          (s.maneira_coleta || "").toLowerCase().includes("coleta") || (s.maneira_coleta || "").toLowerCase().includes("pickup")
+            ? "W2D / Pickup"
+            : "D2D / Dropoff",
+        volume: Number(s.volume || 0),
+        coletados: Number(s.coletados || 0),
+        backlog: Number(s.backlog || 0),
+        taxa_coleta_pct: Number(s.taxa_coleta_pct || 0),
+      }));
+
+      const pacotes = porSeller.map((s: any, idx: number) => ({
+        codigo_barras: `LOTE-${String(idx + 1).padStart(3, "0")} (${s.volume} pcts)`,
+        pedido_cliente: cliAlvo,
+        numero_pacote: `${s.volume} pacotes`,
+        numero_saca: s.merchant_id !== "N/A" ? `Seller ${s.merchant_id}` : "-",
+        merchant_nome: s.merchant_nome,
+        ponto_colecao: s.ponto_colecao,
+        tipo_ponto: s.tipo_ponto,
+        is_md: s.tipo_ponto.includes("MD"),
+        maneira_coleta: s.maneira_coleta,
+        modalidade: s.modalidade,
+        status_pedido: s.backlog > 0 ? `Em Coleta (${s.backlog} pendentes)` : "Circuito Fechado / Coletado",
+        tempo_criacao: resumoData?.dia_selecionado || diaParam,
+        tempo_coleta: resumoData?.dia_selecionado || diaParam,
+        origem: `${s.cidade}/${s.estado}`.replace(/^\/|\/$/g, ""),
+        destino: "Malha ANJUN",
+        peso_kg: 0,
+        valor_declarado: 0,
+        qtd_pacotes: s.volume,
+      }));
+
+      const totV = cBreakdown ? Number(cBreakdown.volume || 0) : sList.reduce((acc: number, x: any) => acc + Number(x.volume || 0), 0);
+      const totC = cBreakdown ? Number(cBreakdown.coletados || 0) : sList.reduce((acc: number, x: any) => acc + Number(x.coletados || 0), 0);
+      const totB = cBreakdown ? Number(cBreakdown.backlog || 0) : sList.reduce((acc: number, x: any) => acc + Number(x.backlog || 0), 0);
+
+      return jsonResponse({
+        status: "success",
+        cliente: cliAlvo,
+        cliente_ids: cBreakdown?.cliente_ids || [],
+        is_marketplace: Boolean(cBreakdown?.is_marketplace),
+        marketplace_grupo: cBreakdown?.marketplace_grupo || "OUTROS",
+        dia_selecionado: resumoData?.dia_selecionado || diaParam,
+        usa_pacotes_individuais: false,
+        resumo: {
+          total_pedidos: totV,
+          coletados: totC,
+          backlog: totB,
+          taxa_coleta_pct: Math.round((totC / Math.max(totV, 1)) * 1000) / 10,
+          vol_dropoff: Number(cBreakdown?.vol_dropoff || 0),
+          vol_pickup: Number(cBreakdown?.vol_pickup || 0),
+          qtd_pontos: Number(cBreakdown?.qtd_pontos || porPonto.length),
+          qtd_sellers: Number(cBreakdown?.qtd_sellers || porSeller.length),
+        },
+        pontos_disponiveis: pontosDisponiveis,
+        por_ponto: porPonto,
+        por_seller: porSeller,
+        pacotes,
+      });
     }
 
     if (path === "/api/coletas/sellers") {
@@ -2048,6 +2240,30 @@ export async function fetchResumoColetas(dia?: string, cliente?: string, regiona
   if (regional) p.append("regional", regional);
   const res = await safeFetch(`${API_URL}/api/coletas/resumo?${p.toString()}`, { headers: getAuthHeaders() });
   if (!res.ok) throw new Error("Falha ao carregar resumo de coletas.");
+  return res.json();
+}
+
+export async function fetchClienteDetalhes(params: {
+  cliente: string;
+  dia?: string;
+  regional?: string;
+  modalidade?: string;
+  status_filtro?: string;
+  ponto_filtro?: string;
+  search?: string;
+  limit?: number;
+}): Promise<any> {
+  const p = new URLSearchParams();
+  p.append("cliente", params.cliente);
+  if (params.dia) p.append("dia", params.dia);
+  if (params.regional) p.append("regional", params.regional);
+  if (params.modalidade && params.modalidade !== "TODOS") p.append("modalidade", params.modalidade);
+  if (params.status_filtro && params.status_filtro !== "TODOS") p.append("status_filtro", params.status_filtro);
+  if (params.ponto_filtro && params.ponto_filtro !== "TODOS") p.append("ponto_filtro", params.ponto_filtro);
+  if (params.search) p.append("search", params.search);
+  if (params.limit) p.append("limit", String(params.limit));
+  const res = await safeFetch(`${API_URL}/api/coletas/cliente-detalhes?${p.toString()}`, { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error("Falha ao carregar pacotes e detalhes do cliente.");
   return res.json();
 }
 
