@@ -188,6 +188,18 @@ async def post_otimizar_planilha(
                     finally:
                         db.close()
 
+                    # 3. Sincronizar automaticamente com o Dashboard Online (GitHub / Vercel)
+                    try:
+                        import sys as _sys
+                        import subprocess as _sp
+                        _log(job_id, "☁️ Sincronizando dados e histórico completo com o Dashboard Online (Vercel)...", "info")
+                        script_snap = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts", "exportar_snapshot_online.py"))
+                        if os.path.exists(script_snap):
+                            _sp.run([_sys.executable, script_snap, "--push"], timeout=300)
+                            _log(job_id, "🌐 Dashboard Online atualizado e publicado na nuvem com sucesso!", "success")
+                    except Exception as e_snap:
+                        _log(job_id, f"⚠️ Aviso na publicação online automática: {e_snap}", "info")
+
                 _progress(job_id, 100, stats=res)
                 _done(job_id, res)
             except Exception as e:

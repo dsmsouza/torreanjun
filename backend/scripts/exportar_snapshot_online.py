@@ -3,6 +3,7 @@ r"""
 exportar_snapshot_online.py — Gerador de Snapshot Estático para o Dashboard Online (Vercel / Nuvem)
 Extrai os indicadores já consolidados do banco SQLite local (torre_anjun.db) e grava pacotes JSON
 otimizados em frontend/public/snapshot/ para carregamento instantâneo (< 0.5s) na nuvem.
+Agora exporta TODO o histórico do banco de dados de forma incremental e ultra rápida.
 """
 
 import sys
@@ -26,6 +27,7 @@ SNAPSHOT_DIR = ROOT_DIR / "frontend" / "public" / "snapshot"
 
 sys.path.insert(0, str(BACKEND_DIR))
 
+from sqlalchemy import text
 from fastapi.encoders import jsonable_encoder
 from database.connection import SessionLocal
 from routers.coletas import (
@@ -46,7 +48,7 @@ from routers.implantacao import (
 )
 
 
-def salvar_json(nome_arquivo: str, dados: any):
+def salvar_json(nome_arquivo: str, dados: any) -> int:
     SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
     caminho = SNAPSHOT_DIR / nome_arquivo
     serializado = jsonable_encoder(dados)
@@ -58,36 +60,79 @@ def salvar_json(nome_arquivo: str, dados: any):
 def sincronizar_mapeamentos_banco(db):
     """Aplica automaticamente qualquer edição recente de cliente_mapping ou malha antes de exportar."""
     try:
-        from sqlalchemy import text
         rows_cli = db.execute(text("SELECT cliente_id, nome_exibicao FROM cliente_mapping WHERE ativo = 1;")).fetchall()
         for cid, nome in rows_cli:
             if cid and nome:
                 cid_str = str(cid).strip()
                 nome_str = str(nome).strip()
+                for tbl in ["criacao_pedidos_historico", "detalhe_cliente_historico", "detalhe_cliente_md_historico"]:
+                    try:
+                        db.execute(
+                            text(f"UPDATE {tbl} SET nome_cliente = :nome WHERE nome_cliente IN (:antigo1, :antigo2);"),
+                            {"nome": nome_str, "antigo1": f"Cliente {cid_str}", "antigo2": cid_str},
+                        )
+                    except Exception:
+                        pass
+        # Normalizações canônicas de marketplaces
+        normalizacoes = [
+            ("Shein", ["shein", "SHEIN"]),
+            ("Shein D2D", ["sheind2d", "shein d2d", "SHEIND2D"]),
+            ("Kwai", ["kwai", "KWAI"]),
+            ("tiktok", ["tiktok logistics brazil ltda", "TIKTOK LOGISTICS BRAZIL LTDA", "TikTok"]),
+            ("szanjun(internacional)", ["szanjun", "SZANJUN"]),
+        ]
+        for canonic, variantes in normalizacoes:
+            for v in variantes:
                 db.execute(
-                    text("UPDATE criacao_pedidos_historico SET nome_cliente = :nome WHERE nome_cliente = :antigo;"),
-                    {"nome": nome_str, "antigo": f"Cliente {cid_str}"},
+                    text("UPDATE criacao_pedidos_historico SET nome_cliente = :c WHERE nome_cliente = :v;"),
+                    {"c": canonic, "v": v},
                 )
         db.commit()
     except Exception:
         db.rollback()
 
 
-def gerar_snapshots(max_dias: int = 5) -> dict:
+def _arquivos_data_existem(safe_d: str) -> tuple[bool, int]:
+    nomes = [
+        f"resumo_{safe_d}.json",
+        f"mds_{safe_d}.json",
+        f"hubs_{safe_d}.json",
+        f"sellers_{safe_d}.json",
+        f"horarios_{safe_d}.json",
+        f"no_dia_{safe_d}.json",
+        f"d2d_sp_DIA_{safe_d}.json",
+    ]
+    total_bytes = 0
+    for n in nomes:
+        p = SNAPSHOT_DIR / n
+        if not p.exists() or p.stat().st_size == 0:
+            return False, 0
+        total_bytes += p.stat().st_size
+    return True, total_bytes
+
+
+def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
     t0 = time.time()
     SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
     db = SessionLocal()
     arquivos_gerados = 0
+    arquivos_reutilizados = 0
     bytes_totais = 0
 
     try:
         sincronizar_mapeamentos_banco(db)
-        print("\n📸 [1/4] Extraindo calendário operacional do banco local...")
+        print("\n📸 [1/4] Extraindo calendário operacional completo do banco local...")
         info_dias = get_dias_coletas(db=db)
         todos_dias = info_dias.get("dias", [])
-        dia_recente = info_dias.get("dia_recente") or (todos_dias[0] if todos_dias else "20/10/2026")
+        dia_recente = info_dias.get("dia_recente") or (todos_dias[0] if todos_dias else "21/10/2026")
 
-        # Mantemos no seletor online os dias exportados no snapshot para evitar 404 em datas muito antigas
+        # Quais dias possuem dados detalhados em criacao_pedidos_historico
+        rows_ped = db.execute(
+            text("SELECT DISTINCT dia_base FROM criacao_pedidos_historico WHERE dia_base IS NOT NULL AND dia_base != '';")
+        ).fetchall()
+        dias_com_pedidos_set = {r[0] for r in rows_ped if r[0]}
+
+        # Exportamos todo o histórico (até max_dias) para que todas as datas apareçam no seletor online
         dias_exportar = todos_dias[:max_dias] if todos_dias else [dia_recente]
         info_dias_online = {
             "dias": dias_exportar,
@@ -98,10 +143,20 @@ def gerar_snapshots(max_dias: int = 5) -> dict:
         bytes_totais += salvar_json("dias.json", info_dias_online)
         arquivos_gerados += 1
 
-        print(f"📊 [2/4] Exportando Central de Coletas, No Dia e D2D SP para {len(dias_exportar)} datas ({', '.join(dias_exportar)})...")
+        print(f"📊 [2/4] Exportando histórico completo ({len(dias_exportar)} datas, sendo {len(dias_com_pedidos_set)} com pedidos detalhados)...")
         for idx, d in enumerate(dias_exportar):
             safe_d = d.replace("/", "-")
-            print(f"   -> Processando data {d} ({idx + 1}/{len(dias_exportar)})...")
+            tem_pedidos = d in dias_com_pedidos_set
+
+            # Cache incremental: para datas históricas (idx >= 2) já geradas em disco, reutiliza os JSONs instantaneamente
+            if not force_all and idx >= 2:
+                existe, b_exist = _arquivos_data_existem(safe_d)
+                if existe:
+                    bytes_totais += b_exist
+                    arquivos_reutilizados += 7
+                    continue
+
+            print(f"   -> Processando data {d} ({idx + 1}/{len(dias_exportar)}) [{'Completa' if tem_pedidos else 'Histórico MD'}]...")
 
             # 1. Resumo Coletas
             resumo = get_resumo_coletas(dia=d, cliente=None, regional=None, db=db)
@@ -123,39 +178,87 @@ def gerar_snapshots(max_dias: int = 5) -> dict:
             if idx == 0:
                 bytes_totais += salvar_json("hubs_latest.json", hubs)
 
-            # 3. Sellers (limite ampliado para alimentar drill-down por cliente online)
-            sellers = get_coletas_sellers(dia=d, cliente=None, regional=None, search=None, limit=2000, db=db)
-            bytes_totais += salvar_json(f"sellers_{safe_d}.json", sellers)
-            arquivos_gerados += 1
-            if idx == 0:
-                bytes_totais += salvar_json("sellers_latest.json", sellers)
+            if tem_pedidos:
+                # 3. Sellers (limite ampliado nas 5 datas mais recentes, compacto nas anteriores para manter repositório leve)
+                lim_sellers = 2000 if idx < 5 else 800
+                sellers = get_coletas_sellers(dia=d, cliente=None, regional=None, search=None, limit=lim_sellers, db=db)
+                bytes_totais += salvar_json(f"sellers_{safe_d}.json", sellers)
+                arquivos_gerados += 1
+                if idx == 0:
+                    bytes_totais += salvar_json("sellers_latest.json", sellers)
 
-            # 4. Horários
-            horarios = get_coletas_horarios(dia=d, md=None, db=db)
-            bytes_totais += salvar_json(f"horarios_{safe_d}.json", horarios)
-            arquivos_gerados += 1
-            if idx == 0:
-                bytes_totais += salvar_json("horarios_latest.json", horarios)
+                # 4. Horários
+                horarios = get_coletas_horarios(dia=d, md=None, db=db)
+                bytes_totais += salvar_json(f"horarios_{safe_d}.json", horarios)
+                arquivos_gerados += 1
+                if idx == 0:
+                    bytes_totais += salvar_json("horarios_latest.json", horarios)
 
-            # 5. No Dia (D0 / Tempo Real)
-            no_dia = get_coletas_no_dia(
-                dia=d, regional="TODOS", tipo_ponto="TODOS", status_filtro="TODOS", search=None, db=db
-            )
-            if "dropoffs_sem_md" in no_dia and isinstance(no_dia["dropoffs_sem_md"], list):
-                no_dia["dropoffs_sem_md"] = no_dia["dropoffs_sem_md"][:400]
-            bytes_totais += salvar_json(f"no_dia_{safe_d}.json", no_dia)
-            arquivos_gerados += 1
-            if idx == 0:
-                bytes_totais += salvar_json("no_dia_latest.json", no_dia)
+                # 5. No Dia (D0 / Tempo Real)
+                no_dia = get_coletas_no_dia(
+                    dia=d, regional="TODOS", tipo_ponto="TODOS", status_filtro="TODOS", search=None, db=db
+                )
+                lim_drop = 400 if idx < 3 else 150
+                if "dropoffs_sem_md" in no_dia and isinstance(no_dia["dropoffs_sem_md"], list):
+                    no_dia["dropoffs_sem_md"] = no_dia["dropoffs_sem_md"][:lim_drop]
+                bytes_totais += salvar_json(f"no_dia_{safe_d}.json", no_dia)
+                arquivos_gerados += 1
+                if idx == 0:
+                    bytes_totais += salvar_json("no_dia_latest.json", no_dia)
 
-            # 6. D2D SP (Diário)
-            d2d_dia = get_d2d_sp_analise(periodo="DIA", dia=d, search=None, filtro_expansao="TODOS", db=db)
-            if "candidatos_expansao" in d2d_dia and isinstance(d2d_dia["candidatos_expansao"], list):
-                d2d_dia["candidatos_expansao"] = d2d_dia["candidatos_expansao"][:120]
-            bytes_totais += salvar_json(f"d2d_sp_DIA_{safe_d}.json", d2d_dia)
-            arquivos_gerados += 1
-            if idx == 0:
-                bytes_totais += salvar_json("d2d_sp_DIA_latest.json", d2d_dia)
+                # 6. D2D SP (Diário)
+                d2d_dia = get_d2d_sp_analise(periodo="DIA", dia=d, search=None, filtro_expansao="TODOS", db=db)
+                lim_cand = 120 if idx < 3 else 60
+                if "candidatos_expansao" in d2d_dia and isinstance(d2d_dia["candidatos_expansao"], list):
+                    d2d_dia["candidatos_expansao"] = d2d_dia["candidatos_expansao"][:lim_cand]
+                bytes_totais += salvar_json(f"d2d_sp_DIA_{safe_d}.json", d2d_dia)
+                arquivos_gerados += 1
+                if idx == 0:
+                    bytes_totais += salvar_json("d2d_sp_DIA_latest.json", d2d_dia)
+            else:
+                # Datas antigas que possuem apenas histórico de MDs (maio a julho):
+                bytes_totais += salvar_json(f"sellers_{safe_d}.json", {"dia": d, "total_sellers": 0, "sellers": []})
+                bytes_totais += salvar_json(
+                    f"horarios_{safe_d}.json",
+                    {"dia": d, "md_filtro": "TODOS", "pico_horario": "N/A", "pico_volume": 0, "distribuicao": []},
+                )
+                bytes_totais += salvar_json(
+                    f"no_dia_{safe_d}.json",
+                    {
+                        "dia": d,
+                        "kpis": {
+                            "total_pedidos": 0,
+                            "total_coletado": 0,
+                            "total_pendente": 0,
+                            "taxa_conversao_geral": 0.0,
+                            "pontos_ativos_hoje": 0,
+                            "pontos_zerados_hoje": 0,
+                            "pontos_criticos_backlog": 0,
+                            "dropoff_sem_md_volume": 0,
+                            "dropoff_sem_md_sellers": 0,
+                        },
+                        "alertas": [],
+                        "curva_horaria": [],
+                        "pontos": [],
+                        "dropoffs_sem_md": [],
+                    },
+                )
+                bytes_totais += salvar_json(
+                    f"d2d_sp_DIA_{safe_d}.json",
+                    {
+                        "periodo": "DIA",
+                        "dia_referencia": d,
+                        "dias_considerados": [d],
+                        "qtd_dias": 1,
+                        "kpis": {},
+                        "cidades": [],
+                        "distritos": [],
+                        "candidatos_expansao": [],
+                        "sellers_d2d": [],
+                        "mds_referencia": [],
+                    },
+                )
+                arquivos_gerados += 4
 
             # 7. Cockpit D-1 / Mapa da Malha (para as 3 datas mais recentes)
             if idx < 3:
@@ -187,11 +290,18 @@ def gerar_snapshots(max_dias: int = 5) -> dict:
 
     mb_total = round(bytes_totais / (1024 * 1024), 2)
     tempo_s = round(time.time() - t0, 1)
-    print(f"✅ Snapshot Online gerado com sucesso! ({arquivos_gerados} arquivos | {mb_total} MB | {tempo_s}s)")
-    return {"arquivos": arquivos_gerados, "tamanho_mb": mb_total, "tempo_s": tempo_s}
+    print(
+        f"✅ Snapshot Online concluído! ({arquivos_gerados} gerados, {arquivos_reutilizados} em cache | {mb_total} MB | {tempo_s}s)"
+    )
+    return {
+        "arquivos": arquivos_gerados,
+        "reutilizados": arquivos_reutilizados,
+        "tamanho_mb": mb_total,
+        "tempo_s": tempo_s,
+    }
 
 
-def publicar_github():
+def publicar_github() -> bool:
     print("\n☁️ Enviando atualização do Snapshot para o GitHub / Vercel...")
     try:
         subprocess.run(["git", "add", "frontend/public/snapshot"], cwd=str(ROOT_DIR), check=True)
@@ -220,6 +330,7 @@ def publicar_github():
 
 
 if __name__ == "__main__":
-    gerar_snapshots(max_dias=5)
+    force = "--force" in sys.argv
+    gerar_snapshots(max_dias=200, force_all=force)
     if "--push" in sys.argv:
         publicar_github()
