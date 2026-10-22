@@ -14,8 +14,10 @@ import xlsxwriter
 # Colunas requisitadas (0-based indices)
 # B(1), D(3), E(4), F(5), H(7), K(10), L(11), M(12), O(14), P(15), S(18), U(20), V(21), W(22),
 # AB(27), AE(30), AF(31), AG(32), AK(36), AL(37), AQ(42), BH(59)
-INDICES_COLUNAS_MANTIDAS = [1, 3, 4, 5, 7, 10, 11, 12, 14, 15, 18, 20, 21, 22, 27, 30, 31, 32, 36, 37, 42, 59]
-NOMES_LETRAS_COLUNAS = ["B", "D", "E", "F", "H", "K", "L", "M", "O", "P", "S", "U", "V", "W", "AB", "AE", "AF", "AG", "AK", "AL", "AQ", "BH"]
+INDICES_COLUNAS_MANTIDAS = [1, 3, 4, 5, 7, 10, 11, 12, 14, 15, 18, 20, 21, 22, 27, 30, 31, 32, 36, 37, 42, 59, 13]
+NOMES_LETRAS_COLUNAS = ["B", "D", "E", "F", "H", "K", "L", "M", "O", "P", "S", "U", "V", "W", "AB", "AE", "AF", "AG", "AK", "AL", "AQ", "BH", "N"]
+# Obs: a Coluna N (Data de conclusão = quando o pacote vira Circuito Fechado) é mantida no FINAL
+# da lista para não deslocar a posição das demais colunas já usadas pela reconciliação de pacotes.
 
 IDX_COLUNA_F = 5   # Número de escaneamento do veículo (Romaneio AJV)
 IDX_COLUNA_M = 12  # Tempo real para a coleta

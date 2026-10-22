@@ -58,6 +58,20 @@ def garantir_tabelas_reconciliacao(db: Session):
             resumo_transicoes TEXT DEFAULT ''
         );
     """))
+    db.execute(text("""
+        CREATE TABLE IF NOT EXISTS dias_granulares (
+            dia_base TEXT PRIMARY KEY,
+            marcado_em TEXT
+        );
+    """))
+    for tabela, coluna, tipo in [
+        ("log_mudancas_status_pacotes", "data_conclusao", "TEXT DEFAULT ''"),
+        ("log_reconciliacao_planilhas", "pacotes_de_outros_dias", "INTEGER DEFAULT 0"),
+    ]:
+        try:
+            db.execute(text(f"ALTER TABLE {tabela} ADD COLUMN {coluna} {tipo};"))
+        except Exception:
+            pass
     db.commit()
 
 
@@ -107,6 +121,80 @@ def _invalidar_cache_snapshot_dias(dias: Set[str]):
         pass
 
 
+def _extrair_dia_coluna_m(valor: str) -> Optional[str]:
+    """Converte o 'Tempo real para a coleta' (Coluna M) em DD/MM/YYYY."""
+    v = (valor or "").strip()
+    if not v:
+        return None
+    m_iso = re.search(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})", v)
+    if m_iso:
+        y, mo, d = m_iso.groups()
+        try:
+            return datetime.date(int(y), int(mo), int(d)).strftime("%d/%m/%Y")
+        except ValueError:
+            return None
+    m_br = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})", v)
+    if m_br:
+        d, mo, y = m_br.groups()
+        try:
+            return datetime.date(int(y), int(mo), int(d)).strftime("%d/%m/%Y")
+        except ValueError:
+            return None
+    return None
+
+
+def _carregar_dias_granulares(db: Session) -> Set[str]:
+    """Dias que possuem a base completa pacote a pacote (código de barras) em operacional_pedidos_completo."""
+    rows = db.execute(text("SELECT dia_base FROM dias_granulares;")).fetchall()
+    if not rows:
+        # Semente inicial: dias que já foram carregados pacote a pacote anteriormente
+        db.execute(text("""
+            INSERT OR IGNORE INTO dias_granulares (dia_base, marcado_em)
+            SELECT DISTINCT dia_base, :agora FROM operacional_pedidos_completo WHERE dia_base IS NOT NULL;
+        """), {"agora": datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")})
+        db.commit()
+        rows = db.execute(text("SELECT dia_base FROM dias_granulares;")).fetchall()
+    return {r[0] for r in rows if r[0]}
+
+
+def _reconstruir_agregado_dia(db: Session, dia: str, mapa_clientes: Dict[str, str]):
+    """Recalcula criacao_pedidos_historico de um dia a partir da base pacote a pacote."""
+    case_clientes_lista = [
+        f"WHEN TRIM(numero_cliente) = '{cid}' THEN '{nome.replace(chr(39), chr(39) * 2)}'"
+        for cid, nome in mapa_clientes.items()
+    ]
+    sql_case = "\n                ".join(case_clientes_lista) if case_clientes_lista else "WHEN 1=0 THEN ''"
+    db.execute(text("DELETE FROM criacao_pedidos_historico WHERE dia_base = :d;"), {"d": dia})
+    db.execute(text(f"""
+        INSERT INTO criacao_pedidos_historico (
+            dia_base, semana_base, nome_cliente, merchant_id, merchant_nome,
+            cep_remetente, estado, cidade, bairro, endereco_completo,
+            maneira_coleta, ponto_colecao, tipo_pedido, status_pedido, total_pedidos
+        )
+        SELECT
+            dia_base,
+            MAX(semana_base),
+            CASE
+                {sql_case}
+                WHEN LOWER(remetente_nome) LIKE '%shein%' OR LOWER(merchant_nome) LIKE '%shein%' THEN 'shein'
+                WHEN LOWER(remetente_nome) LIKE '%temu%' OR LOWER(merchant_nome) LIKE '%temu%' THEN 'temud2d'
+                WHEN LOWER(remetente_nome) LIKE '%kwai%' OR LOWER(merchant_nome) LIKE '%kwai%' THEN 'kwai'
+                WHEN LOWER(remetente_nome) LIKE '%tiktok%' OR LOWER(merchant_nome) LIKE '%tiktok%' THEN 'tiktok logistics brazil ltda'
+                WHEN numero_cliente IS NOT NULL AND TRIM(numero_cliente) != '' THEN 'Cliente ' || TRIM(numero_cliente)
+                ELSE 'Outros'
+            END as nome_cliente,
+            merchant_id, merchant_nome, remetente_cep, remetente_uf, remetente_cidade,
+            remetente_bairro, remetente_endereco, maneira_coleta, ponto_colecao,
+            tipo_pedido, status_pedido, COUNT(*) as total_pedidos
+        FROM operacional_pedidos_completo
+        WHERE dia_base = :d
+        GROUP BY
+            dia_base, nome_cliente, merchant_id, merchant_nome,
+            remetente_cep, remetente_uf, remetente_cidade, remetente_bairro, remetente_endereco,
+            maneira_coleta, ponto_colecao, tipo_pedido, status_pedido;
+    """), {"d": dia})
+
+
 def reconciliar_planilha_otimizada_csv(
     db: Session,
     caminho_csv: str,
@@ -115,311 +203,266 @@ def reconciliar_planilha_otimizada_csv(
     callback_log: Optional[Callable[[str], None]] = None
 ) -> Dict[str, Any]:
     """
-    Lê o CSV otimizado gerado no upload (22 colunas), cruza cada código de barras com
-    operacional_pedidos_completo:
-      - Se o pacote já existe em outra data (ex: 03/10) ou na mesma data com outro status,
-        atualiza o pacote na data de origem e grava log em log_mudancas_status_pacotes.
-      - Persiste também os pacotes individuais da planilha em operacional_pedidos_completo.
-      - Recalcula criacao_pedidos_historico das datas anteriores que tiveram pacotes atualizados.
+    Regra oficial de contagem (cada pacote conta UMA única vez, no dia em que foi coletado):
+      - Dia de origem do pacote = data da Coluna M (Tempo real para a coleta). Sem Coluna M -> dia da planilha.
+      - Se o código de barras JÁ existe no banco (em qualquer data): apenas o status / Data de conclusão
+        (Coluna N) são atualizados no registro original, e a mudança é registrada no log.
+        O pacote NÃO soma no volume do dia da planilha nova.
+      - Se o código de barras é novo: entra no dia da sua Coluna M.
+      - Retorna 'csv_dia_proprio': CSV apenas com os pacotes que pertencem ao dia da planilha, usado para
+        montar os indicadores do dia (Criação de Pedidos, Dropoff/MDs) sem contagem dupla.
     """
     if not caminho_csv or not os.path.exists(caminho_csv):
-        return {"status": "ignorado", "motivo": "CSV não encontrado"}
+        return {"status": "ignorado", "motivo": "CSV não encontrado", "csv_dia_proprio": caminho_csv}
 
     garantir_tabelas_reconciliacao(db)
-
     from services.ingestao_streaming_500mb import criar_tabelas_banco
     criar_tabelas_banco(db)
 
+    dias_granulares = _carregar_dias_granulares(db)
+    dia_ja_era_granular = dia_planilha in dias_granulares
+
     mapa_clientes: Dict[str, str] = {}
     try:
-        rows_c = db.execute(text("SELECT cliente_id, nome_exibicao FROM cliente_mapping WHERE ativo = 1;")).fetchall()
-        for cid, cnome in rows_c:
+        for cid, cnome in db.execute(text("SELECT cliente_id, nome_exibicao FROM cliente_mapping WHERE ativo = 1;")).fetchall():
             if cid and cnome:
                 mapa_clientes[str(cid).strip()] = str(cnome).strip()
     except Exception:
         pass
 
-    # 1. Verificar saldo anterior de status no dia_planilha em criacao_pedidos_historico
+    # Saldo de status antigo (para dias que ainda não tinham base pacote a pacote)
     resumo_status_antigo: Dict[str, int] = {}
-    try:
-        rows_ant = db.execute(text("""
-            SELECT COALESCE(status_pedido, 'Sem Status'), SUM(total_pedidos)
-            FROM criacao_pedidos_historico
-            WHERE dia_base = :d
-              AND ponto_colecao IS NOT NULL AND TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')
-            GROUP BY COALESCE(status_pedido, 'Sem Status');
-        """), {"d": dia_planilha}).fetchall()
-        for r in rows_ant:
-            resumo_status_antigo[str(r[0]).strip()] = int(r[1] or 0)
-    except Exception:
-        pass
+    if not dia_ja_era_granular:
+        try:
+            for r in db.execute(text("""
+                SELECT LOWER(TRIM(COALESCE(status_pedido, ''))), SUM(total_pedidos)
+                FROM criacao_pedidos_historico WHERE dia_base = :d
+                GROUP BY LOWER(TRIM(COALESCE(status_pedido, '')));
+            """), {"d": dia_planilha}).fetchall():
+                resumo_status_antigo[str(r[0])] = int(r[1] or 0)
+        except Exception:
+            pass
 
-    # 2. Ler pacotes do CSV otimizado
-    pacotes_csv: Dict[str, Tuple] = {}
-    with open(caminho_csv, mode="r", encoding="utf-8-sig", errors="replace") as f:
+    # 1. Leitura do CSV otimizado (23 colunas: ... 21:BH tipo_pedido, 22:N Data de conclusão)
+    header: List[str] = []
+    pacotes_csv: Dict[str, Tuple[Tuple, List[str]]] = {}
+    with open(caminho_csv, mode="r", encoding="utf-8-sig", errors="replace", newline="") as f:
         reader = csv.reader(f)
-        header = next(reader, None)
+        header = next(reader, None) or []
         if not header:
-            return {"status": "vazio"}
-
+            return {"status": "vazio", "csv_dia_proprio": caminho_csv}
         for row in reader:
             if len(row) < 10:
                 continue
             bcode = str(row[0] or "").strip().upper()
-            if not bcode or bcode in ("NAN", "NONE", ""):
+            if not bcode or bcode in ("NAN", "NONE"):
                 continue
-            num_cli = str(row[1] or "").strip().split(".")[0]
-            num_saca = str(row[2] or "").strip()
-            ajv = str(row[3] or "").strip()
-            maneira = str(row[4] or "").strip()
-            t_criacao = str(row[5] or "").strip()
-            t_prev = str(row[6] or "").strip()
-            t_coleta = str(row[7] or "").strip()
-            status_ped = str(row[8] or "").strip() or "coletado"
-            ponto = str(row[9] or "").strip().upper()
-            carreg = str(row[10] or "").strip() if len(row) > 10 else ""
-            t_desc = str(row[11] or "").strip() if len(row) > 11 else ""
-            m_id = str(row[12] or "").strip() if len(row) > 12 else ""
-            m_nome = str(row[13] or "").strip() if len(row) > 13 else ""
-            rem_nome = str(row[14] or "").strip() if len(row) > 14 else ""
-            rem_cep = str(row[15] or "").strip() if len(row) > 15 else ""
-            rem_uf = str(row[16] or "").strip().upper() if len(row) > 16 else "SP"
-            rem_cid = str(row[17] or "").strip() if len(row) > 17 else ""
-            rem_bai = str(row[18] or "").strip() if len(row) > 18 else ""
-            rem_end = str(row[19] or "").strip() if len(row) > 19 else ""
-            dest_uf = str(row[20] or "").strip().upper() if len(row) > 20 else ""
-            tipo_ped = str(row[21] or "Normal").strip() if len(row) > 21 else "Normal"
 
-            pacotes_csv[bcode] = (
-                bcode, num_cli, num_saca, ajv, maneira, t_criacao, t_prev, t_coleta,
-                status_ped, ponto, carreg, t_desc, m_id, m_nome, rem_nome, rem_cep,
-                rem_uf, rem_cid, rem_bai, rem_end, dest_uf, tipo_ped
+            def g(i: int, default: str = "") -> str:
+                return str(row[i] or "").strip() if len(row) > i else default
+
+            dados = (
+                bcode,
+                g(1).split(".")[0],        # num_cli
+                g(2),                      # num_saca
+                g(3),                      # ajv
+                g(4),                      # maneira
+                g(5),                      # t_criacao
+                g(6),                      # t_prev
+                g(7),                      # t_coleta (Coluna M)
+                g(8) or "coletado",        # status
+                g(9).upper(),              # ponto
+                g(10),                     # carregadeira
+                g(11),                     # t_desc
+                g(12),                     # merchant_id
+                g(13),                     # merchant_nome
+                g(14),                     # remetente_nome
+                g(15),                     # cep
+                g(16).upper() or "SP",     # uf
+                g(17),                     # cidade
+                g(18),                     # bairro
+                g(19),                     # endereco
+                g(20).upper(),             # uf destino
+                g(21) or "Normal",         # tipo_pedido
+                g(22),                     # data_conclusao (Coluna N)
             )
+            pacotes_csv[bcode] = (dados, row)
 
     total_lidos = len(pacotes_csv)
     if total_lidos == 0:
-        return {"status": "vazio", "total_lidos": 0}
+        return {"status": "vazio", "total_pacotes_lidos": 0, "csv_dia_proprio": caminho_csv}
 
     if callback_log:
-        callback_log(f"🔎 Auditando {total_lidos:,} códigos de barras contra o histórico do banco de dados...")
+        callback_log(f"🔎 Auditando {total_lidos:,} códigos de barras contra todo o histórico do banco...")
 
-    # 3. Buscar no banco quais códigos de barras já existem em operacional_pedidos_completo
-    existentes_map: Dict[str, Tuple[int, str, str, str]] = {}
-    barcodes_list = list(pacotes_csv.keys())
-    chunk_q = 900
+    # 2. Localizar pacotes já existentes (em qualquer data) — se houver duplicidade legada, vale o dia mais antigo
     raw_conn = db.connection().connection
     cur = raw_conn.cursor()
-
-    for i in range(0, len(barcodes_list), chunk_q):
-        batch = barcodes_list[i:i + chunk_q]
-        placeholders = ",".join(["?"] * len(batch))
+    existentes: Dict[str, Tuple[int, str, str, str, str]] = {}
+    barcodes = list(pacotes_csv.keys())
+    for i in range(0, len(barcodes), 900):
+        lote = barcodes[i:i + 900]
         cur.execute(
-            f"SELECT id, codigo_barras, dia_base, status_pedido, ponto_colecao FROM operacional_pedidos_completo WHERE codigo_barras IN ({placeholders})",
-            batch
+            f"SELECT id, codigo_barras, dia_base, status_pedido, ponto_colecao, data_conclusao "
+            f"FROM operacional_pedidos_completo WHERE codigo_barras IN ({','.join(['?'] * len(lote))})",
+            lote,
         )
-        for rid, b_db, d_db, st_db, pt_db in cur.fetchall():
-            if b_db not in existentes_map or d_db != dia_planilha:
-                existentes_map[b_db] = (rid, d_db or dia_planilha, st_db or "", pt_db or "")
+        for rid, b, d, st, pt, conc in cur.fetchall():
+            atual = existentes.get(b)
+            if atual is None or _dia_para_iso(d or "") < _dia_para_iso(atual[1]):
+                existentes[b] = (rid, d or dia_planilha, st or "", pt or "", conc or "")
 
     agora_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     updates_db: List[Tuple] = []
+    inserts_db: List[Tuple] = []
     logs_mudanca: List[Tuple] = []
-    dias_origem_afetados: Set[str] = set()
-    transicoes_counter: Dict[str, int] = {}
-    pacotes_retroativos = 0
-    pacotes_atualizados = 0
+    linhas_dia_proprio: List[List[str]] = []
+    dias_afetados: Set[str] = set()
+    transicoes: Dict[str, int] = {}
     pacotes_novos = 0
+    pacotes_atualizados = 0
+    pacotes_retroativos = 0
+    pacotes_de_outros_dias = 0
 
-    novos_inserts_op: List[Tuple] = []
+    for bcode, (dados, row_raw) in pacotes_csv.items():
+        (_, num_cli, num_saca, ajv, maneira, t_criacao, t_prev, t_coleta, status_novo, ponto,
+         carreg, t_desc, m_id, m_nome, rem_nome, rem_cep, rem_uf, rem_cid, rem_bai, rem_end,
+         dest_uf, tipo_ped, data_conc) = dados
 
-    for bcode, p_tuple in pacotes_csv.items():
-        (
-            _, num_cli, num_saca, ajv, maneira, t_criacao, t_prev, t_coleta,
-            status_novo, ponto, carreg, t_desc, m_id, m_nome, rem_nome, rem_cep,
-            rem_uf, rem_cid, rem_bai, rem_end, dest_uf, tipo_ped
-        ) = p_tuple
-
-        nome_cli = mapa_clientes.get(num_cli, f"Cliente {num_cli}" if num_cli else (rem_nome or "Outros"))
-        is_sp = 1 if dest_uf == "SP" else 0
-
-        if bcode in existentes_map:
-            rid, dia_orig, status_ant, pt_ant = existentes_map[bcode]
-            st_ant_clean = (status_ant or "").strip()
-            st_novo_clean = (status_novo or "").strip()
-
-            if st_ant_clean.lower() != st_novo_clean.lower():
-                updates_db.append((
-                    st_novo_clean,
-                    t_desc or None,
-                    ajv or None,
-                    num_saca or None,
-                    rid
-                ))
+        if bcode in existentes:
+            rid, dia_orig, st_ant, pt_ant, conc_ant = existentes[bcode]
+            dia_destino = dia_orig
+            mudou_status = st_ant.strip().lower() != status_novo.strip().lower()
+            mudou_conclusao = bool(data_conc) and data_conc != conc_ant
+            if mudou_status or mudou_conclusao:
+                updates_db.append((status_novo, data_conc or None, t_desc or None, ajv or None, num_saca or None, rid))
+                if dia_orig != dia_planilha:
+                    dias_afetados.add(dia_orig)
+            if mudou_status:
+                nome_cli = mapa_clientes.get(num_cli, f"Cliente {num_cli}" if num_cli else (rem_nome or "Outros"))
                 logs_mudanca.append((
-                    bcode,
-                    dia_orig,
-                    dia_planilha,
-                    ponto or pt_ant,
-                    nome_cli,
-                    m_nome or rem_nome,
-                    rem_uf,
-                    rem_cid,
-                    st_ant_clean,
-                    st_novo_clean,
-                    agora_str
+                    bcode, dia_orig, dia_planilha, ponto or pt_ant, nome_cli, m_nome or rem_nome,
+                    rem_uf, rem_cid, st_ant.strip(), status_novo.strip(), data_conc, agora_str,
                 ))
-                chave_tr = f"{st_ant_clean} → {st_novo_clean}"
-                transicoes_counter[chave_tr] = transicoes_counter.get(chave_tr, 0) + 1
+                chave = f"{st_ant.strip() or 'Sem status'} → {status_novo.strip()}"
+                transicoes[chave] = transicoes.get(chave, 0) + 1
                 pacotes_atualizados += 1
                 if dia_orig != dia_planilha:
                     pacotes_retroativos += 1
-                    dias_origem_afetados.add(dia_orig)
         else:
             pacotes_novos += 1
+            dia_destino = _extrair_dia_coluna_m(t_coleta) or dia_planilha
+            inserts_db.append((
+                dia_destino, semana_planilha, num_saca, bcode, "", num_cli,
+                num_saca, ajv, "1", maneira, 0.0, 0.0,
+                t_criacao, t_prev, t_coleta, data_conc, status_novo, ponto,
+                "", carreg, "", "", t_desc,
+                m_id, m_nome, rem_nome, "", "",
+                rem_cep, rem_uf, rem_cid, rem_bai, rem_end,
+                "", "", "", "", dest_uf,
+                "", "", "", "", tipo_ped,
+                0.0, 0.0, 0.0, "", None, 1 if dest_uf == "SP" else 0,
+            ))
+            if dia_destino != dia_planilha:
+                dias_afetados.add(dia_destino)
 
-        novos_inserts_op.append((
-            dia_planilha, semana_planilha, num_saca, bcode, "", num_cli,
-            num_saca, ajv, "1", maneira, 0.0, 0.0,
-            t_criacao, t_prev, t_coleta, "", status_novo, ponto,
-            "", carreg, "", "", t_desc,
-            m_id, m_nome, rem_nome, "", "",
-            rem_cep, rem_uf, rem_cid, rem_bai, rem_end,
-            "", "", "", "", dest_uf,
-            "", "", "", "", tipo_ped,
-            0.0, 0.0, 0.0, "", None, is_sp
-        ))
+        if dia_destino == dia_planilha:
+            linhas_dia_proprio.append(row_raw)
+        else:
+            pacotes_de_outros_dias += 1
 
+    # 3. Persistir atualizações, novos pacotes e log de mudanças
     if updates_db:
         cur.executemany("""
             UPDATE operacional_pedidos_completo
             SET status_pedido = ?,
+                data_conclusao = COALESCE(?, data_conclusao),
                 tempo_descarregamento = COALESCE(?, tempo_descarregamento),
                 ajv_veiculo = COALESCE(?, ajv_veiculo),
                 numero_saca = COALESCE(?, numero_saca)
             WHERE id = ?
         """, updates_db)
 
+    if inserts_db:
+        sql_ins = """
+            INSERT INTO operacional_pedidos_completo (
+                dia_base, semana_base, pedido_coleta, codigo_barras, pedido_cliente, numero_cliente,
+                numero_saca, ajv_veiculo, numero_pacote, maneira_coleta, peso_kg, valor_declarado,
+                tempo_criacao, tempo_previsto, tempo_coleta, data_conclusao, status_pedido, ponto_colecao,
+                colector, carregadeira, tempo_carregamento, descarregador, tempo_descarregamento,
+                merchant_id, merchant_nome, remetente_nome, remetente_tel, remetente_email,
+                remetente_cep, remetente_uf, remetente_cidade, remetente_bairro, remetente_endereco,
+                destinatario_nome, destinatario_tel, destinatario_email, destinatario_cep, destinatario_uf,
+                destinatario_cidade, destinatario_bairro, destinatario_endereco, plataforma, tipo_pedido,
+                comprimento, largura, altura, saida_armazem_cliente, lead_time_perus_horas, is_destino_sp
+            ) VALUES (""" + ", ".join(["?"] * 49) + ")"
+        for i in range(0, len(inserts_db), 15000):
+            cur.executemany(sql_ins, inserts_db[i:i + 15000])
+
     if logs_mudanca:
         cur.executemany("""
             INSERT INTO log_mudancas_status_pacotes (
-                codigo_barras, dia_origem, dia_atualizacao, ponto_colecao,
-                nome_cliente, merchant_nome, estado, cidade,
-                status_anterior, status_novo, registrado_em
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                codigo_barras, dia_origem, dia_atualizacao, ponto_colecao, nome_cliente, merchant_nome,
+                estado, cidade, status_anterior, status_novo, data_conclusao, registrado_em
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, logs_mudanca)
 
-    cur.execute("DELETE FROM operacional_pedidos_completo WHERE dia_base = ?", (dia_planilha,))
-    sql_ins_op = """
-        INSERT INTO operacional_pedidos_completo (
-            dia_base, semana_base, pedido_coleta, codigo_barras, pedido_cliente, numero_cliente,
-            numero_saca, ajv_veiculo, numero_pacote, maneira_coleta, peso_kg, valor_declarado,
-            tempo_criacao, tempo_previsto, tempo_coleta, data_conclusao, status_pedido, ponto_colecao,
-            colector, carregadeira, tempo_carregamento, descarregador, tempo_descarregamento,
-            merchant_id, merchant_nome, remetente_nome, remetente_tel, remetente_email,
-            remetente_cep, remetente_uf, remetente_cidade, remetente_bairro, remetente_endereco,
-            destinatario_nome, destinatario_tel, destinatario_email, destinatario_cep, destinatario_uf,
-            destinatario_cidade, destinatario_bairro, destinatario_endereco, plataforma, tipo_pedido,
-            comprimento, largura, altura, saida_armazem_cliente, lead_time_perus_horas, is_destino_sp
-        ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-        )
-    """
-    for i in range(0, len(novos_inserts_op), 15000):
-        cur.executemany(sql_ins_op, novos_inserts_op[i:i + 15000])
+    # O dia da planilha passa a ter base completa pacote a pacote
+    db.execute(text("INSERT OR IGNORE INTO dias_granulares (dia_base, marcado_em) VALUES (:d, :a);"),
+               {"d": dia_planilha, "a": agora_str})
     db.commit()
 
-    # Caso seja re-upload de um dia antigo que antes só tinha criacao_pedidos_historico
-    if pacotes_atualizados == 0 and resumo_status_antigo:
-        novo_cf = sum(1 for p in pacotes_csv.values() if p[8].strip().lower() == "circuito fechado")
-        ant_cf = sum(v for k, v in resumo_status_antigo.items() if k.lower() == "circuito fechado")
+    # 4. Primeiro re-upload de um dia que só tinha totais: registra a evolução pelo saldo de status
+    if not dia_ja_era_granular and resumo_status_antigo:
+        novo_cf = sum(1 for r in linhas_dia_proprio if len(r) > 8 and str(r[8]).strip().lower() == "circuito fechado")
+        ant_cf = resumo_status_antigo.get("circuito fechado", 0)
         if novo_cf > ant_cf:
-            diff_cf = novo_cf - ant_cf
-            pacotes_atualizados = diff_cf
-            transicoes_counter["Coleta / Trânsito → Circuito fechado (Re-upload da data)"] = diff_cf
+            transicoes["Backlog / Trânsito → Circuito fechado (1º re-upload da data)"] = novo_cf - ant_cf
+            pacotes_atualizados += novo_cf - ant_cf
 
-    # Recalcular criacao_pedidos_historico para os dias de origem anteriores que foram atualizados retroativamente!
-    if dias_origem_afetados:
-        case_clientes_lista = [
-            f"WHEN TRIM(numero_cliente) = '{cid}' THEN '{nome.replace(chr(39), chr(39)*2)}'"
-            for cid, nome in mapa_clientes.items()
-        ]
-        sql_case = "\n                ".join(case_clientes_lista) if case_clientes_lista else "WHEN 1=0 THEN ''"
+    # 5. Recalcular os totais dos dias anteriores afetados (somente dias com base pacote a pacote completa)
+    dias_recalculados = sorted(d for d in dias_afetados if d in dias_granulares and d != dia_planilha)
+    dias_sem_base = sorted(d for d in dias_afetados if d not in dias_granulares)
+    for d_af in dias_recalculados:
+        _reconstruir_agregado_dia(db, d_af, mapa_clientes)
+    db.commit()
 
-        for d_af in dias_origem_afetados:
-            db.execute(text("DELETE FROM criacao_pedidos_historico WHERE dia_base = :d;"), {"d": d_af})
-            db.execute(text(f"""
-                INSERT INTO criacao_pedidos_historico (
-                    dia_base, semana_base, nome_cliente, merchant_id, merchant_nome,
-                    cep_remetente, estado, cidade, bairro, endereco_completo,
-                    maneira_coleta, ponto_colecao, tipo_pedido, status_pedido, total_pedidos
-                )
-                SELECT 
-                    dia_base,
-                    semana_base,
-                    CASE 
-                        {sql_case}
-                        WHEN LOWER(remetente_nome) LIKE '%shein%' OR LOWER(merchant_nome) LIKE '%shein%' THEN 'shein'
-                        WHEN LOWER(remetente_nome) LIKE '%temu%' OR LOWER(merchant_nome) LIKE '%temu%' THEN 'temud2d'
-                        WHEN LOWER(remetente_nome) LIKE '%kwai%' OR LOWER(merchant_nome) LIKE '%kwai%' THEN 'kwai'
-                        WHEN LOWER(remetente_nome) LIKE '%tiktok%' OR LOWER(merchant_nome) LIKE '%tiktok%' THEN 'tiktok logistics brazil ltda'
-                        WHEN numero_cliente IS NOT NULL AND TRIM(numero_cliente) != '' THEN 'Cliente ' || TRIM(numero_cliente)
-                        ELSE 'Outros'
-                    END as nome_cliente,
-                    merchant_id,
-                    merchant_nome,
-                    remetente_cep,
-                    remetente_uf,
-                    remetente_cidade,
-                    remetente_bairro,
-                    remetente_endereco,
-                    maneira_coleta,
-                    ponto_colecao,
-                    tipo_pedido,
-                    status_pedido,
-                    COUNT(*) as total_pedidos
-                FROM operacional_pedidos_completo
-                WHERE dia_base = :d
-                GROUP BY 
-                    dia_base, semana_base, nome_cliente, merchant_id, merchant_nome,
-                    remetente_cep, remetente_uf, remetente_cidade, remetente_bairro, remetente_endereco,
-                    maneira_coleta, ponto_colecao, tipo_pedido, status_pedido;
-            """), {"d": d_af})
-        db.commit()
+    _invalidar_cache_snapshot_dias(set(dias_recalculados) | {dia_planilha})
 
-    # Invalidar cache de snapshots das datas afetadas + dia_planilha
-    todos_afetados = set(dias_origem_afetados)
-    todos_afetados.add(dia_planilha)
-    _invalidar_cache_snapshot_dias(todos_afetados)
+    # 6. CSV somente com os pacotes do próprio dia (evita contagem dupla nos indicadores do dia)
+    csv_dia_proprio = caminho_csv
+    if pacotes_de_outros_dias > 0:
+        csv_dia_proprio = caminho_csv[:-4] + "_dia_proprio.csv"
+        with open(csv_dia_proprio, mode="w", encoding="utf-8-sig", newline="") as f_out:
+            w = csv.writer(f_out)
+            w.writerow(header)
+            w.writerows(linhas_dia_proprio)
 
-    dias_af_str = ", ".join(sorted(todos_afetados))
     db.execute(text("""
         INSERT INTO log_reconciliacao_planilhas (
             dia_planilha, data_hora_upload, total_pacotes_lidos, pacotes_novos,
             pacotes_atualizados_status, pacotes_retroativos_outros_dias,
-            dias_afetados, resumo_transicoes
-        ) VALUES (
-            :dp, :dh, :tot, :nov, :atu, :ret, :daf, :res
-        );
+            dias_afetados, resumo_transicoes, pacotes_de_outros_dias
+        ) VALUES (:dp, :dh, :tot, :nov, :atu, :ret, :daf, :res, :out);
     """), {
-        "dp": dia_planilha,
-        "dh": agora_str,
-        "tot": total_lidos,
-        "nov": pacotes_novos,
-        "atu": pacotes_atualizados,
-        "ret": pacotes_retroativos,
-        "daf": dias_af_str,
-        "res": json.dumps(transicoes_counter, ensure_ascii=False),
+        "dp": dia_planilha, "dh": agora_str, "tot": total_lidos, "nov": pacotes_novos,
+        "atu": pacotes_atualizados, "ret": pacotes_retroativos,
+        "daf": ", ".join(sorted(dias_afetados | {dia_planilha})),
+        "res": json.dumps(transicoes, ensure_ascii=False), "out": pacotes_de_outros_dias,
     })
     db.commit()
 
     if callback_log:
-        if pacotes_atualizados > 0:
+        callback_log(
+            f"🔄 Reconciliação: {pacotes_novos:,} pacotes novos | {pacotes_atualizados:,} com status atualizado "
+            f"({pacotes_retroativos:,} em dias anteriores) | {pacotes_de_outros_dias:,} pertencem a outras datas "
+            f"e NÃO somaram no volume de {dia_planilha}."
+        )
+        if dias_sem_base:
             callback_log(
-                f"🔄 Reconciliação de Pacotes: {pacotes_atualizados:,} pacotes tiveram status atualizado "
-                f"({pacotes_retroativos:,} atualizados retroativamente em datas anteriores: {dias_af_str})!"
+                f"ℹ️ Datas sem base pacote a pacote (totais não recalculados até re-subir a planilha delas): "
+                f"{', '.join(dias_sem_base[:10])}"
             )
-        else:
-            callback_log(f"✅ Base de pacotes reconciliada para {dia_planilha} ({total_lidos:,} códigos de barras sincronizados).")
 
     return {
         "status": "sucesso",
@@ -428,8 +471,11 @@ def reconciliar_planilha_otimizada_csv(
         "pacotes_novos": pacotes_novos,
         "pacotes_atualizados_status": pacotes_atualizados,
         "pacotes_retroativos_outros_dias": pacotes_retroativos,
-        "dias_afetados": list(sorted(todos_afetados)),
-        "transicoes": transicoes_counter,
+        "pacotes_de_outros_dias": pacotes_de_outros_dias,
+        "dias_recalculados": dias_recalculados,
+        "dias_sem_base_por_pacote": dias_sem_base,
+        "transicoes": transicoes,
+        "csv_dia_proprio": csv_dia_proprio,
     }
 
 
@@ -485,6 +531,25 @@ def construir_painel_atualizacoes_e_aging(db: Session) -> Dict[str, Any]:
         for r in rows_atu_d:
             atu_por_dia_orig[str(r[0])] = int(r[1] or 0)
             ultima_atu_por_dia_orig[str(r[0])] = str(r[2] or "")
+    except Exception:
+        pass
+
+    # Tempo médio entre a coleta no MD (Coluna M) e a conclusão / Circuito Fechado (Coluna N), por data de origem
+    lead_time_por_dia: Dict[str, Tuple[float, int]] = {}
+    try:
+        for r in db.execute(text("""
+            SELECT dia_base,
+                   AVG((julianday(SUBSTR(data_conclusao, 1, 19)) - julianday(SUBSTR(tempo_coleta, 1, 19))) * 24.0),
+                   COUNT(*)
+            FROM operacional_pedidos_completo
+            WHERE LOWER(TRIM(COALESCE(status_pedido, ''))) = 'circuito fechado'
+              AND data_conclusao IS NOT NULL AND TRIM(data_conclusao) != ''
+              AND tempo_coleta IS NOT NULL AND TRIM(tempo_coleta) != ''
+              AND julianday(SUBSTR(data_conclusao, 1, 19)) >= julianday(SUBSTR(tempo_coleta, 1, 19))
+            GROUP BY dia_base;
+        """)).fetchall():
+            if r[1] is not None:
+                lead_time_por_dia[str(r[0])] = (round(float(r[1]), 1), int(r[2] or 0))
     except Exception:
         pass
 
@@ -547,6 +612,8 @@ def construir_painel_atualizacoes_e_aging(db: Session) -> Dict[str, Any]:
             "foi_assinado": fa,
             "qtd_atualizados_retroativos": atu_por_dia_orig.get(d_str, 0),
             "ultima_atualizacao_em": ultima_atu_por_dia_orig.get(d_str, ""),
+            "horas_medias_coleta_ate_conclusao": lead_time_por_dia.get(d_str, (None, 0))[0],
+            "amostras_conclusao": lead_time_por_dia.get(d_str, (None, 0))[1],
         })
 
     # 3. Top Pontos (MDs / HUBs) com maior volume de pacotes sem atualização (pendentes de Circuito Fechado)
@@ -649,7 +716,7 @@ def construir_painel_atualizacoes_e_aging(db: Session) -> Dict[str, Any]:
             SELECT 
                 id, codigo_barras, dia_origem, dia_atualizacao, ponto_colecao,
                 nome_cliente, merchant_nome, estado, cidade,
-                status_anterior, status_novo, registrado_em
+                status_anterior, status_novo, registrado_em, COALESCE(data_conclusao, '')
             FROM log_mudancas_status_pacotes
             ORDER BY id DESC
             LIMIT 200;
@@ -668,6 +735,7 @@ def construir_painel_atualizacoes_e_aging(db: Session) -> Dict[str, Any]:
                 "status_anterior": rm[9],
                 "status_novo": rm[10],
                 "registrado_em": rm[11],
+                "data_conclusao": rm[12],
             })
     except Exception:
         pass

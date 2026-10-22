@@ -164,13 +164,17 @@ async def post_otimizar_planilha(
                         try:
                             from services.reconciliacao_pacotes import reconciliar_planilha_otimizada_csv
                             _log(job_id, "🔄 Verificando pacotes já existentes no banco para atualização retroativa de status...", "info")
-                            reconciliar_planilha_otimizada_csv(
+                            res_rec = reconciliar_planilha_otimizada_csv(
                                 db=db,
                                 caminho_csv=caminho_otimizado_csv,
                                 dia_planilha=dt_br,
                                 semana_planilha=f"SEMANA {sem_final}",
                                 callback_log=lambda m: _log(job_id, m, "success")
                             )
+                            # Indicadores do dia passam a usar somente os pacotes coletados neste dia (sem contagem dupla)
+                            csv_proprio = (res_rec or {}).get("csv_dia_proprio")
+                            if csv_proprio and os.path.exists(csv_proprio):
+                                caminho_usar = csv_proprio
                         except Exception as e_rec:
                             _log(job_id, f"⚠️ Aviso na reconciliação de pacotes: {e_rec}", "info")
 

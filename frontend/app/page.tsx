@@ -2854,6 +2854,15 @@ export default function CentralColetasPage() {
                     <p className="text-xs text-slate-300 mt-0.5 max-w-4xl">
                       Sempre que você subir uma planilha (seja de um dia novo como <strong>06/10</strong> ou re-subindo um dia antigo como <strong>03/10</strong>), o sistema verifica pelo <strong>código de barras</strong> se o pacote já existe no banco, atualiza o status no dia de origem, cria o registro da mudança e monitora abaixo todos os pacotes que ainda não chegaram em <strong>Circuito Fechado</strong>.
                     </p>
+                    <div className="mt-3 p-3 rounded-xl bg-cyan-950/40 border border-cyan-500/30 text-xs text-slate-300 max-w-4xl">
+                      <p className="font-bold text-cyan-300 mb-1 flex items-center gap-1.5">
+                        💡 Cargas Parciais por Lote de Status (Suporte Nativo)
+                      </p>
+                      <p>
+                        Você pode subir planilhas filtradas do mês em blocos (ex: uma só com <em>Coleta e Saco Selado</em>, outra com <em>Carregamento e Descarregamento</em>, ou com <em>Circuito Fechado</em>).
+                        O motor utiliza a <strong>Coluna M (Tempo real para a coleta)</strong> para ancorar cada pacote no seu dia de coleta original e atualiza a <strong>Coluna N (Data de conclusão)</strong>, sem nunca duplicar o volume da operação!
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -3037,6 +3046,7 @@ export default function CentralColetasPage() {
                               <th className="py-2.5 px-3 text-right">📦 Coleta / Saco Selado</th>
                               <th className="py-2.5 px-3 text-right">🚛 Carreg. / Descarreg.</th>
                               <th className="py-2.5 px-3 text-right text-rose-400">🚨 Foi Assinado</th>
+                              <th className="py-2.5 px-3 text-right text-indigo-300" title="Média de horas entre a Coleta no MD (Coluna M) e a Conclusão / Circuito Fechado (Coluna N)">⏱️ Lead Time Médio</th>
                               <th className="py-2.5 px-3 text-center">🔄 Atualizados Depois</th>
                             </tr>
                           </thead>
@@ -3103,6 +3113,15 @@ export default function CentralColetasPage() {
                                   </td>
                                   <td className="py-2.5 px-3 text-right font-mono text-rose-400 font-semibold">
                                     {(item.foi_assinado || 0).toLocaleString("pt-BR")}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono text-indigo-300">
+                                    {item.horas_medias_coleta_ate_conclusao !== null && item.horas_medias_coleta_ate_conclusao !== undefined ? (
+                                      <span title={`${item.amostras_conclusao || 0} pacotes em Circuito Fechado com tempo medido`}>
+                                        {item.horas_medias_coleta_ate_conclusao}h
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-500">—</span>
+                                    )}
                                   </td>
                                   <td className="py-2.5 px-3 text-center font-mono">
                                     {item.qtd_atualizados_retroativos > 0 ? (
@@ -3270,6 +3289,7 @@ export default function CentralColetasPage() {
                                   <th className="py-2.5 px-3">Ponto de Coleta</th>
                                   <th className="py-2.5 px-3">Cliente / Seller</th>
                                   <th className="py-2.5 px-3">Evolução de Status</th>
+                                  <th className="py-2.5 px-3 text-emerald-300">🏁 Conclusão (Col. N)</th>
                                   <th className="py-2.5 px-3">Data/Hora do Registro</th>
                                 </tr>
                               </thead>
@@ -3291,6 +3311,9 @@ export default function CentralColetasPage() {
                                       <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
                                         {item.status_novo}
                                       </span>
+                                    </td>
+                                    <td className="py-2.5 px-3 font-mono text-emerald-300">
+                                      {item.data_conclusao || <span className="text-slate-500">—</span>}
                                     </td>
                                     <td className="py-2.5 px-3 font-mono text-slate-400">{item.registrado_em}</td>
                                   </tr>
