@@ -110,8 +110,27 @@ def get_dias_coletas(db: Session = Depends(get_db)):
 
     # O dia recente deve ser o mais recente com pedidos reais detalhados (ex: 06/10/2026)
     dia_recente = dias_com_pedidos[0] if dias_com_pedidos else (todos_dias[0] if todos_dias else "06/10/2026")
+
+    meses = []
+    for d in todos_dias:
+        if len(d) == 10 and d[2] == "/" and d[5] == "/":
+            m_ano = d[3:10]
+            if m_ano not in meses:
+                meses.append(m_ano)
     
-    return {"dias": todos_dias, "dia_recente": dia_recente}
+    return {"dias": todos_dias, "meses": meses, "dia_recente": dia_recente}
+
+
+def _normalizar_parametro_dia(dia: Optional[str]) -> str:
+    """Converte 'MES:10/2026' ou '10/2026' para '%/10/2026' para consultas SQL com LIKE :dia."""
+    if not dia:
+        return ""
+    d = dia.strip()
+    if d.upper().startswith("MES:"):
+        return f"%/{d[4:].strip()}"
+    if len(d) == 7 and d[2] == "/":
+        return f"%/{d}"
+    return d
 
 
 @router.get("/resumo")
@@ -134,13 +153,13 @@ def get_resumo_coletas(
 
     # Filtros dinâmicos (Visão Central de Coletas: ignora pontos vazios, SP-R-TFK001 e ANJUN)
     clauses = [
-        "dia_base = :dia",
+        "dia_base LIKE :dia",
         "ponto_colecao IS NOT NULL",
         "TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')",
         "UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'",
         "UPPER(ponto_colecao) NOT LIKE '%ANJUN%'"
     ]
-    params: Dict[str, Any] = {"dia": dia}
+    params: Dict[str, Any] = {"dia": _normalizar_parametro_dia(dia)}
 
     if cliente and cliente.strip().upper() not in ["TODOS", ""]:
         clauses.append("LOWER(nome_cliente) = :cli")
@@ -187,8 +206,8 @@ def get_resumo_coletas(
                 COALESCE(SUM(carregamento + descarregamento), 0) as coletados,
                 COALESCE(SUM(backlog), 0) as backlog
             FROM detalhe_md_historico
-            WHERE dia_base = :dia;
-        """), {"dia": dia}).fetchone()
+            WHERE dia_base LIKE :dia;
+        """), {"dia": _normalizar_parametro_dia(dia)}).fetchone()
         if row_md_tot and (row_md_tot[0] or 0) > 0:
             total_pedidos = int(row_md_tot[0] or 0)
             total_mds = int(row_md_tot[1] or 0)
@@ -217,13 +236,13 @@ def get_resumo_coletas(
     rows_pontos_dia = db.execute(text("""
         SELECT UPPER(TRIM(ponto_colecao)), SUM(total_pedidos)
         FROM criacao_pedidos_historico
-        WHERE dia_base = :dia
+        WHERE dia_base LIKE :dia
           AND ponto_colecao IS NOT NULL
           AND TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')
           AND UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'
           AND UPPER(ponto_colecao) NOT LIKE '%ANJUN%'
         GROUP BY UPPER(TRIM(ponto_colecao));
-    """), {"dia": dia}).fetchall()
+    """), {"dia": _normalizar_parametro_dia(dia)}).fetchall()
 
     pontos_dia_dict = {r[0]: int(r[1] or 0) for r in rows_pontos_dia if r[0]}
 
@@ -277,7 +296,7 @@ def get_resumo_coletas(
             FROM criacao_pedidos_historico c
             LEFT JOIN md_mapping m ON UPPER(TRIM(c.ponto_colecao)) = UPPER(TRIM(m.md_codigo))
             LEFT JOIN malha_coordenadas mc ON UPPER(TRIM(c.ponto_colecao)) = UPPER(TRIM(mc.md_codigo))
-            WHERE c.dia_base = :dia
+            WHERE c.dia_base LIKE :dia
               AND (LOWER(c.maneira_coleta) LIKE '%coleta%' OR LOWER(c.maneira_coleta) LIKE '%pickup%')
               AND (
                   UPPER(c.ponto_colecao) LIKE 'MD-%'
@@ -290,7 +309,7 @@ def get_resumo_coletas(
             HAVING SUM(c.total_pedidos) > 0
             ORDER BY SUM(c.total_pedidos) DESC
             LIMIT 20;
-        """), {"dia": dia}).fetchall()
+        """), {"dia": _normalizar_parametro_dia(dia)}).fetchall()
         for r in rows_desvios:
             desvios_pickup_em_md.append({
                 "md_codigo": r[0],
@@ -468,13 +487,13 @@ def get_coletas_mds(
         dia = row_dia[0] if row_dia else "06/10/2026"
 
     clauses = [
-        "dia_base = :dia",
+        "dia_base LIKE :dia",
         "ponto_colecao IS NOT NULL",
         "TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')",
         "UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'",
         "UPPER(ponto_colecao) NOT LIKE '%ANJUN%'"
     ]
-    params: Dict[str, Any] = {"dia": dia}
+    params: Dict[str, Any] = {"dia": _normalizar_parametro_dia(dia)}
 
     if cliente and cliente.strip().upper() not in ["TODOS", ""]:
         clauses.append("LOWER(nome_cliente) = :cli")
@@ -520,10 +539,10 @@ def get_coletas_mds(
                 0 as vol_pickup,
                 SUM(total) as vol_dropoff
             FROM detalhe_md_historico
-            WHERE dia_base = :dia AND md IS NOT NULL AND trim(md) != ''
+            WHERE dia_base LIKE :dia AND md IS NOT NULL AND trim(md) != ''
             GROUP BY UPPER(TRIM(md))
             ORDER BY SUM(total) DESC;
-        """), {"dia": dia}).fetchall()
+        """), {"dia": _normalizar_parametro_dia(dia)}).fetchall()
 
     # Dicionário de cadastrados
     rows_cad = db.execute(text("""
@@ -763,14 +782,14 @@ def get_cliente_detalhes(
     cliente_ids = [str(r[0]).strip() for r in rows_ids if r[0]]
 
     clauses_hist = [
-        "dia_base = :dia",
+        "dia_base LIKE :dia",
         "LOWER(TRIM(nome_cliente)) = :cli",
         "ponto_colecao IS NOT NULL",
         "TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')",
         "UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'",
         "UPPER(ponto_colecao) NOT LIKE '%ANJUN%'"
     ]
-    params_hist: Dict[str, Any] = {"dia": dia, "cli": cli_low}
+    params_hist: Dict[str, Any] = {"dia": _normalizar_parametro_dia(dia), "cli": cli_low}
 
     if regional and regional.strip().upper() not in ["TODOS", ""]:
         clauses_hist.append("LOWER(estado) = :reg")
@@ -910,13 +929,13 @@ def get_cliente_detalhes(
     usa_pacotes_individuais = False
     try:
         clauses_op = [
-            "dia_base = :dia",
+            "dia_base LIKE :dia",
             "ponto_colecao IS NOT NULL",
             "TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')",
             "UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'",
             "UPPER(ponto_colecao) NOT LIKE '%ANJUN%'"
         ]
-        params_op: Dict[str, Any] = {"dia": dia, "limit": min(limit, 300)}
+        params_op: Dict[str, Any] = {"dia": _normalizar_parametro_dia(dia), "limit": min(limit, 300)}
 
         if cliente_ids:
             id_list_sql = ", ".join([f"'{cid}'" for cid in cliente_ids])
@@ -1089,8 +1108,8 @@ def get_coletas_sellers(
         row_dia = db.execute(text("SELECT dia_base FROM criacao_pedidos_historico ORDER BY SUBSTR(dia_base, 7, 4) || '-' || SUBSTR(dia_base, 4, 2) || '-' || SUBSTR(dia_base, 1, 2) DESC LIMIT 1;")).fetchone()
         dia = row_dia[0] if row_dia else "06/10/2026"
 
-    clauses = ["dia_base = :dia", "merchant_nome IS NOT NULL", "trim(merchant_nome) != ''"]
-    params: Dict[str, Any] = {"dia": dia}
+    clauses = ["dia_base LIKE :dia", "merchant_nome IS NOT NULL", "trim(merchant_nome) != ''"]
+    params: Dict[str, Any] = {"dia": _normalizar_parametro_dia(dia)}
 
     if cliente and cliente.strip().upper() not in ["TODOS", ""]:
         clauses.append("LOWER(nome_cliente) = :cli")
@@ -1141,11 +1160,11 @@ def get_coletas_sellers(
                 SUM(carregamento + descarregamento) as coletados,
                 SUM(backlog) as backlog
             FROM detalhe_md_historico
-            WHERE dia_base = :dia AND nome_cliente IS NOT NULL AND trim(nome_cliente) != ''
+            WHERE dia_base LIKE :dia AND nome_cliente IS NOT NULL AND trim(nome_cliente) != ''
             GROUP BY nome_cliente, cidade, md
             ORDER BY SUM(total) DESC
             LIMIT :limit;
-        """), {"dia": dia, "limit": limit}).fetchall()
+        """), {"dia": _normalizar_parametro_dia(dia), "limit": limit}).fetchall()
 
     sellers = []
     for r in rows:
@@ -1203,14 +1222,14 @@ def get_coletas_horarios(
     rows_mds = db.execute(text("""
         SELECT DISTINCT UPPER(TRIM(ponto_colecao)) 
         FROM criacao_pedidos_historico 
-        WHERE dia_base = :dia AND ponto_colecao IS NOT NULL AND trim(ponto_colecao) != ''
+        WHERE dia_base LIKE :dia AND ponto_colecao IS NOT NULL AND trim(ponto_colecao) != ''
         ORDER BY 1;
-    """), {"dia": dia}).fetchall()
+    """), {"dia": _normalizar_parametro_dia(dia)}).fetchall()
     mds_disponiveis = [r[0] for r in rows_mds if r[0]]
 
     # Consultar detalhe_pico_historico
-    clauses = ["dia_base = :dia"]
-    params: Dict[str, Any] = {"dia": dia}
+    clauses = ["dia_base LIKE :dia"]
+    params: Dict[str, Any] = {"dia": _normalizar_parametro_dia(dia)}
 
     if md and md.strip().upper() not in ["TODOS", ""]:
         clauses.append("UPPER(TRIM(md)) = :md")
@@ -1232,7 +1251,7 @@ def get_coletas_horarios(
     total_volume_pico = sum(dict_horas.values())
     if total_volume_pico == 0:
         # Busca total de pedidos da data
-        tot_ped = db.execute(text("SELECT COALESCE(SUM(total_pedidos), 0) FROM criacao_pedidos_historico WHERE dia_base = :dia;"), {"dia": dia}).scalar() or 20000
+        tot_ped = db.execute(text("SELECT COALESCE(SUM(total_pedidos), 0) FROM criacao_pedidos_historico WHERE dia_base LIKE :dia;"), {"dia": dia}).scalar() or 20000
         # Curva típica de bipagem em First Mile / Minidrop (pico entre 14h e 17h)
         dist_padrao = {
             "08": 0.02, "09": 0.04, "10": 0.07, "11": 0.09, "12": 0.08,
@@ -1487,9 +1506,9 @@ def get_coletas_no_dia(
             status_pedido,
             SUM(total_pedidos) as volume
         FROM criacao_pedidos_historico
-        WHERE dia_base = :dia
+        WHERE dia_base LIKE :dia
         GROUP BY UPPER(TRIM(COALESCE(ponto_colecao, ''))), merchant_nome, nome_cliente, cep_remetente, cidade, estado, bairro, maneira_coleta, status_pedido;
-    """), {"dia": dia}).fetchall()
+    """), {"dia": _normalizar_parametro_dia(dia)}).fetchall()
 
     vol_alocado_preditivo = 0
     dropoffs_sem_md_dict: Dict[tuple, Dict[str, Any]] = {}
@@ -2537,7 +2556,7 @@ async def post_upload_caminhoes_d2d(
                     db.execute(text("""
                         UPDATE d2d_perus_tempos
                         SET placas_veiculos = :plc, iatas_descarga = :iata, qtd_confirmado_perus = :conf
-                        WHERE dia_base = :dia AND md_codigo = :md;
+                        WHERE dia_base LIKE :dia AND md_codigo = :md;
                     """), u)
                 db.commit()
         except Exception as err_reconcile:
@@ -2575,8 +2594,8 @@ def get_metricas_completas(dia: Optional[str] = None, db: Session = Depends(get_
                 SUM(is_destino_sp) as pacotes_sp,
                 SUM(1 - is_destino_sp) as pacotes_outras_ufs
             FROM operacional_pedidos_completo
-            WHERE dia_base = :dia;
-        """), {"dia": dia}).fetchone()
+            WHERE dia_base LIKE :dia;
+        """), {"dia": _normalizar_parametro_dia(dia)}).fetchone()
 
         # 2. Distribuição por Merchant (Shein, Temu, etc.)
         rows_merchants = db.execute(text("""
@@ -2586,11 +2605,11 @@ def get_metricas_completas(dia: Optional[str] = None, db: Session = Depends(get_
                 ROUND(SUM(peso_kg), 2) as peso_kg,
                 ROUND(SUM(valor_declarado), 2) as valor_total
             FROM operacional_pedidos_completo
-            WHERE dia_base = :dia
+            WHERE dia_base LIKE :dia
             GROUP BY merchant_nome
             ORDER BY total DESC
             LIMIT 10;
-        """), {"dia": dia}).fetchall()
+        """), {"dia": _normalizar_parametro_dia(dia)}).fetchall()
 
         # 3. Top UFs de Destino
         rows_ufs = db.execute(text("""
@@ -2599,11 +2618,11 @@ def get_metricas_completas(dia: Optional[str] = None, db: Session = Depends(get_
                 COUNT(*) as total,
                 ROUND(SUM(peso_kg), 2) as peso_kg
             FROM operacional_pedidos_completo
-            WHERE dia_base = :dia
+            WHERE dia_base LIKE :dia
             GROUP BY destinatario_uf
             ORDER BY total DESC
             LIMIT 10;
-        """), {"dia": dia}).fetchall()
+        """), {"dia": _normalizar_parametro_dia(dia)}).fetchall()
 
         # 4. Top Cidades de Entrega em SP
         rows_cidades_sp = db.execute(text("""
@@ -2611,11 +2630,11 @@ def get_metricas_completas(dia: Optional[str] = None, db: Session = Depends(get_
                 destinatario_cidade as cidade,
                 COUNT(*) as total
             FROM operacional_pedidos_completo
-            WHERE dia_base = :dia AND is_destino_sp = 1
+            WHERE dia_base LIKE :dia AND is_destino_sp = 1
             GROUP BY destinatario_cidade
             ORDER BY total DESC
             LIMIT 10;
-        """), {"dia": dia}).fetchall()
+        """), {"dia": _normalizar_parametro_dia(dia)}).fetchall()
 
         # 5. Resumo de Backlog do Dia Anterior
         row_bk = db.execute(text("""
@@ -2627,8 +2646,8 @@ def get_metricas_completas(dia: Optional[str] = None, db: Session = Depends(get_
                 SUM(CASE WHEN LOWER(status_pedido) IN ('circuito fechado', 'carregamento', 'descarregamento', 'foi assinado') 
                          THEN 1 ELSE 0 END) as coletados_caminhao
             FROM operacional_pedidos_completo
-            WHERE dia_base = :dia;
-        """), {"dia": dia}).fetchone()
+            WHERE dia_base LIKE :dia;
+        """), {"dia": _normalizar_parametro_dia(dia)}).fetchone()
 
         rows_top_bk = db.execute(text("""
             SELECT 
@@ -2640,7 +2659,7 @@ def get_metricas_completas(dia: Optional[str] = None, db: Session = Depends(get_
                 SUM(is_destino_sp) as sp_bipados,
                 SUM(1 - is_destino_sp) as outros_bipados
             FROM operacional_pedidos_completo
-            WHERE dia_base = :dia
+            WHERE dia_base LIKE :dia
               AND ponto_colecao IS NOT NULL
               AND TRIM(ponto_colecao) NOT IN ('', 'NAN', 'NONE', 'NULL', '-')
               AND UPPER(ponto_colecao) NOT LIKE '%-H%'
@@ -2652,7 +2671,7 @@ def get_metricas_completas(dia: Optional[str] = None, db: Session = Depends(get_
             HAVING backlog_retido > 0
             ORDER BY backlog_retido DESC
             LIMIT 10;
-        """), {"dia": dia}).fetchall()
+        """), {"dia": _normalizar_parametro_dia(dia)}).fetchall()
 
         top_mds_bk_list = [
             {

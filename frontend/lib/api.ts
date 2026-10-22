@@ -41,7 +41,7 @@ async function resolveSnapshotRequest(urlStr: string): Promise<Response | null> 
 
     const diaParam = (params.get("dia") || "").trim();
     const isLatest = !diaParam || ["TODOS", "LATEST", "HOJE", ""].includes(diaParam.toUpperCase());
-    const safeDia = isLatest ? "latest" : diaParam.replace(/\//g, "-");
+    const safeDia = isLatest ? "latest" : diaParam.replace(/\//g, "-").replace(/:/g, "_");
 
     if (path === "/api/coletas/dias") {
       const data = await fetchStaticSnapshot("dias.json");
@@ -1998,7 +1998,7 @@ export interface CockpitD1MD {
   coletados: number;
   backlog: number;
   taxa_coleta: number;
-  tipo_ponto: "MD" | "HUB";
+  tipo_ponto: "MD" | "HUB" | "PONTO_APOIO" | "PONTO_REDE";
   tipo_label: string;
   operacao: string;
   manual_override?: boolean;
@@ -2164,7 +2164,7 @@ export async function geocodificarEndereco(query: string): Promise<Geocodificaca
   return res.json();
 }
 
-export async function salvarClassificacaoPonto(pontoCodigo: string, tipo: "MD" | "HUB"): Promise<any> {
+export async function salvarClassificacaoPonto(pontoCodigo: string, tipo: "MD" | "HUB" | "PONTO_APOIO" | "PONTO_REDE"): Promise<any> {
   const res = await safeFetch(`${API_URL}/api/implantacao/pontos/classificacao`, {
     method: "POST",
     headers: getAuthHeaders(),
@@ -2183,7 +2183,7 @@ export async function removerClassificacaoPonto(pontoCodigo: string): Promise<an
   return res.json();
 }
 
-export async function fetchClassificacoesPontos(): Promise<{ ponto_codigo: string; tipo: "MD" | "HUB"; atualizado_em: string }[]> {
+export async function fetchClassificacoesPontos(): Promise<{ ponto_codigo: string; tipo: "MD" | "HUB" | "PONTO_APOIO" | "PONTO_REDE"; atualizado_em: string }[]> {
   const res = await safeFetch(`${API_URL}/api/implantacao/pontos/classificacao`, {
     headers: getAuthHeaders(),
   });
@@ -2227,7 +2227,7 @@ export function getDownloadOtimizadoUrl(jobId: string, formato: "xlsx" | "csv" =
 // Módulo de Coletas (Central de Coletas)
 // ─────────────────────────────────────────────────────────────────
 
-export async function fetchDiasColetas(): Promise<{ dias: string[]; dia_recente: string | null }> {
+export async function fetchDiasColetas(): Promise<{ dias: string[]; meses?: string[]; dia_recente: string | null }> {
   const res = await safeFetch(`${API_URL}/api/coletas/dias`, { headers: getAuthHeaders() });
   if (!res.ok) throw new Error("Falha ao carregar datas de coleta.");
   return res.json();

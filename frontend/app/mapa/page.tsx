@@ -47,9 +47,9 @@ export default function MapaPage() {
   const [loading, setLoading] = useState(true);
   const [selectedDia, setSelectedDia] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [tipoFiltro, setTipoFiltro] = useState<"TODOS" | "MD" | "HUB">("TODOS");
+  const [tipoFiltro, setTipoFiltro] = useState<"TODOS" | "MD" | "HUB" | "PONTO_APOIO" | "PONTO_REDE">("TODOS");
   const [selectedPonto, setSelectedPonto] = useState<CockpitD1MD | null>(null);
-  const [activeSideTab, setActiveSideTab] = useState<"hubs" | "mds">("hubs");
+  const [activeSideTab, setActiveSideTab] = useState<"hubs" | "mds" | "apoio_rede">("hubs");
   const [updatingClassificacao, setUpdatingClassificacao] = useState(false);
   const [isGerenciarModalOpen, setIsGerenciarModalOpen] = useState(false);
   const [isViabilidadeModalOpen, setIsViabilidadeModalOpen] = useState(false);
@@ -95,18 +95,30 @@ export default function MapaPage() {
     }
   }, []);
 
-  const handleToggleClassificacao = async (pontoCodigo: string, novoTipo: "MD" | "HUB") => {
+  const handleToggleClassificacao = async (pontoCodigo: string, novoTipo: "MD" | "HUB" | "PONTO_APOIO" | "PONTO_REDE") => {
     setUpdatingClassificacao(true);
     try {
       await salvarClassificacaoPonto(pontoCodigo, novoTipo);
       await loadData(selectedDia);
+      const labelMap: Record<string, string> = {
+        HUB: "HUB Operacional ANJUN",
+        MD: "Minidrop Parceiro (MD)",
+        PONTO_APOIO: "Ponto de Apoio ANJUN",
+        PONTO_REDE: "Ponto de Rede Parceiro",
+      };
+      const opMap: Record<string, string> = {
+        HUB: "Recepção / Pickup / Transferência",
+        MD: "Ponto de Coleta Dropoff",
+        PONTO_APOIO: "Base de Apoio / Consolidação",
+        PONTO_REDE: "Ponto de Rede / Coleta",
+      };
       setSelectedPonto((prev) =>
         prev && prev.ponto_colecao === pontoCodigo
           ? {
               ...prev,
               tipo_ponto: novoTipo,
-              tipo_label: novoTipo === "HUB" ? "HUB Operacional ANJUN" : "Minidrop Parceiro (MD)",
-              operacao: novoTipo === "HUB" ? "Recepção / Pickup / Transferência" : "Ponto de Coleta Dropoff",
+              tipo_label: labelMap[novoTipo] || "Minidrop Parceiro (MD)",
+              operacao: opMap[novoTipo] || "Ponto de Coleta Dropoff",
               manual_override: true,
             }
           : prev
@@ -176,6 +188,24 @@ export default function MapaPage() {
   const mdsList = useMemo(() => {
     return todosPontos
       .filter((p) => p.tipo_ponto === "MD")
+      .sort((a, b) => b.volume - a.volume);
+  }, [todosPontos]);
+
+  const apoioList = useMemo(() => {
+    return todosPontos
+      .filter((p) => p.tipo_ponto === "PONTO_APOIO")
+      .sort((a, b) => b.volume - a.volume);
+  }, [todosPontos]);
+
+  const redeList = useMemo(() => {
+    return todosPontos
+      .filter((p) => p.tipo_ponto === "PONTO_REDE")
+      .sort((a, b) => b.volume - a.volume);
+  }, [todosPontos]);
+
+  const apoioRedeList = useMemo(() => {
+    return todosPontos
+      .filter((p) => p.tipo_ponto === "PONTO_APOIO" || p.tipo_ponto === "PONTO_REDE")
       .sort((a, b) => b.volume - a.volume);
   }, [todosPontos]);
 
@@ -412,6 +442,30 @@ export default function MapaPage() {
                 <span className="w-2 h-2 rounded-full bg-purple-400" />
                 HUBs ({hubsList.length})
               </button>
+
+              <button
+                onClick={() => setTipoFiltro("PONTO_APOIO")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  tipoFiltro === "PONTO_APOIO"
+                    ? "bg-amber-600 text-white shadow-sm"
+                    : "text-amber-400 hover:bg-amber-950/40"
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-amber-400" />
+                Apoio ({apoioList.length})
+              </button>
+
+              <button
+                onClick={() => setTipoFiltro("PONTO_REDE")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  tipoFiltro === "PONTO_REDE"
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "text-blue-400 hover:bg-blue-950/40"
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-blue-400" />
+                Rede ({redeList.length})
+              </button>
             </div>
           </div>
 
@@ -605,6 +659,32 @@ export default function MapaPage() {
                   >
                     <Building2 className="w-3.5 h-3.5" />
                     <span>É HUB ANJUN</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleToggleClassificacao(selectedPonto.ponto_colecao, "PONTO_APOIO")}
+                    disabled={updatingClassificacao}
+                    className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                      selectedPonto.tipo_ponto === "PONTO_APOIO"
+                        ? "bg-amber-600 text-white shadow-md shadow-amber-900/40 border border-amber-400/50"
+                        : "bg-slate-900/80 text-slate-400 hover:text-amber-400 hover:bg-slate-800 border border-slate-800"
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>É Ponto de Apoio</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleToggleClassificacao(selectedPonto.ponto_colecao, "PONTO_REDE")}
+                    disabled={updatingClassificacao}
+                    className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                      selectedPonto.tipo_ponto === "PONTO_REDE"
+                        ? "bg-blue-600 text-white shadow-md shadow-blue-900/40 border border-blue-400/50"
+                        : "bg-slate-900/80 text-slate-400 hover:text-blue-400 hover:bg-slate-800 border border-slate-800"
+                    }`}
+                  >
+                    <MapPin className="w-3.5 h-3.5" />
+                    <span>É Ponto de Rede</span>
                   </button>
                 </div>
 
@@ -853,7 +933,33 @@ export default function MapaPage() {
                         }`}
                       >
                         <Building2 className="w-3.5 h-3.5" />
-                        <span>É HUB ANJUN</span>
+                        <span>HUB</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleToggleClassificacao(p.ponto_colecao, "PONTO_APOIO")}
+                        disabled={updatingClassificacao}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                          p.tipo_ponto === "PONTO_APOIO"
+                            ? "bg-amber-600 text-white shadow-md shadow-amber-900/40 border border-amber-400/50"
+                            : "bg-slate-900 text-slate-400 hover:text-amber-400 hover:bg-slate-800 border border-slate-800"
+                        }`}
+                      >
+                        <Layers className="w-3.5 h-3.5" />
+                        <span>Ponto Apoio</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleToggleClassificacao(p.ponto_colecao, "PONTO_REDE")}
+                        disabled={updatingClassificacao}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                          p.tipo_ponto === "PONTO_REDE"
+                            ? "bg-blue-600 text-white shadow-md shadow-blue-900/40 border border-blue-400/50"
+                            : "bg-slate-900 text-slate-400 hover:text-blue-400 hover:bg-slate-800 border border-slate-800"
+                        }`}
+                      >
+                        <MapPin className="w-3.5 h-3.5" />
+                        <span>Ponto Rede</span>
                       </button>
 
                       {p.manual_override && (

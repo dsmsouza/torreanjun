@@ -336,10 +336,10 @@ def identificar_tipo_ponto(iata_code: str, nome: str = "", overrides_dict: Optio
     code = (iata_code or "").strip().upper()
     n = (nome or "").strip().upper()
 
-    # 1. Ajuste Manual Prioritário definido pelo usuário
+    # 1. Ajuste Manual Prioritário definido pelo usuário (Configurações ou Mapa)
     if code in overrides_dict:
-        custom_tipo = overrides_dict[code]
-        if custom_tipo == "HUB":
+        custom_tipo = (overrides_dict[code] or "").strip().upper()
+        if custom_tipo in ("HUB", "HUB (TRANSFERÊNCIA)", "GALPÃO / CD (DISTRIBUIÇÃO)"):
             return {
                 "tipo": "HUB",
                 "tipo_label": "HUB Operacional ANJUN",
@@ -347,7 +347,23 @@ def identificar_tipo_ponto(iata_code: str, nome: str = "", overrides_dict: Optio
                 "operacao": "Recepção / Pickup / Transferência",
                 "manual": True
             }
-        else:
+        elif custom_tipo in ("PONTO_APOIO", "PONTO DE APOIO", "PONTO DE APOIO / BASE"):
+            return {
+                "tipo": "PONTO_APOIO",
+                "tipo_label": "Ponto de Apoio ANJUN",
+                "badge_color": "amber",
+                "operacao": "Base de Apoio / Consolidação",
+                "manual": True
+            }
+        elif custom_tipo in ("PONTO_REDE", "PONTO DE REDE"):
+            return {
+                "tipo": "PONTO_REDE",
+                "tipo_label": "Ponto de Rede Parceiro",
+                "badge_color": "blue",
+                "operacao": "Ponto de Rede / Coleta",
+                "manual": True
+            }
+        elif custom_tipo in ("MD", "MINIDROP", "MD (PONTO DE COLETA)"):
             return {
                 "tipo": "MD",
                 "tipo_label": "Minidrop Parceiro (MD)",
@@ -356,7 +372,25 @@ def identificar_tipo_ponto(iata_code: str, nome: str = "", overrides_dict: Optio
                 "manual": True
             }
 
-    # 2. Regra Oficial ANJUN: MD é tudo o que começa com MD- ou UF-W-MD (ex: SP-W-MD, RJ-W-MD, MG-W-MD, etc.)
+    # 2. Detecção automática por nomenclatura
+    if "-PA" in code or "-RR-" in code or "APOIO" in code or "APOIO" in n:
+        return {
+            "tipo": "PONTO_APOIO",
+            "tipo_label": "Ponto de Apoio ANJUN",
+            "badge_color": "amber",
+            "operacao": "Base de Apoio / Consolidação",
+            "manual": False
+        }
+
+    if "-PR" in code or "REDE" in code or "REDE" in n:
+        return {
+            "tipo": "PONTO_REDE",
+            "tipo_label": "Ponto de Rede Parceiro",
+            "badge_color": "blue",
+            "operacao": "Ponto de Rede / Coleta",
+            "manual": False
+        }
+
     if code.startswith("MD-") or code.startswith("MD ") or bool(re.match(r"^[A-Z]{2}-W-MD", code)):
         return {
             "tipo": "MD",
@@ -366,7 +400,7 @@ def identificar_tipo_ponto(iata_code: str, nome: str = "", overrides_dict: Optio
             "manual": False
         }
 
-    # 3. Demais unidades operacionais (ex: SP-Z-H005, SC-W-H001, WR-GLP-01, HUBs e Bases)
+    # 3. Demais unidades operacionais (ex: SP-Z-H005, SC-W-H001, WR-GLP-01, HUBs)
     return {
         "tipo": "HUB",
         "tipo_label": "HUB Operacional ANJUN",
@@ -454,8 +488,18 @@ def get_cockpit_d1(dia: Optional[str] = None, db: Session = Depends(get_db)):
         );
     """))
     db.commit()
+    overrides_dict = {}
+    try:
+        rows_md_tipo = db.execute(text("SELECT UPPER(TRIM(md_codigo)), UPPER(TRIM(tipo_ponto)) FROM md_mapping WHERE md_codigo IS NOT NULL AND tipo_ponto IS NOT NULL")).fetchall()
+        for r_c, r_t in rows_md_tipo:
+            if r_c and r_t in ("HUB", "MINIDROP", "PONTO DE APOIO", "PONTO DE REDE", "PONTO_APOIO", "PONTO_REDE"):
+                overrides_dict[r_c] = r_t
+    except Exception:
+        pass
     overrides_rows = db.execute(text("SELECT UPPER(TRIM(ponto_codigo)), UPPER(TRIM(tipo)) FROM ponto_classificacao_override")).fetchall()
-    overrides_dict = {r[0]: r[1] for r in overrides_rows if r[0]}
+    for r in overrides_rows:
+        if r[0] and r[1]:
+            overrides_dict[r[0]] = r[1]
 
     # Totais gerais do dia ou geral acumulado
     # REGRA ANJUN:
@@ -585,26 +629,34 @@ def get_cockpit_d1(dia: Optional[str] = None, db: Session = Depends(get_db)):
     
     mds_breakdown = []
     mapa_pontos_plotaveis = []
+    pontos_vistos_mapa = set()
     total_mds_count = 0
     total_hubs_count = 0
+    total_apoio_count = 0
+    total_rede_count = 0
 
     for m in md_rows:
         ponto_code = m[0].strip()
+        pontos_vistos_mapa.add(ponto_code.upper())
         m_vol = int(m[3] or 0)
         m_coletados = int(m[5] or 0)
         m_backlog = int(m[6] or 0)
         m_taxa = round((m_coletados / max(m_vol, 1) * 100), 1)
         
-        info_tipo = identificar_tipo_ponto(ponto_code)
-        if info_tipo["tipo"] == "HUB":
-            total_hubs_count += 1
-        else:
-            total_mds_count += 1
-            
         coord = coords_dict.get(ponto_code.upper())
         lat = coord["lat"] if coord else None
         lng = coord["lng"] if coord else None
         nome_display = coord["nome"] if coord and coord["nome"] else ponto_code
+
+        info_tipo = identificar_tipo_ponto(ponto_code, nome=nome_display, overrides_dict=overrides_dict)
+        if info_tipo["tipo"] == "HUB":
+            total_hubs_count += 1
+        elif info_tipo["tipo"] == "PONTO_APOIO":
+            total_apoio_count += 1
+        elif info_tipo["tipo"] == "PONTO_REDE":
+            total_rede_count += 1
+        else:
+            total_mds_count += 1
         
         item_md = {
             "ponto_colecao": ponto_code,
@@ -627,6 +679,34 @@ def get_cockpit_d1(dia: Optional[str] = None, db: Session = Depends(get_db)):
         
         if lat and lng:
             mapa_pontos_plotaveis.append(item_md)
+
+    # Incluir também unidades cadastradas com coordenadas em malha_coordenadas / md_mapping que tiveram 0 pacotes no dia
+    for pt_upper, c_info in coords_dict.items():
+        if pt_upper not in pontos_vistos_mapa and c_info.get("lat") and c_info.get("lng"):
+            if "TFK" in pt_upper or "ANJUN" in pt_upper:
+                continue
+            pontos_vistos_mapa.add(pt_upper)
+            nome_disp = c_info.get("nome") or pt_upper
+            info_t = identificar_tipo_ponto(pt_upper, nome=nome_disp, overrides_dict=overrides_dict)
+            item_extra = {
+                "ponto_colecao": pt_upper,
+                "nome_display": nome_disp,
+                "cidade": c_info.get("cidade") or "",
+                "estado": c_info.get("estado") or "",
+                "volume": 0,
+                "qtd_sellers": 0,
+                "coletados": 0,
+                "backlog": 0,
+                "taxa_coleta": 0.0,
+                "tipo_ponto": info_t["tipo"],
+                "tipo_label": info_t["tipo_label"],
+                "operacao": info_t["operacao"],
+                "manual_override": info_t.get("manual", False),
+                "latitude": c_info["lat"],
+                "longitude": c_info["lng"]
+            }
+            mds_breakdown.append(item_extra)
+            mapa_pontos_plotaveis.append(item_extra)
         
     # Sellers breakdown (Top 100)
     sel_rows = db.execute(text(f"""
@@ -1396,12 +1476,22 @@ def listar_classificacoes_pontos(db: Session = Depends(get_db)):
 
 @router.post("/pontos/classificacao")
 def post_classificacao_ponto(payload: PontoTipoOverridePayload, db: Session = Depends(get_db)):
-    """Define manualmente se um ponto específico é MD (Minidrop) ou HUB."""
+    """Define manualmente se um ponto específico é MD (Minidrop), HUB, PONTO_APOIO ou PONTO_REDE."""
     codigo = payload.ponto_codigo.strip().upper()
-    tipo = payload.tipo.strip().upper()
-    if tipo not in ["MD", "HUB"]:
-        raise HTTPException(status_code=400, detail="Tipo deve ser 'MD' ou 'HUB'")
+    tipo_raw = payload.tipo.strip().upper()
+    mapa_validos = {
+        "MD": ("MD", "MINIDROP"),
+        "MINIDROP": ("MD", "MINIDROP"),
+        "HUB": ("HUB", "HUB"),
+        "PONTO_APOIO": ("PONTO_APOIO", "PONTO DE APOIO"),
+        "PONTO DE APOIO": ("PONTO_APOIO", "PONTO DE APOIO"),
+        "PONTO_REDE": ("PONTO_REDE", "PONTO DE REDE"),
+        "PONTO DE REDE": ("PONTO_REDE", "PONTO DE REDE"),
+    }
+    if tipo_raw not in mapa_validos:
+        raise HTTPException(status_code=400, detail="Tipo inválido. Use MD, HUB, PONTO_APOIO ou PONTO_REDE.")
     
+    tipo_ov, tipo_cfg = mapa_validos[tipo_raw]
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     db.execute(text("""
         CREATE TABLE IF NOT EXISTS ponto_classificacao_override (
@@ -1413,14 +1503,19 @@ def post_classificacao_ponto(payload: PontoTipoOverridePayload, db: Session = De
     db.execute(text("""
         INSERT OR REPLACE INTO ponto_classificacao_override (ponto_codigo, tipo, atualizado_em)
         VALUES (:codigo, :tipo, :ts);
-    """), {"codigo": codigo, "tipo": tipo, "ts": agora})
+    """), {"codigo": codigo, "tipo": tipo_ov, "ts": agora})
+    try:
+        db.execute(text("UPDATE md_mapping SET tipo_ponto = :t WHERE UPPER(TRIM(md_codigo)) = :c"), {"t": tipo_cfg, "c": codigo})
+        db.execute(text("UPDATE malha_coordenadas SET tipo_ponto = :t WHERE UPPER(TRIM(md_codigo)) = :c"), {"t": tipo_cfg, "c": codigo})
+    except Exception:
+        pass
     db.commit()
     
     return {
         "status": "success",
-        "message": f"Ponto '{codigo}' configurado como '{tipo}' com sucesso!",
+        "message": f"Ponto '{codigo}' configurado como '{tipo_cfg}' com sucesso!",
         "ponto_codigo": codigo,
-        "tipo": tipo
+        "tipo": tipo_ov
     }
 
 

@@ -55,8 +55,8 @@ interface CockpitMapProps {
   height?: string;
   selectedPonto?: CockpitD1MD | null;
   onSelectPonto?: (p: CockpitD1MD) => void;
-  filtroTipo?: "TODOS" | "MD" | "HUB";
-  onFiltroTipoChange?: (tipo: "TODOS" | "MD" | "HUB") => void;
+  filtroTipo?: "TODOS" | "MD" | "HUB" | "PONTO_APOIO" | "PONTO_REDE";
+  onFiltroTipoChange?: (tipo: "TODOS" | "MD" | "HUB" | "PONTO_APOIO" | "PONTO_REDE") => void;
   searchedLocation?: SearchedLocation | null;
   onClearSearchedLocation?: () => void;
   onConsultarViabilidade?: (cidade: string, estado?: string) => void;
@@ -139,7 +139,7 @@ export default function CockpitMap({
   onClearSearchedLocation,
   onConsultarViabilidade,
 }: CockpitMapProps) {
-  const [internalFiltro, setInternalFiltro] = useState<"TODOS" | "MD" | "HUB">("TODOS");
+  const [internalFiltro, setInternalFiltro] = useState<"TODOS" | "MD" | "HUB" | "PONTO_APOIO" | "PONTO_REDE">("TODOS");
   const [mostrarSellers, setMostrarSellers] = useState<boolean>(true);
   const [selectedSeller, setSelectedSeller] = useState<CockpitD1SellerMapa | null>(null);
 
@@ -190,7 +190,7 @@ export default function CockpitMap({
 
   const tipoFiltro = propFiltroTipo !== undefined ? propFiltroTipo : internalFiltro;
 
-  const setTipoFiltro = (novo: "TODOS" | "MD" | "HUB") => {
+  const setTipoFiltro = (novo: "TODOS" | "MD" | "HUB" | "PONTO_APOIO" | "PONTO_REDE") => {
     if (onFiltroTipoChange) onFiltroTipoChange(novo);
     setInternalFiltro(novo);
   };
@@ -210,6 +210,8 @@ export default function CockpitMap({
 
   const totalMDs = pontosValidos.filter((p) => p.tipo_ponto === "MD").length;
   const totalHUBs = pontosValidos.filter((p) => p.tipo_ponto === "HUB").length;
+  const totalApoio = pontosValidos.filter((p) => p.tipo_ponto === "PONTO_APOIO").length;
+  const totalRede = pontosValidos.filter((p) => p.tipo_ponto === "PONTO_REDE").length;
   const [mapStyle, setMapStyle] = useState<"osm" | "esri_dark" | "esri_sat">("osm");
 
   return (
@@ -259,6 +261,30 @@ export default function CockpitMap({
           >
             <span className="w-2 h-2 rounded-full bg-purple-400" />
             HUBs ANJUN ({totalHUBs})
+          </button>
+
+          <button
+            onClick={() => setTipoFiltro("PONTO_APOIO")}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              tipoFiltro === "PONTO_APOIO"
+                ? "bg-amber-600 text-white shadow-sm"
+                : "text-amber-400 hover:bg-amber-950/40"
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            Ponto de Apoio ({totalApoio})
+          </button>
+
+          <button
+            onClick={() => setTipoFiltro("PONTO_REDE")}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+              tipoFiltro === "PONTO_REDE"
+                ? "bg-blue-600 text-white shadow-sm"
+                : "text-blue-400 hover:bg-blue-950/40"
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-blue-400" />
+            Ponto de Rede ({totalRede})
           </button>
 
           {sellersValidos.length > 0 && (
@@ -403,6 +429,14 @@ export default function CockpitMap({
         <div className="flex items-center gap-2">
           <span className="w-3.5 h-3.5 rounded-full bg-purple-500 border-2 border-white" />
           <span><strong>HUB Operacional ANJUN</strong> — Recepção Pickup</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full bg-amber-500 border border-white/70" />
+          <span><strong>Ponto de Apoio ANJUN</strong> — Base de Apoio</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full bg-blue-500 border border-white/70" />
+          <span><strong>Ponto de Rede Parceiro</strong> — Rede Credenciada</span>
         </div>
         {mostrarSellers && sellersValidos.length > 0 && (
           <div className="flex items-center gap-2">
@@ -549,13 +583,31 @@ export default function CockpitMap({
         {/* Pontos de Coleta (Minidrops e HUBs) */}
         {pontosFiltrados.map((p, idx) => {
           const isHub = p.tipo_ponto === "HUB";
+          const isApoio = p.tipo_ponto === "PONTO_APOIO";
+          const isRede = p.tipo_ponto === "PONTO_REDE";
           const isSelected = selectedPonto?.ponto_colecao === p.ponto_colecao;
           const radius = isHub
             ? Math.min(24, Math.max(10, Math.log10(p.volume + 1) * 5))
-            : Math.min(20, Math.max(6, Math.log10(p.volume + 1) * 3.5));
+            : Math.min(20, Math.max(7, Math.log10(p.volume + 1) * 3.5));
 
-          const color = isSelected ? "#38bdf8" : (isHub ? "#a855f7" : "#10b981");
-          const fillColor = isSelected ? "#0284c7" : (isHub ? "#9333ea" : "#059669");
+          const color = isSelected
+            ? "#38bdf8"
+            : isHub
+            ? "#a855f7"
+            : isApoio
+            ? "#f59e0b"
+            : isRede
+            ? "#3b82f6"
+            : "#10b981";
+          const fillColor = isSelected
+            ? "#0284c7"
+            : isHub
+            ? "#9333ea"
+            : isApoio
+            ? "#d97706"
+            : isRede
+            ? "#2563eb"
+            : "#059669";
 
           return (
             <CircleMarker

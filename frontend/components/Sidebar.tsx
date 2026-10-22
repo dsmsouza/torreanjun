@@ -33,9 +33,12 @@ export default function Sidebar() {
   // Read current tab parameter from URL on client side to highlight correct item
   const [currentTab, setCurrentTab] = useState<string | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [isOfflineLocal, setIsOfflineLocal] = useState<boolean>(false);
   
   useEffect(() => {
     if (typeof window !== "undefined") {
+      const h = window.location.hostname;
+      setIsOfflineLocal(h === "localhost" || h === "127.0.0.1");
       const searchParams = new URLSearchParams(window.location.search);
       setCurrentTab(searchParams.get("tab"));
       
@@ -90,12 +93,12 @@ export default function Sidebar() {
         { name: "Mapa da Malha", path: "/mapa", icon: Map, roleRequired: "Guest" },
       ]
     },
-    {
+    ...(isOfflineLocal ? [{
       title: "Ferramentas & Admin",
       items: [
         { name: "Configurações", path: "/config", icon: Settings, roleRequired: "Master" },
       ]
-    }
+    }] : [])
   ];
 
   return (

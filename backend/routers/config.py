@@ -865,10 +865,92 @@ class MDMappingUpdate(BaseModel):
     longitude: Optional[float] = None
     ativo: int = 1
 
+def _normalizar_categoria_malha(codigo: str, tipo_raw: str = "") -> str:
+    """Normaliza o tipo de unidade para uma das 4 categorias oficiais da Malha ANJUN:
+    MINIDROP, HUB, PONTO DE REDE, PONTO DE APOIO.
+    """
+    t = (tipo_raw or "").strip().upper()
+    c = (codigo or "").strip().upper()
+    if t in ("HUB", "PONTO DE REDE", "PONTO DE APOIO", "MINIDROP"):
+        return t
+    if "APOIO" in t or "APOIO" in c or "-PA" in c or "-RR-" in c:
+        return "PONTO DE APOIO"
+    if "REDE" in t or "REDE" in c or "-PR" in c:
+        return "PONTO DE REDE"
+    if "HUB" in t or "GALP" in t or "TRANSFER" in t or "-H" in c or c.startswith("HUB") or "GLP" in c:
+        return "HUB"
+    if c.startswith("MD-") or (len(c) >= 7 and c[2:7] == "-W-MD") or "MD" in t or "MINIDROP" in t:
+        return "MINIDROP"
+    return "HUB"
+
+
+def _sincronizar_override_ponto(db: Session, md_clean: str, categoria: str):
+    """Sincroniza a categoria editada em Configurações com a tabela ponto_classificacao_override usada pelo Mapa."""
+    try:
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS ponto_classificacao_override (
+                ponto_codigo TEXT PRIMARY KEY,
+                tipo TEXT NOT NULL,
+                atualizado_em TEXT
+            );
+        """))
+        mapa_tipo = {
+            "MINIDROP": "MD",
+            "HUB": "HUB",
+            "PONTO DE APOIO": "PONTO_APOIO",
+            "PONTO DE REDE": "PONTO_REDE",
+        }
+        tipo_ov = mapa_tipo.get(categoria, "MD")
+        ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        db.execute(
+            text("INSERT OR REPLACE INTO ponto_classificacao_override (ponto_codigo, tipo, atualizado_em) VALUES (:c, :t, :ts)"),
+            {"c": md_clean, "t": tipo_ov, "ts": ts}
+        )
+    except Exception:
+        pass
+
+
 @router.get("/md-mapping")
 def listar_md_mapping(db: Session = Depends(get_db)):
-    """Lista todos os mapeamentos de MD/HUB/Galpão de forma ultra rápida com cache em memória."""
+    """Lista todas as unidades da Malha ANJUN (MINIDROP, HUB, PONTO DE REDE, PONTO DE APOIO) sincronizando pontos novos."""
     try:
+        # Garante que pontos existentes em malha_coordenadas ou criacao_pedidos_historico também estejam no dicionário editável
+        try:
+            db.execute(text("""
+                INSERT OR IGNORE INTO md_mapping (md_codigo, estado, regional, tipo_ponto, ativo)
+                SELECT 
+                    UPPER(TRIM(mc.md_codigo)),
+                    COALESCE(NULLIF(TRIM(mc.estado), ''), SUBSTR(UPPER(TRIM(mc.md_codigo)), 1, 2), 'SP'),
+                    COALESCE(NULLIF(TRIM(mc.regional), ''), COALESCE(NULLIF(TRIM(mc.estado), ''), 'SP')),
+                    COALESCE(mc.tipo_ponto, 'MINIDROP'),
+                    1
+                FROM malha_coordenadas mc
+                WHERE mc.md_codigo IS NOT NULL AND TRIM(mc.md_codigo) != ''
+                  AND UPPER(TRIM(mc.md_codigo)) NOT IN (SELECT UPPER(TRIM(md_codigo)) FROM md_mapping WHERE md_codigo IS NOT NULL);
+            """))
+            db.execute(text("""
+                INSERT OR IGNORE INTO md_mapping (md_codigo, estado, regional, tipo_ponto, ativo)
+                SELECT 
+                    UPPER(TRIM(c.ponto_colecao)),
+                    COALESCE(MAX(NULLIF(TRIM(c.estado), '')), 'SP'),
+                    COALESCE(MAX(NULLIF(TRIM(c.estado), '')), 'SP'),
+                    CASE 
+                        WHEN UPPER(TRIM(c.ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(c.ponto_colecao)) LIKE '__-W-MD%' THEN 'MINIDROP'
+                        ELSE 'HUB'
+                    END,
+                    1
+                FROM criacao_pedidos_historico c
+                WHERE c.ponto_colecao IS NOT NULL 
+                  AND TRIM(c.ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')
+                  AND UPPER(c.ponto_colecao) NOT LIKE '%SP-R-TFK001%'
+                  AND UPPER(c.ponto_colecao) NOT LIKE '%ANJUN%'
+                  AND UPPER(TRIM(c.ponto_colecao)) NOT IN (SELECT UPPER(TRIM(md_codigo)) FROM md_mapping WHERE md_codigo IS NOT NULL)
+                GROUP BY UPPER(TRIM(c.ponto_colecao));
+            """))
+            db.commit()
+        except Exception:
+            db.rollback()
+
         rows_malha = db.execute(text("""
             SELECT 
                 UPPER(TRIM(md_codigo)) as md_codigo,
@@ -881,12 +963,25 @@ def listar_md_mapping(db: Session = Depends(get_db)):
                 "endereco": r[2] or "",
                 "latitude": r[3],
                 "longitude": r[4],
-                "tipo_ponto": r[5] or "MD (Ponto de Coleta)",
+                "tipo_ponto": r[5] or "",
                 "cep": r[6] or "",
                 "horario_trabalho": r[7] or "",
                 "nome_ponto": r[8]
             } for r in rows_malha if r[0]
         }
+
+        # Overrides manuais salvos pelo Mapa
+        ov_map = {}
+        try:
+            rows_ov = db.execute(text("SELECT UPPER(TRIM(ponto_codigo)), UPPER(TRIM(tipo)) FROM ponto_classificacao_override")).fetchall()
+            for rc, rt in rows_ov:
+                if rc:
+                    if rt == "HUB": ov_map[rc] = "HUB"
+                    elif rt in ("PONTO_APOIO", "PONTO DE APOIO"): ov_map[rc] = "PONTO DE APOIO"
+                    elif rt in ("PONTO_REDE", "PONTO DE REDE"): ov_map[rc] = "PONTO DE REDE"
+                    elif rt in ("MD", "MINIDROP"): ov_map[rc] = "MINIDROP"
+        except Exception:
+            pass
         
         rows_m = db.execute(text("""
             SELECT id, md_codigo, estado, regional, ativo, tipo_ponto
@@ -900,17 +995,19 @@ def listar_md_mapping(db: Session = Depends(get_db)):
             m_info = malha_map.get(code, {})
             lat = m_info.get("latitude")
             lng = m_info.get("longitude")
+            raw_tipo = ov_map.get(code) or r[5] or m_info.get("tipo_ponto") or ""
+            tipo_canon = _normalizar_categoria_malha(code, raw_tipo)
             resultado.append({
                 "id": r[0],
                 "md_codigo": r[1],
-                "estado": r[2],
-                "regional": r[3],
+                "estado": r[2] or "SP",
+                "regional": r[3] or "SP",
                 "ativo": r[4],
                 "cidade": m_info.get("cidade", "Não Informada"),
                 "endereco": m_info.get("endereco", ""),
                 "latitude": lat,
                 "longitude": lng,
-                "tipo_ponto": m_info.get("tipo_ponto") or r[5] or "MD (Ponto de Coleta)",
+                "tipo_ponto": tipo_canon,
                 "cep": m_info.get("cep", ""),
                 "horario_trabalho": m_info.get("horario_trabalho", ""),
                 "nome_ponto": m_info.get("nome_ponto") or r[1],
@@ -932,7 +1029,7 @@ def criar_md_mapping(body: MDMappingCreate, db: Session = Depends(get_db)):
         cidade_clean = (body.cidade or "").strip().title() or "Não Informada"
         estado_clean = body.estado.strip().upper()[:2]
         regional_clean = body.regional.strip().upper()
-        tipo_clean = (body.tipo_ponto or "").strip() or "MD (Ponto de Coleta)"
+        tipo_clean = _normalizar_categoria_malha(body.md_codigo if hasattr(body, "md_codigo") else md_clean, body.tipo_ponto or "")
         nome_clean = (body.nome_ponto or "").strip() or md_clean
         cep_clean = (body.cep or "").strip() or None
         horario_clean = (body.horario_trabalho or "").strip() or None
@@ -976,6 +1073,8 @@ def criar_md_mapping(body: MDMappingCreate, db: Session = Depends(get_db)):
             })
 
         db.commit()
+        _sincronizar_override_ponto(db, md_clean, tipo_clean)
+        db.commit()
         return {"status": "success", "message": f"{tipo_clean} '{md_clean}' criado com sucesso e integrado ao mapa!"}
     except HTTPException:
         raise
@@ -995,7 +1094,7 @@ def atualizar_md_mapping(mapping_id: int, body: MDMappingUpdate, db: Session = D
         cidade_clean = (body.cidade or "").strip().title() if body.cidade else None
         estado_clean = body.estado.strip().upper()[:2]
         regional_clean = body.regional.strip().upper()
-        tipo_clean = (body.tipo_ponto or "").strip() or "MD (Ponto de Coleta)"
+        tipo_clean = _normalizar_categoria_malha(body.md_codigo if hasattr(body, "md_codigo") else md_clean, body.tipo_ponto or "")
         nome_clean = (body.nome_ponto or "").strip() if body.nome_ponto else None
         cep_clean = (body.cep or "").strip() if body.cep else None
         horario_clean = (body.horario_trabalho or "").strip() if body.horario_trabalho else None
@@ -1027,6 +1126,8 @@ def atualizar_md_mapping(mapping_id: int, body: MDMappingUpdate, db: Session = D
             "cep": cep_clean, "end": end_clean, "hor": horario_clean, "lat": lat, "lng": lng, "m": md_clean
         })
 
+        db.commit()
+        _sincronizar_override_ponto(db, md_clean, tipo_clean)
         db.commit()
         return {"status": "success", "message": f"{tipo_clean} '{md_clean}' atualizado e sincronizado no mapa!"}
     except HTTPException:

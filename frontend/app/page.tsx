@@ -50,6 +50,8 @@ type TabType = "visao_geral" | "mds" | "sellers" | "horarios";
 export default function CentralColetasPage() {
   const [loading, setLoading] = useState(true);
   const [dias, setDias] = useState<string[]>([]);
+  const [meses, setMeses] = useState<string[]>([]);
+  const [modoPeriodo, setModoPeriodo] = useState<"DIA" | "MES">("DIA");
   const [selectedDia, setSelectedDia] = useState<string>("");
   const [selectedCliente, setSelectedCliente] = useState<string>("");
   const [selectedRegional, setSelectedRegional] = useState<string>("");
@@ -122,6 +124,10 @@ export default function CentralColetasPage() {
         const res = await fetchDiasColetas();
         if (!unmounted && res.dias && res.dias.length > 0) {
           setDias(res.dias);
+          const mList: string[] = Array.isArray(res.meses) && res.meses.length > 0
+            ? res.meses
+            : Array.from(new Set(res.dias.filter((d: string) => d.length === 10).map((d: string) => d.slice(3, 10))));
+          setMeses(mList);
           setSelectedDia(res.dia_recente || res.dias[0]);
         }
       } catch (err) {
@@ -438,21 +444,85 @@ export default function CentralColetasPage() {
 
           {/* Filtros de Topo */}
           <div className="flex flex-wrap items-center gap-3">
-            {/* Seletor de Data */}
-            <div className="flex items-center gap-2 bg-[#131926] px-3 py-1.5 rounded-xl border border-slate-700/80 text-xs">
-              <Calendar className="w-4 h-4 text-emerald-400" />
-              <span className="text-slate-400 hidden sm:inline">Data da Coleta:</span>
-              <select
-                value={selectedDia}
-                onChange={(e) => setSelectedDia(e.target.value)}
-                className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer"
+            {/* Alternador de Visão: Por Dia vs Por Mês */}
+            <div className="flex items-center bg-[#090D16] p-1 rounded-xl border border-slate-700/80 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setModoPeriodo("DIA");
+                  if (selectedDia.startsWith("MES:")) {
+                    const mAlvo = selectedDia.replace("MES:", "");
+                    const dMatch = dias.find((d) => d.endsWith(mAlvo)) || dias[0] || "";
+                    setSelectedDia(dMatch);
+                  }
+                }}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                  modoPeriodo === "DIA"
+                    ? "bg-emerald-600 text-white shadow"
+                    : "text-slate-400 hover:text-white"
+                }`}
               >
-                {dias.map((d) => (
-                  <option key={d} value={d} className="bg-slate-900 text-white">
-                    {d}
-                  </option>
-                ))}
-              </select>
+                📅 Por Dia
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setModoPeriodo("MES");
+                  if (!selectedDia.startsWith("MES:")) {
+                    const mAtual = selectedDia.length === 10 ? selectedDia.slice(3, 10) : (meses[0] || "10/2026");
+                    setSelectedDia(`MES:${mAtual}`);
+                  }
+                }}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                  modoPeriodo === "MES"
+                    ? "bg-indigo-600 text-white shadow"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                🗓️ Por Mês
+              </button>
+            </div>
+
+            {/* Seletor de Data ou Mês */}
+            <div className="flex items-center gap-2 bg-[#131926] px-3 py-1.5 rounded-xl border border-slate-700/80 text-xs">
+              <Calendar className={`w-4 h-4 ${modoPeriodo === "MES" ? "text-indigo-400" : "text-emerald-400"}`} />
+              <span className="text-slate-400 hidden sm:inline">
+                {modoPeriodo === "MES" ? "Mês Consolidado:" : "Data da Coleta:"}
+              </span>
+              {modoPeriodo === "MES" ? (
+                <select
+                  value={selectedDia.startsWith("MES:") ? selectedDia : `MES:${meses[0] || "10/2026"}`}
+                  onChange={(e) => setSelectedDia(e.target.value)}
+                  className="bg-transparent text-indigo-300 font-bold focus:outline-none cursor-pointer"
+                >
+                  {meses.map((m) => {
+                    const nomesMes: Record<string, string> = {
+                      "01": "Janeiro", "02": "Fevereiro", "03": "Março", "04": "Abril",
+                      "05": "Maio", "06": "Junho", "07": "Julho", "08": "Agosto",
+                      "09": "Setembro", "10": "Outubro", "11": "Novembro", "12": "Dezembro"
+                    };
+                    const [mm, yyyy] = m.split("/");
+                    const labelMes = `${nomesMes[mm] || mm}/${yyyy} (${m})`;
+                    return (
+                      <option key={m} value={`MES:${m}`} className="bg-slate-900 text-white">
+                        📊 {labelMes}
+                      </option>
+                    );
+                  })}
+                </select>
+              ) : (
+                <select
+                  value={selectedDia}
+                  onChange={(e) => setSelectedDia(e.target.value)}
+                  className="bg-transparent text-white font-semibold focus:outline-none cursor-pointer"
+                >
+                  {dias.map((d) => (
+                    <option key={d} value={d} className="bg-slate-900 text-white">
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {/* Seletor de Regional */}

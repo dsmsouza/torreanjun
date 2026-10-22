@@ -269,10 +269,11 @@ export default function ConfigPage() {
     } catch { setClienteMapMsg({ text: "Erro de conexão.", type: "error" }); }
   };
 
-  // MD Mapping States
+  // MD Mapping States (Dicionário Completo da Malha Anjun: MINIDROP, HUB, PONTO DE REDE, PONTO DE APOIO)
   type MDMap = { 
     id: number; 
     md_codigo: string; 
+    tipo_ponto?: string;
     estado: string; 
     regional: string; 
     cidade?: string;
@@ -286,7 +287,7 @@ export default function ConfigPage() {
   const [mdMapLoading, setMdMapLoading] = useState(false);
   const [mdMapMsg, setMdMapMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [novoMdCodigo, setNovoMdCodigo] = useState("");
-  const [novoMdTipo, setNovoMdTipo] = useState("MD (Ponto de Coleta)");
+  const [novoMdTipo, setNovoMdTipo] = useState("MINIDROP");
   const [novoMdCidade, setNovoMdCidade] = useState("");
   const [novoMdEstado, setNovoMdEstado] = useState("");
   const [novoMdRegional, setNovoMdRegional] = useState("");
@@ -294,8 +295,11 @@ export default function ConfigPage() {
   const [novoMdLat, setNovoMdLat] = useState("");
   const [novoMdLng, setNovoMdLng] = useState("");
   const [editingMdId, setEditingMdId] = useState<number | null>(null);
+  const [editMdTipo, setEditMdTipo] = useState("MINIDROP");
+  const [editMdCidade, setEditMdCidade] = useState("");
   const [editMdEstado, setEditMdEstado] = useState("");
   const [editMdRegional, setEditMdRegional] = useState("");
+  const [mdTipoFiltro, setMdTipoFiltro] = useState<string>("TODOS");
   const [fileMdImport, setFileMdImport] = useState<File | null>(null);
   const [mdImporting, setMdImporting] = useState(false);
   const [mdSearchTerm, setMdSearchTerm] = useState("");
@@ -326,10 +330,11 @@ export default function ConfigPage() {
   };
 
   const handleAdicionarMd = async () => {
-    if (!novoMdCodigo.trim() || !novoMdEstado.trim() || !novoMdRegional.trim()) { setMdMapMsg({ text: "Preencha ao menos o Código, Estado e Regional do MD.", type: "error" }); return; }
+    if (!novoMdCodigo.trim() || !novoMdEstado.trim() || !novoMdRegional.trim()) { setMdMapMsg({ text: "Preencha ao menos o Código, Tipo, Estado e Regional da unidade.", type: "error" }); return; }
     try {
       const payload: any = {
         md_codigo: novoMdCodigo.trim(),
+        tipo_ponto: novoMdTipo,
         cidade: novoMdCidade.trim() || "Não Informada",
         estado: novoMdEstado.trim(),
         regional: novoMdRegional.trim(),
@@ -344,19 +349,20 @@ export default function ConfigPage() {
         body: JSON.stringify(payload)
       });
       const data = await res.json();
-      if (!res.ok) { setMdMapMsg({ text: data.detail || "Erro ao criar MD.", type: "error" }); return; }
+      if (!res.ok) { setMdMapMsg({ text: data.detail || "Erro ao criar unidade.", type: "error" }); return; }
       setMdMapMsg({ text: data.message, type: "success" });
-      setNovoMdCodigo(""); setNovoMdCidade(""); setNovoMdEstado(""); setNovoMdRegional(""); setNovoMdEndereco(""); setNovoMdLat(""); setNovoMdLng("");
+      setNovoMdCodigo(""); setNovoMdTipo("MINIDROP"); setNovoMdCidade(""); setNovoMdEstado(""); setNovoMdRegional(""); setNovoMdEndereco(""); setNovoMdLat(""); setNovoMdLng("");
       await carregarMdMappings();
     } catch { setMdMapMsg({ text: "Erro de conexão.", type: "error" }); }
   };
 
-  const handleAtualizarMd = async (id: number, estado: string, regional: string, cidade?: string, endereco?: string, lat?: number | null, lng?: number | null, ativo?: number) => {
+  const handleAtualizarMd = async (id: number, estado: string, regional: string, cidade?: string, endereco?: string, lat?: number | null, lng?: number | null, ativo?: number, tipoPonto?: string) => {
     try {
       const res = await fetch(`${API_URL}/api/config/md-mapping/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
+          tipo_ponto: tipoPonto || "MINIDROP",
           estado: estado.trim(), 
           regional: regional.trim(), 
           cidade: cidade?.trim(),
@@ -367,7 +373,7 @@ export default function ConfigPage() {
         })
       });
       const data = await res.json();
-      if (!res.ok) { setMdMapMsg({ text: data.detail || "Erro ao atualizar MD.", type: "error" }); return; }
+      if (!res.ok) { setMdMapMsg({ text: data.detail || "Erro ao atualizar unidade.", type: "error" }); return; }
       setMdMapMsg({ text: data.message, type: "success" });
       setEditingMdId(null);
       await carregarMdMappings();
@@ -1082,17 +1088,47 @@ export default function ConfigPage() {
         </p>
       </div>
 
-      {/* ─── Mapeamento de MDs ─────────────────────────────── */}
+      {/* ─── Dicionário Completo da Malha ANJUN (MINIDROP, HUB, PONTO DE REDE, PONTO DE APOIO) ─── */}
       <div className="glass-panel rounded-2xl border border-border p-6 space-y-5">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
               <MapPin className="w-5 h-5 text-blue-400" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">Dicionário de MDs (Pontos de Coleta)</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">Vincule os Códigos de Ponto (ex: PONTO 1) ao Estado e Regional correspondente.</p>
+              <h2 className="text-base font-bold text-white">Dicionário da Malha ANJUN (MDs, HUBs, Pontos de Rede e Apoio)</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Gerencie e edite todas as unidades da malha: classifique como <strong>MINIDROP</strong>, <strong>HUB</strong>, <strong>PONTO DE REDE</strong> ou <strong>PONTO DE APOIO</strong>.
+              </p>
             </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 bg-[#0C101B] p-1.5 rounded-xl border border-border">
+            {[
+              { id: "TODOS", label: "Todos", color: "blue" },
+              { id: "MINIDROP", label: "MINIDROP", color: "emerald" },
+              { id: "HUB", label: "HUB", color: "purple" },
+              { id: "PONTO DE REDE", label: "PONTO DE REDE", color: "cyan" },
+              { id: "PONTO DE APOIO", label: "PONTO DE APOIO", color: "amber" },
+            ].map((tab) => {
+              const count = tab.id === "TODOS"
+                ? mdMappings.length
+                : mdMappings.filter(m => (m.tipo_ponto || "MINIDROP").toUpperCase() === tab.id).length;
+              const active = mdTipoFiltro === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setMdTipoFiltro(tab.id)}
+                  className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                    active
+                      ? "bg-blue-600 text-white shadow"
+                      : "text-slate-400 hover:text-white hover:bg-slate-800"
+                  }`}
+                >
+                  {tab.label} ({count})
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -1108,7 +1144,7 @@ export default function ConfigPage() {
 
         <div className="bg-[#0C101B] border border-border rounded-xl p-4 space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Adicionar / Cadastrar Novo MD no Mapa</p>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Adicionar / Cadastrar Unidade na Malha ANJUN</p>
             <button
               type="button"
               onClick={handleGeocodeMd}
@@ -1120,14 +1156,27 @@ export default function ConfigPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
             <div>
-              <label className="block text-[10px] text-slate-500 mb-1">Ponto / MD *</label>
+              <label className="block text-[10px] text-slate-500 mb-1">Código / IATA *</label>
               <input
                 type="text" value={novoMdCodigo} onChange={e => setNovoMdCodigo(e.target.value)}
-                placeholder="ex: SP-W-MD099"
+                placeholder="ex: SP-W-MD099 ou SP-Z-H005"
                 className="w-full px-3 py-2 bg-[#131825] border border-border rounded-lg text-sm text-slate-200 focus:outline-none focus:border-blue-500/50 font-mono"
               />
+            </div>
+            <div>
+              <label className="block text-[10px] text-slate-500 mb-1">Tipo da Unidade *</label>
+              <select
+                value={novoMdTipo}
+                onChange={e => setNovoMdTipo(e.target.value)}
+                className="w-full px-3 py-2 bg-[#131825] border border-border rounded-lg text-sm text-white font-semibold focus:outline-none focus:border-blue-500/50 cursor-pointer"
+              >
+                <option value="MINIDROP">MINIDROP (MD)</option>
+                <option value="HUB">HUB</option>
+                <option value="PONTO DE REDE">PONTO DE REDE</option>
+                <option value="PONTO DE APOIO">PONTO DE APOIO</option>
+              </select>
             </div>
             <div>
               <label className="block text-[10px] text-slate-500 mb-1">Cidade</label>
@@ -1187,33 +1236,36 @@ export default function ConfigPage() {
             <label className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg transition-colors cursor-pointer border ${mdImporting ? 'bg-slate-800 text-slate-500 border-border cursor-not-allowed' : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-border'}`}>
               {mdImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
               Importar Planilha (.xlsx)
-              
+              <input type="file" accept=".xlsx,.xls" onChange={handleImportarMd} className="hidden" disabled={mdImporting} />
             </label>
 
             <button
               onClick={handleAdicionarMd}
-              className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-colors shadow-md shadow-blue-600/20"
+              className="flex items-center gap-1.5 px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-colors shadow-md shadow-blue-600/20 cursor-pointer"
             >
-              <Plus className="w-4 h-4" /> Adicionar e Plotar no Mapa
+              <Plus className="w-4 h-4" /> Adicionar e Sincronizar no Mapa
             </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 mb-2">
-          <Search className="w-4 h-4 text-slate-500" />
-          <input
-            type="text"
-            placeholder="Buscar por MD, Cidade ou Regional..."
-            value={mdSearchTerm}
-            onChange={e => setMdSearchTerm(e.target.value)}
-            className="w-full md:w-64 px-3 py-2 bg-[#0C101B] border border-border rounded-lg text-sm text-slate-200 focus:outline-none focus:border-blue-500/50"
-          />
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-2 flex-1">
+            <Search className="w-4 h-4 text-slate-500" />
+            <input
+              type="text"
+              placeholder="Buscar por código IATA, Cidade, Estado ou Tipo..."
+              value={mdSearchTerm}
+              onChange={e => setMdSearchTerm(e.target.value)}
+              className="w-full md:w-80 px-3 py-2 bg-[#0C101B] border border-border rounded-lg text-sm text-slate-200 focus:outline-none focus:border-blue-500/50"
+            />
+          </div>
         </div>
-        <div className="overflow-hidden rounded-xl border border-border max-h-96 overflow-y-auto custom-scrollbar">
+        <div className="overflow-hidden rounded-xl border border-border max-h-[460px] overflow-y-auto custom-scrollbar">
           <table className="w-full text-sm relative">
             <thead className="sticky top-0 bg-slate-900/90 backdrop-blur-sm z-10 shadow-sm">
               <tr className="bg-slate-900/60 border-b border-border">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider w-36">MD / Ponto</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider w-36">Código / IATA</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider w-44">Tipo na Malha</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Cidade / Estado</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Regional</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider w-32">Coordenadas</th>
@@ -1223,87 +1275,137 @@ export default function ConfigPage() {
             </thead>
             <tbody className="divide-y divide-border">
               {mdMapLoading ? (
-                <tr><td colSpan={6} className="text-center py-6 text-slate-500"><Loader2 className="w-5 h-5 animate-spin inline" /></td></tr>
-              ) : mdMappings.filter(m => m.md_codigo.toLowerCase().includes(mdSearchTerm.toLowerCase()) || m.regional.toLowerCase().includes(mdSearchTerm.toLowerCase()) || (m.cidade || '').toLowerCase().includes(mdSearchTerm.toLowerCase())).length === 0 ? (
-                <tr><td colSpan={6} className="text-center py-6 text-slate-500 text-xs">Nenhum MD encontrado.</td></tr>
-              ) : mdMappings.filter(m => m.md_codigo.toLowerCase().includes(mdSearchTerm.toLowerCase()) || m.regional.toLowerCase().includes(mdSearchTerm.toLowerCase()) || (m.cidade || '').toLowerCase().includes(mdSearchTerm.toLowerCase())).map(m => (
-                <tr key={m.id} className="hover:bg-slate-800/30 transition-colors">
-                  <td className="px-4 py-3 font-mono text-slate-300 text-xs font-semibold">{m.md_codigo}</td>
-                  <td className="px-4 py-3">
-                    {editingMdId === m.id ? (
-                      <div className="flex gap-1">
-                        <input
-                          type="text" value={editMdEstado} onChange={e => setEditMdEstado(e.target.value)}
-                          className="w-12 px-2 py-1 bg-[#0C101B] border border-blue-500/40 rounded text-xs text-white focus:outline-none uppercase"
-                          maxLength={2}
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-slate-300 text-xs">{m.cidade || 'Não Informada'} ({m.estado})</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {editingMdId === m.id ? (
-                      <input
-                        type="text" value={editMdRegional} onChange={e => setEditMdRegional(e.target.value)}
-                        className="w-full px-2 py-1 bg-[#0C101B] border border-blue-500/40 rounded text-xs text-white focus:outline-none uppercase"
-                      />
-                    ) : (
-                      <span className="text-white font-medium text-xs">{m.regional}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    {m.tem_coordenadas ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title={`Lat: ${m.latitude}, Lng: ${m.longitude}`}>
-                        📍 Map OK
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                        ⚠️ Sem Coords
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <button
-                      onClick={() => handleAtualizarMd(m.id, editingMdId === m.id ? editMdEstado : m.estado, editingMdId === m.id ? editMdRegional : m.regional, m.cidade, m.endereco, m.latitude, m.longitude, m.ativo === 1 ? 0 : 1)}
-                      title={m.ativo ? "Clique para desativar" : "Clique para ativar"}
-                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
-                        m.ativo ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30" : "bg-slate-700/50 text-slate-500 hover:bg-slate-700"
-                      }`}
-                    >
-                      {m.ativo ? <><ToggleRight className="w-3.5 h-3.5" /> Ativo</> : <><ToggleLeft className="w-3.5 h-3.5" /> Inativo</>}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-center gap-2">
-                      {editingMdId === m.id ? (
-                        <>
-                          <button onClick={() => handleAtualizarMd(m.id, editMdEstado, editMdRegional, m.cidade, m.endereco, m.latitude, m.longitude, m.ativo)} className="p-1.5 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 rounded-lg transition-colors" title="Salvar">
-                            <CheckCircle className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => setEditingMdId(null)} className="p-1.5 bg-slate-700/50 hover:bg-slate-700 text-slate-400 rounded-lg transition-colors" title="Cancelar">
-                            <X className="w-4 h-4" />
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button onClick={() => { setEditingMdId(m.id); setEditMdEstado(m.estado); setEditMdRegional(m.regional); }} className="p-1.5 bg-blue-600/10 hover:bg-blue-600/30 text-blue-400 rounded-lg transition-colors" title="Editar">
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleDeletarMd(m.id, m.md_codigo)} className="p-1.5 bg-red-500/10 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors" title="Remover">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                <tr><td colSpan={7} className="text-center py-6 text-slate-500"><Loader2 className="w-5 h-5 animate-spin inline" /></td></tr>
+              ) : (() => {
+                const filtered = mdMappings.filter(m => {
+                  const tNorm = (m.tipo_ponto || "MINIDROP").toUpperCase();
+                  if (mdTipoFiltro !== "TODOS" && tNorm !== mdTipoFiltro) return false;
+                  const q = mdSearchTerm.toLowerCase();
+                  if (!q) return true;
+                  return (
+                    m.md_codigo.toLowerCase().includes(q) ||
+                    m.regional.toLowerCase().includes(q) ||
+                    (m.cidade || "").toLowerCase().includes(q) ||
+                    tNorm.toLowerCase().includes(q)
+                  );
+                });
+                if (filtered.length === 0) {
+                  return <tr><td colSpan={7} className="text-center py-6 text-slate-500 text-xs">Nenhuma unidade encontrada para o filtro selecionado.</td></tr>;
+                }
+                return filtered.map(m => {
+                  const tipoAtual = (m.tipo_ponto || "MINIDROP").toUpperCase();
+                  const badgeStyle =
+                    tipoAtual === "HUB"
+                      ? "bg-purple-500/20 text-purple-300 border-purple-500/40"
+                      : tipoAtual === "PONTO DE APOIO"
+                      ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                      : tipoAtual === "PONTO DE REDE"
+                      ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/40"
+                      : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40";
+                  return (
+                    <tr key={m.id} className="hover:bg-slate-800/30 transition-colors">
+                      <td className="px-4 py-3 font-mono text-slate-200 text-xs font-bold">{m.md_codigo}</td>
+                      <td className="px-4 py-3">
+                        {editingMdId === m.id ? (
+                          <select
+                            value={editMdTipo}
+                            onChange={e => setEditMdTipo(e.target.value)}
+                            className="w-full px-2 py-1 bg-[#0C101B] border border-blue-500/50 rounded text-xs text-white font-semibold focus:outline-none cursor-pointer"
+                          >
+                            <option value="MINIDROP">MINIDROP</option>
+                            <option value="HUB">HUB</option>
+                            <option value="PONTO DE REDE">PONTO DE REDE</option>
+                            <option value="PONTO DE APOIO">PONTO DE APOIO</option>
+                          </select>
+                        ) : (
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${badgeStyle}`}>
+                            {tipoAtual}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {editingMdId === m.id ? (
+                          <div className="flex gap-1.5">
+                            <input
+                              type="text" value={editMdCidade} onChange={e => setEditMdCidade(e.target.value)}
+                              placeholder="Cidade"
+                              className="w-28 px-2 py-1 bg-[#0C101B] border border-blue-500/40 rounded text-xs text-white focus:outline-none"
+                            />
+                            <input
+                              type="text" value={editMdEstado} onChange={e => setEditMdEstado(e.target.value)}
+                              placeholder="UF"
+                              className="w-12 px-2 py-1 bg-[#0C101B] border border-blue-500/40 rounded text-xs text-white focus:outline-none uppercase"
+                              maxLength={2}
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-slate-300 text-xs">{m.cidade || "Não Informada"} ({m.estado})</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {editingMdId === m.id ? (
+                          <input
+                            type="text" value={editMdRegional} onChange={e => setEditMdRegional(e.target.value)}
+                            className="w-full px-2 py-1 bg-[#0C101B] border border-blue-500/40 rounded text-xs text-white focus:outline-none uppercase"
+                          />
+                        ) : (
+                          <span className="text-white font-medium text-xs">{m.regional}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {m.tem_coordenadas ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title={`Lat: ${m.latitude}, Lng: ${m.longitude}`}>
+                            📍 Map OK
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                            ⚠️ Sem Coords
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          onClick={() => handleAtualizarMd(m.id, editingMdId === m.id ? editMdEstado : m.estado, editingMdId === m.id ? editMdRegional : m.regional, editingMdId === m.id ? editMdCidade : m.cidade, m.endereco, m.latitude, m.longitude, m.ativo === 1 ? 0 : 1, editingMdId === m.id ? editMdTipo : tipoAtual)}
+                          title={m.ativo ? "Clique para desativar" : "Clique para ativar"}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
+                            m.ativo ? "bg-blue-500/20 text-blue-400 hover:bg-blue-500/30" : "bg-slate-700/50 text-slate-500 hover:bg-slate-700"
+                          }`}
+                        >
+                          {m.ativo ? <><ToggleRight className="w-3.5 h-3.5" /> Ativo</> : <><ToggleLeft className="w-3.5 h-3.5" /> Inativo</>}
+                        </button>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center gap-2">
+                          {editingMdId === m.id ? (
+                            <>
+                              <button onClick={() => handleAtualizarMd(m.id, editMdEstado, editMdRegional, editMdCidade, m.endereco, m.latitude, m.longitude, m.ativo, editMdTipo)} className="p-1.5 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 rounded-lg transition-colors cursor-pointer" title="Salvar">
+                                <CheckCircle className="w-4 h-4" />
+                              </button>
+                              <button onClick={() => setEditingMdId(null)} className="p-1.5 bg-slate-700/50 hover:bg-slate-700 text-slate-400 rounded-lg transition-colors cursor-pointer" title="Cancelar">
+                                <X className="w-4 h-4" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button onClick={() => { setEditingMdId(m.id); setEditMdTipo(tipoAtual); setEditMdCidade(m.cidade || ""); setEditMdEstado(m.estado); setEditMdRegional(m.regional); }} className="p-1.5 bg-blue-600/10 hover:bg-blue-600/30 text-blue-400 rounded-lg transition-colors cursor-pointer" title="Editar Tipo, Cidade, UF e Regional">
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button onClick={() => handleDeletarMd(m.id, m.md_codigo)} className="p-1.5 bg-red-500/10 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors cursor-pointer" title="Remover">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                });
+              })()}
             </tbody>
           </table>
         </div>
         <p className="text-[11px] text-slate-500">
-          💡 <strong className="text-slate-400">Regra de Negócio:</strong> MDs não mapeados ou marcados como inativos serão classificados na Regional <span className="text-slate-400">"OUTROS"</span> durante a ingestão do Radar Dropoff.
+          💡 <strong className="text-slate-400">Governança da Malha:</strong> Qualquer alteração no tipo da unidade (<strong>MINIDROP</strong>, <strong>HUB</strong>, <strong>PONTO DE REDE</strong> ou <strong>PONTO DE APOIO</strong>) reflete imediatamente na Central de Coletas e na segmentação de cores do Mapa da Malha.
         </p>
       </div>
 

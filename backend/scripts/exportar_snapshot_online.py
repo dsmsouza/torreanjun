@@ -3,7 +3,7 @@ r"""
 exportar_snapshot_online.py — Gerador de Snapshot Estático para o Dashboard Online (Vercel / Nuvem)
 Extrai os indicadores já consolidados do banco SQLite local (torre_anjun.db) e grava pacotes JSON
 otimizados em frontend/public/snapshot/ para carregamento instantâneo (< 0.5s) na nuvem.
-Agora exporta TODO o histórico do banco de dados de forma incremental e ultra rápida.
+Agora exporta TODO o histórico Diário e Mensal do banco de dados de forma incremental e ultra rápida.
 """
 
 import sys
@@ -73,7 +73,6 @@ def sincronizar_mapeamentos_banco(db):
                         )
                     except Exception:
                         pass
-        # Normalizações canônicas de marketplaces
         normalizacoes = [
             ("Shein", ["shein", "SHEIN"]),
             ("Shein D2D", ["sheind2d", "shein d2d", "SHEIND2D"]),
@@ -121,21 +120,21 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
 
     try:
         sincronizar_mapeamentos_banco(db)
-        print("\n📸 [1/4] Extraindo calendário operacional completo do banco local...")
+        print("\n📸 [1/5] Extraindo calendário operacional completo (Diário e Mensal) do banco local...")
         info_dias = get_dias_coletas(db=db)
         todos_dias = info_dias.get("dias", [])
+        meses_disp = info_dias.get("meses", [])
         dia_recente = info_dias.get("dia_recente") or (todos_dias[0] if todos_dias else "21/10/2026")
 
-        # Quais dias possuem dados detalhados em criacao_pedidos_historico
         rows_ped = db.execute(
             text("SELECT DISTINCT dia_base FROM criacao_pedidos_historico WHERE dia_base IS NOT NULL AND dia_base != '';")
         ).fetchall()
         dias_com_pedidos_set = {r[0] for r in rows_ped if r[0]}
 
-        # Exportamos todo o histórico (até max_dias) para que todas as datas apareçam no seletor online
         dias_exportar = todos_dias[:max_dias] if todos_dias else [dia_recente]
         info_dias_online = {
             "dias": dias_exportar,
+            "meses": meses_disp,
             "dia_recente": dia_recente,
             "atualizado_em": datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
             "modo": "snapshot_online",
@@ -143,12 +142,11 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
         bytes_totais += salvar_json("dias.json", info_dias_online)
         arquivos_gerados += 1
 
-        print(f"📊 [2/4] Exportando histórico completo ({len(dias_exportar)} datas, sendo {len(dias_com_pedidos_set)} com pedidos detalhados)...")
+        print(f"📊 [2/5] Exportando histórico Diário ({len(dias_exportar)} datas)...")
         for idx, d in enumerate(dias_exportar):
             safe_d = d.replace("/", "-")
             tem_pedidos = d in dias_com_pedidos_set
 
-            # Cache incremental: para datas históricas (idx >= 2) já geradas em disco, reutiliza os JSONs instantaneamente
             if not force_all and idx >= 2:
                 existe, b_exist = _arquivos_data_existem(safe_d)
                 if existe:
@@ -158,14 +156,12 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
 
             print(f"   -> Processando data {d} ({idx + 1}/{len(dias_exportar)}) [{'Completa' if tem_pedidos else 'Histórico MD'}]...")
 
-            # 1. Resumo Coletas
             resumo = get_resumo_coletas(dia=d, cliente=None, regional=None, db=db)
             bytes_totais += salvar_json(f"resumo_{safe_d}.json", resumo)
             arquivos_gerados += 1
             if idx == 0:
                 bytes_totais += salvar_json("resumo_latest.json", resumo)
 
-            # 2. Lista de MDs & HUBs
             mds = get_coletas_mds(dia=d, cliente=None, regional=None, search=None, filtro_tipo="todos", db=db)
             bytes_totais += salvar_json(f"mds_{safe_d}.json", mds)
             arquivos_gerados += 1
@@ -179,7 +175,6 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
                 bytes_totais += salvar_json("hubs_latest.json", hubs)
 
             if tem_pedidos:
-                # 3. Sellers (limite ampliado nas 5 datas mais recentes, compacto nas anteriores para manter repositório leve)
                 lim_sellers = 2000 if idx < 5 else 800
                 sellers = get_coletas_sellers(dia=d, cliente=None, regional=None, search=None, limit=lim_sellers, db=db)
                 bytes_totais += salvar_json(f"sellers_{safe_d}.json", sellers)
@@ -187,14 +182,12 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
                 if idx == 0:
                     bytes_totais += salvar_json("sellers_latest.json", sellers)
 
-                # 4. Horários
                 horarios = get_coletas_horarios(dia=d, md=None, db=db)
                 bytes_totais += salvar_json(f"horarios_{safe_d}.json", horarios)
                 arquivos_gerados += 1
                 if idx == 0:
                     bytes_totais += salvar_json("horarios_latest.json", horarios)
 
-                # 5. No Dia (D0 / Tempo Real)
                 no_dia = get_coletas_no_dia(
                     dia=d, regional="TODOS", tipo_ponto="TODOS", status_filtro="TODOS", search=None, db=db
                 )
@@ -206,7 +199,6 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
                 if idx == 0:
                     bytes_totais += salvar_json("no_dia_latest.json", no_dia)
 
-                # 6. D2D SP (Diário)
                 d2d_dia = get_d2d_sp_analise(periodo="DIA", dia=d, search=None, filtro_expansao="TODOS", db=db)
                 lim_cand = 120 if idx < 3 else 60
                 if "candidatos_expansao" in d2d_dia and isinstance(d2d_dia["candidatos_expansao"], list):
@@ -216,7 +208,6 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
                 if idx == 0:
                     bytes_totais += salvar_json("d2d_sp_DIA_latest.json", d2d_dia)
             else:
-                # Datas antigas que possuem apenas histórico de MDs (maio a julho):
                 bytes_totais += salvar_json(f"sellers_{safe_d}.json", {"dia": d, "total_sellers": 0, "sellers": []})
                 bytes_totais += salvar_json(
                     f"horarios_{safe_d}.json",
@@ -260,7 +251,6 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
                 )
                 arquivos_gerados += 4
 
-            # 7. Cockpit D-1 / Mapa da Malha (para as 3 datas mais recentes)
             if idx < 3:
                 cockpit = get_cockpit_d1(dia=d, db=db)
                 bytes_totais += salvar_json(f"cockpit_d1_{safe_d}.json", cockpit)
@@ -268,7 +258,31 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
                 if idx == 0:
                     bytes_totais += salvar_json("cockpit_d1_latest.json", cockpit)
 
-        print("🛣️ [3/4] Exportando visões agregadas Semanal e Mensal do D2D SP...")
+        print(f"🗓️ [3/5] Exportando Visão Mensal Consolidada ({len(meses_disp)} meses: {', '.join(meses_disp)})...")
+        for m_idx, mes_ano in enumerate(meses_disp):
+            dia_mes = f"MES:{mes_ano}"
+            safe_m = f"MES_{mes_ano.replace('/', '-')}"
+            # Cache para meses passados já gerados (exceto o mês mais recente m_idx == 0)
+            p_res_m = SNAPSHOT_DIR / f"resumo_{safe_m}.json"
+            if not force_all and m_idx >= 1 and p_res_m.exists() and p_res_m.stat().st_size > 0:
+                arquivos_reutilizados += 5
+                continue
+
+            print(f"   -> Consolidando Mês {mes_ano}...")
+            res_m = get_resumo_coletas(dia=dia_mes, cliente=None, regional=None, db=db)
+            mds_m = get_coletas_mds(dia=dia_mes, cliente=None, regional=None, search=None, filtro_tipo="todos", db=db)
+            hubs_m = get_coletas_mds(dia=dia_mes, cliente=None, regional=None, search=None, filtro_tipo="hubs", db=db)
+            sel_m = get_coletas_sellers(dia=dia_mes, cliente=None, regional=None, search=None, limit=1500, db=db)
+            hor_m = get_coletas_horarios(dia=dia_mes, md=None, db=db)
+
+            bytes_totais += salvar_json(f"resumo_{safe_m}.json", res_m)
+            bytes_totais += salvar_json(f"mds_{safe_m}.json", mds_m)
+            bytes_totais += salvar_json(f"hubs_{safe_m}.json", hubs_m)
+            bytes_totais += salvar_json(f"sellers_{safe_m}.json", sel_m)
+            bytes_totais += salvar_json(f"horarios_{safe_m}.json", hor_m)
+            arquivos_gerados += 5
+
+        print("🛣️ [4/5] Exportando visões agregadas Semanal e Mensal do D2D SP...")
         for per in ["SEMANA", "MES"]:
             d2d_per = get_d2d_sp_analise(periodo=per, dia=dia_recente, search=None, filtro_expansao="TODOS", db=db)
             if "candidatos_expansao" in d2d_per and isinstance(d2d_per["candidatos_expansao"], list):
@@ -276,7 +290,7 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
             bytes_totais += salvar_json(f"d2d_sp_{per}_latest.json", d2d_per)
             arquivos_gerados += 1
 
-        print("🚀 [4/4] Exportando dados de Implantação FM & Governança da Malha...")
+        print("🚀 [5/5] Exportando dados de Implantação FM & Governança da Malha...")
         bytes_totais += salvar_json("implantacao_stats.json", get_stats(db=db))
         bytes_totais += salvar_json(
             "implantacao_solicitacoes.json", list_solicitacoes(status=None, search=None, db=db)
