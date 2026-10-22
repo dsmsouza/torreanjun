@@ -1,9 +1,9 @@
 @echo off
 chcp 65001 > nul
-title Torre ANJUN - Reconciliação Retroativa & Carga de Status
+title Torre ANJUN - Reconciliacao Retroativa e Status do Mes
 
 echo ===============================================================================
-echo        TORRE DE CONTROLE ANJUN - RECONCILIAÇÃO RETROATIVA & STATUS DO MÊS
+echo        TORRE DE CONTROLE ANJUN - RECONCILIACAO RETROATIVA E STATUS DO MES
 echo ===============================================================================
 echo.
 

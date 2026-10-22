@@ -293,7 +293,7 @@ def reconciliar_planilha_otimizada_csv(
         return {"status": "vazio", "total_pacotes_lidos": 0, "csv_dia_proprio": caminho_csv}
 
     if callback_log:
-        callback_log(f"🔎 Auditando {total_lidos:,} códigos de barras contra todo o histórico do banco...")
+        callback_log(f"[INFO] Auditando {total_lidos:,} códigos de barras contra todo o histórico do banco...")
 
     # 2. Localizar pacotes já existentes (em qualquer data) — se houver duplicidade legada, vale o dia mais antigo
     raw_conn = db.connection().connection
@@ -454,13 +454,13 @@ def reconciliar_planilha_otimizada_csv(
 
     if callback_log:
         callback_log(
-            f"🔄 Reconciliação: {pacotes_novos:,} pacotes novos | {pacotes_atualizados:,} com status atualizado "
+            f"[OK] Reconciliacao: {pacotes_novos:,} pacotes novos | {pacotes_atualizados:,} com status atualizado "
             f"({pacotes_retroativos:,} em dias anteriores) | {pacotes_de_outros_dias:,} pertencem a outras datas "
             f"e NÃO somaram no volume de {dia_planilha}."
         )
         if dias_sem_base:
             callback_log(
-                f"ℹ️ Datas sem base pacote a pacote (totais não recalculados até re-subir a planilha delas): "
+                f"[INFO] Datas sem base pacote a pacote (totais não recalculados até re-subir a planilha delas): "
                 f"{', '.join(dias_sem_base[:10])}"
             )
 

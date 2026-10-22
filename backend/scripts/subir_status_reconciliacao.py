@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 r"""
-subir_status_reconciliacao.py — Carga Dedicada de Atualização de Status & Reconciliação do Mês.
+subir_status_reconciliacao.py — Carga Dedicada de Atualizacao de Status & Reconciliacao do Mes.
 
 Destaques:
-  - Aceita planilhas de corte por status (ex: só Circuito Fechado, só Backlog, ou corte do mês)
-  - Lê linha a linha a Coluna M (Tempo real para a coleta) e Coluna N (Data de conclusão)
+  - Aceita planilhas de corte por status (ex: so Circuito Fechado, so Backlog, ou corte do mes)
+  - Le linha a linha a Coluna M (Tempo real para a coleta) e Coluna N (Data de conclusao)
   - Atualiza o status de cada pacote no seu dia de coleta original SEM duplicar o volume
-  - Recalcula automaticamente os agregados diários afetados e atualiza a auditoria de aging
+  - Recalcula automaticamente os agregados diarios afetados e atualiza a auditoria de aging
   - Sincroniza o Dashboard Online (GitHub / Vercel)
 """
 
@@ -15,14 +15,26 @@ import os
 import re
 import time
 import datetime
+import builtins
 from pathlib import Path
 
-# Ajustar saída para UTF-8 sem travar no terminal do Windows
+# Ajustar saida para UTF-8 sem travar no terminal do Windows
 if hasattr(sys.stdout, "reconfigure"):
     try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
     except Exception:
         pass
+
+
+def safe_print(msg: str = ""):
+    try:
+        builtins.print(msg, flush=True)
+    except Exception:
+        try:
+            builtins.print(str(msg).encode("ascii", errors="replace").decode("ascii"), flush=True)
+        except Exception:
+            pass
+
 
 # Ajustar PYTHONPATH
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -32,15 +44,17 @@ sys.path.insert(0, str(BACKEND_DIR))
 
 try:
     from database.connection import SessionLocal
-    from services.otimizador_planilha import otimizar_planilha_operacional
+    from services.otimizador_planilha import processar_otimizacao_streaming
     from services.reconciliacao_pacotes import reconciliar_planilha_otimizada_csv
 except Exception as e:
-    print(f"\n[ERRO] Falha ao importar módulos do backend: {e}")
+    safe_print(f"\n[ERRO] Falha ao importar modulos do backend: {e}")
+    import traceback
+    traceback.print_exc()
     sys.exit(1)
 
 
 def localizar_planilha_downloads() -> Path | None:
-    """Busca a planilha de status/reconciliação mais recente na pasta Downloads ou planilhas_entrada."""
+    """Busca a planilha de status/reconciliacao mais recente na pasta Downloads ou planilhas_entrada."""
     pastas_busca = [
         ROOT_DIR,
         Path.home() / "Downloads",
@@ -54,6 +68,7 @@ def localizar_planilha_downloads() -> Path | None:
         "*coleta*.xlsx",
         "*saco*.xlsx",
         "*transito*.xlsx",
+        "*carregamento*.xlsx",
         "*Receber*ordens*.xlsx",
         "*receber*bin*detalhe*.xlsx",
         "*.xlsx",
@@ -80,12 +95,12 @@ def localizar_planilha_downloads() -> Path | None:
 
 
 def main():
-    print("=" * 80)
-    print("     TORRE DE CONTROLE ANJUN - RECONCILIAÇÃO RETROATIVA & CARGA DE STATUS")
-    print("=" * 80)
-    print("💡 Modelo dedicado para subir cortes de status do mês (Circuito Fechado, Backlog, etc.)")
-    print("   Cada pacote é vinculado à sua data da Coluna M sem duplicar o volume de coletas.")
-    print("=" * 80)
+    safe_print("=" * 80)
+    safe_print("     TORRE DE CONTROLE ANJUN - RECONCILIACAO RETROATIVA E CARGA DE STATUS")
+    safe_print("=" * 80)
+    safe_print("Dedicado para subir cortes de status do mes (Circuito Fechado, Backlog, etc.)")
+    safe_print("Cada pacote e vinculado a sua data da Coluna M sem duplicar o volume de coletas.")
+    safe_print("=" * 80)
 
     arquivos_alvo = []
     full_arg = " ".join(sys.argv[1:]).strip().strip('"')
@@ -101,14 +116,14 @@ def main():
                 arquivos_alvo.append(p)
 
     if not arquivos_alvo:
-        print("\n🔍 Procurando planilha de status recente na pasta Downloads...")
+        safe_print("\nProcurando planilha de status recente na pasta Downloads ou raiz...")
         encontrado = localizar_planilha_downloads()
         if encontrado:
             arquivos_alvo.append(encontrado)
 
     if not arquivos_alvo:
-        print("\n❌ Nenhuma planilha operacional (.xlsx ou .csv) encontrada na pasta Downloads!")
-        print("💡 Dica: Você pode arrastar o arquivo .xlsx diretamente para cima do 'subir_status_reconciliacao.bat'.")
+        safe_print("\n[AVISO] Nenhuma planilha operacional (.xlsx ou .csv) encontrada!")
+        safe_print("Dica: Voce pode arrastar o arquivo .xlsx diretamente para cima do subir_status_reconciliacao.bat.")
         return 1
 
     hoje_str = datetime.date.today().strftime("%d/%m/%Y")
@@ -121,12 +136,12 @@ def main():
         tam_mb = round(arquivo_alvo.stat().st_size / (1024 * 1024), 2)
         mtime_dt = datetime.datetime.fromtimestamp(arquivo_alvo.stat().st_mtime).strftime("%d/%m/%Y %H:%M:%S")
 
-        print("\n" + "-" * 80)
-        print(f"📁 [{idx}/{len(arquivos_alvo)}] Processando Planilha de Status:")
-        print(f"   Nome: {arquivo_alvo.name}")
-        print(f"   Tamanho: {tam_mb} MB")
-        print(f"   Modificado em: {mtime_dt}")
-        print("-" * 80)
+        safe_print("\n" + "-" * 80)
+        safe_print(f"[{idx}/{len(arquivos_alvo)}] Processando Planilha de Status:")
+        safe_print(f"   Nome: {arquivo_alvo.name}")
+        safe_print(f"   Tamanho: {tam_mb} MB")
+        safe_print(f"   Modificado em: {mtime_dt}")
+        safe_print("-" * 80)
 
         t_inicio = time.time()
         caminho_csv = ""
@@ -134,78 +149,80 @@ def main():
         if arquivo_alvo.suffix.lower() == ".csv":
             caminho_csv = str(arquivo_alvo)
         else:
-            print("\n⚡ [1/3] Otimizando planilha para extração ultrarrápida (Coluna M e Coluna N)...")
+            safe_print("\n[1/3] Otimizando planilha para extracao ultrarrapida (Coluna M e Coluna N)...")
             try:
-                res_otim = otimizar_planilha_operacional(
-                    caminho_arquivo=str(arquivo_alvo),
+                job_id = f"rec_{int(time.time())}"
+                res_otim = processar_otimizacao_streaming(
+                    caminho_entrada=str(arquivo_alvo),
                     diretorio_saida=str(pasta_temp),
-                    chunk_size=50000
+                    job_id=job_id,
+                    modo="no_dia"
                 )
                 caminho_csv = os.path.join(str(pasta_temp), res_otim["arquivo_csv"])
-                print(f"   -> Otimizado com sucesso: {res_otim['total_linhas_processadas']:,} linhas detectadas.")
+                safe_print(f"   -> Otimizado com sucesso: {res_otim.get('linhas_totais', 0):,} linhas detectadas.")
             except Exception as e_otim:
-                print(f"   [AVISO] Otimizador padrão falhou ({e_otim}). Tentando leitura direta...")
+                safe_print(f"   [AVISO] Otimizador padrao falhou ({e_otim}). Tentando leitura direta...")
                 caminho_csv = str(arquivo_alvo)
 
-        print("\n🔄 [2/3] Auditando códigos de barras e reconciliando status contra o histórico...")
+        safe_print("\n[2/3] Auditando codigos de barras e reconciliando status contra o historico...")
         try:
             res_rec = reconciliar_planilha_otimizada_csv(
                 db=db,
                 caminho_csv=caminho_csv,
                 dia_planilha=hoje_str,
                 semana_planilha="SEMANA ATUAL",
-                callback_log=lambda m: print(f"   -> {m}")
+                callback_log=lambda m: safe_print(f"   -> {m}")
             )
         except Exception as e_rec:
-            print(f"\n❌ Erro durante a reconciliação: {e_rec}")
+            safe_print(f"\n[ERRO] Erro durante a reconciliacao: {e_rec}")
             import traceback
             traceback.print_exc()
             continue
 
         tempo_proc = round(time.time() - t_inicio, 1)
 
-        print("\n" + "=" * 80)
-        print("     🎉 RECONCILIAÇÃO DE STATUS CONCLUÍDA COM SUCESSO!")
-        print("=" * 80)
-        print(f"📦 Total de Pacotes Auditados na Planilha: {res_rec.get('total_pacotes_lidos', 0):,}")
-        print(f"🔄 Pacotes com Status Atualizado: {res_rec.get('pacotes_atualizados_status', 0):,}")
-        print(f"📅 Pacotes Atualizados em Dias Anteriores: {res_rec.get('pacotes_retroativos_outros_dias', 0):,}")
-        print(f"🆕 Pacotes Novos (Inseridos na data da Col. M): {res_rec.get('pacotes_novos', 0):,}")
-        print(f"🛡️ Pacotes de Outras Datas (NÃO duplicaram hoje): {res_rec.get('pacotes_de_outros_dias', 0):,}")
+        safe_print("\n" + "=" * 80)
+        safe_print("     RECONCILIACAO DE STATUS CONCLUIDA COM SUCESSO!")
+        safe_print("=" * 80)
+        safe_print(f"Total de Pacotes Auditados na Planilha: {res_rec.get('total_pacotes_lidos', 0):,}")
+        safe_print(f"Pacotes com Status Atualizado: {res_rec.get('pacotes_atualizados_status', 0):,}")
+        safe_print(f"Pacotes Atualizados em Dias Anteriores: {res_rec.get('pacotes_retroativos_outros_dias', 0):,}")
+        safe_print(f"Pacotes Novos (Inseridos na data da Col. M): {res_rec.get('pacotes_novos', 0):,}")
+        safe_print(f"Pacotes de Outras Datas (NAO duplicaram hoje): {res_rec.get('pacotes_de_outros_dias', 0):,}")
         
         dias_rec = res_rec.get("dias_recalculados", [])
         if dias_rec:
-            print(f"📊 Datas que tiveram seus totais recalculados automaticamente: {', '.join(dias_rec)}")
+            safe_print(f"Datas recalculadas automaticamente: {', '.join(dias_rec)}")
 
         trans = res_rec.get("transicoes", {})
         if trans:
-            print("\n📈 Principais Transições de Status Registradas:")
+            safe_print("\nPrincipais Transicoes de Status Registradas:")
             for k, v in sorted(trans.items(), key=lambda x: x[1], reverse=True)[:8]:
-                print(f"   • {k}: {v:,} pacotes")
+                safe_print(f"   * {k}: {v:,} pacotes")
 
-        print(f"\n⏱️ Tempo de Processamento: {tempo_proc}s")
-        print("=" * 80)
+        safe_print(f"\nTempo de Processamento: {tempo_proc}s")
+        safe_print("=" * 80)
 
     db.close()
 
-    print("\n☁️ [3/3] Sincronizando dados com o Dashboard Online (GitHub / Vercel)...")
+    safe_print("\n[3/3] Sincronizando dados com o Dashboard Online (GitHub / Vercel)...")
     try:
         from scripts.exportar_snapshot_online import gerar_snapshots, publicar_github
         gerar_snapshots(max_dias=5)
         publicar_github()
-        print("🎉 Dashboard Online e Aba 6 (Reconciliação) 100% atualizados na nuvem!")
+        safe_print("Dashboard Online e Aba 6 (Reconciliacao) atualizados na nuvem!")
     except Exception as e_pub:
-        print(f"⚠️ Aviso na publicação online: {e_pub}")
+        safe_print(f"[AVISO] Publicacao online em segundo plano: {e_pub}")
 
-    print("\n💡 Pronto! Os pacotes atualizados já estão visíveis na Aba 6 e nos cards regionais.")
+    safe_print("\nPronto! Os pacotes atualizados ja estao visiveis na Aba 6 e nos cards regionais.")
     return 0
 
 
 if __name__ == "__main__":
     cod = main()
-    print("\nPressione ENTER para fechar esta janela...")
-    try:
-        input()
-    except Exception:
-        pass
+    if sys.stdin and hasattr(sys.stdin, "isatty") and sys.stdin.isatty():
+        try:
+            input("\nPressione ENTER para fechar esta janela...")
+        except Exception:
+            pass
     sys.exit(cod)
