@@ -41,11 +41,14 @@ import {
   fetchSellersColetas,
   fetchHorariosColetas,
   fetchClienteDetalhes,
+  fetchEventosDia,
+  criarNotaDiarioBordo,
+  removerNotaDiarioBordo,
   cadastrarPontoColeta,
   otimizarPlanilha
 } from "@/lib/api";
 
-type TabType = "visao_geral" | "mds" | "sellers" | "horarios";
+type TabType = "visao_geral" | "mds" | "sellers" | "horarios" | "eventos";
 
 export default function CentralColetasPage() {
   const [loading, setLoading] = useState(true);
@@ -75,6 +78,22 @@ export default function CentralColetasPage() {
   const [horariosData, setHorariosData] = useState<any>(null);
   const [loadingHorarios, setLoadingHorarios] = useState(false);
   const [selectedMdHorario, setSelectedMdHorario] = useState<string>("");
+
+  // Aba 5: Linha do Tempo & Eventos do Dia
+  const [eventosData, setEventosData] = useState<any>(null);
+  const [loadingEventos, setLoadingEventos] = useState(false);
+  const [subAbaEventos, setSubAbaEventos] = useState<"catalogo" | "timeline">("catalogo");
+  const [buscaCatalogoEventos, setBuscaCatalogoEventos] = useState<string>("");
+  const [filtroTipoCatalogo, setFiltroTipoCatalogo] = useState<string>("TODOS");
+  const [filtroDataEstreiaCatalogo, setFiltroDataEstreiaCatalogo] = useState<string>("");
+  const [isLocalOffline, setIsLocalOffline] = useState<boolean>(false);
+  const [salvandoNota, setSalvandoNota] = useState<boolean>(false);
+  const [novaNota, setNovaNota] = useState({
+    categoria: "ESTREIA_PONTO",
+    ponto_codigo: "",
+    titulo: "",
+    descricao: "",
+  });
 
   // Modal de Cadastro Completo de Ponto / HUB / Galpão
   const [modalCadastroOpen, setModalCadastroOpen] = useState(false);
@@ -228,6 +247,62 @@ export default function CentralColetasPage() {
       console.warn("Aviso ao carregar horários:", err);
     } finally {
       setLoadingHorarios(false);
+    }
+  };
+
+  // 6. Carrega Aba de Linha do Tempo & Eventos
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const h = window.location.hostname || "";
+      setIsLocalOffline(h === "localhost" || h === "127.0.0.1");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "eventos" && selectedDia) {
+      carregarEventos();
+    }
+  }, [activeTab, selectedDia]);
+
+  const carregarEventos = async () => {
+    setLoadingEventos(true);
+    try {
+      const data = await fetchEventosDia(selectedDia);
+      setEventosData(data);
+    } catch (err) {
+      console.warn("Aviso ao carregar eventos do dia:", err);
+    } finally {
+      setLoadingEventos(false);
+    }
+  };
+
+  const handleSalvarNotaDiario = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!novaNota.titulo.trim()) return;
+    setSalvandoNota(true);
+    try {
+      await criarNotaDiarioBordo({
+        dia_base: selectedDia,
+        categoria: novaNota.categoria,
+        ponto_codigo: novaNota.ponto_codigo,
+        titulo: novaNota.titulo,
+        descricao: novaNota.descricao,
+      });
+      setNovaNota({ categoria: "OPERACIONAL", ponto_codigo: "", titulo: "", descricao: "" });
+      await carregarEventos();
+    } catch (err) {
+      console.warn("Erro ao salvar nota:", err);
+    } finally {
+      setSalvandoNota(false);
+    }
+  };
+
+  const handleRemoverNotaDiario = async (id: number) => {
+    try {
+      await removerNotaDiarioBordo(id);
+      await carregarEventos();
+    } catch (err) {
+      console.warn("Erro ao excluir nota:", err);
     }
   };
 
@@ -724,6 +799,21 @@ export default function CentralColetasPage() {
               4. Horários de Bipagem (Coluna M)
               <span className="px-1.5 py-0.2 bg-amber-500/20 text-amber-300 text-[10px] rounded font-mono">
                 Picos & Rota
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("eventos")}
+              className={`px-4 py-2.5 text-xs font-semibold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
+                activeTab === "eventos"
+                  ? "border-emerald-500 text-white"
+                  : "border-transparent text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Calendar className="w-4 h-4 text-fuchsia-400" />
+              5. Linha do Tempo & Eventos do Dia
+              <span className="px-1.5 py-0.2 bg-fuchsia-500/20 text-fuchsia-300 text-[10px] rounded font-mono">
+                1º Bip & Diário
               </span>
             </button>
           </div>
@@ -1833,6 +1923,603 @@ export default function CentralColetasPage() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* ============================================================ */}
+          {/* ABA 5: LINHA DO TEMPO & EVENTOS DO DIA (1º PACOTE BIPADO) */}
+          {/* ============================================================ */}
+          {activeTab === "eventos" && (
+            <div className="space-y-6">
+              {/* Cabeçalho Contextual da Data / Mês */}
+              <div className="p-5 rounded-2xl bg-gradient-to-r from-fuchsia-950/30 via-[#131926] to-[#131926] border border-fuchsia-500/30 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="flex items-start gap-3.5">
+                  <div className="w-11 h-11 rounded-xl bg-fuchsia-500/20 border border-fuchsia-500/40 flex items-center justify-center text-fuchsia-300 shrink-0">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/40">
+                        Memória Operacional da Malha Anjun
+                      </span>
+                      <span className="text-xs font-mono text-slate-400">
+                        • {eventosData?.total_pontos_historico || 0} unidades mapeadas em {eventosData?.total_dias_historico || 0} dias de histórico
+                      </span>
+                    </div>
+                    <h3 className="text-base md:text-lg font-bold text-white mt-1">
+                      O que aconteceu em{" "}
+                      <span className="text-fuchsia-400 underline font-mono">
+                        {selectedDia?.startsWith("MES:") ? `Mês ${selectedDia.slice(4)}` : selectedDia}
+                      </span>
+                      ?
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-0.5">
+                      Rastreie exatamente quando cada MD, HUB, Ponto de Apoio ou Ponto de Rede bipou seu <strong>1º pacote na história</strong>, quais clientes/sellers estrearam e quais unidades pararam de bipar no dia.
+                    </p>
+                  </div>
+                </div>
+
+                {/* KPIs Rápidos dos Eventos do Dia */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 shrink-0">
+                  <div className="px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-amber-500/30">
+                    <span className="text-[10px] text-amber-300 font-semibold block">🌟 1º Pacote na História</span>
+                    <span className="text-lg font-extrabold text-amber-400 font-mono">
+                      {eventosData?.eventos_dia?.estreias_pontos?.length || 0} pts
+                    </span>
+                  </div>
+                  <div className="px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-rose-500/30">
+                    <span className="text-[10px] text-rose-300 font-semibold block">⚠️ Pararam Hoje</span>
+                    <span className="text-lg font-extrabold text-rose-400 font-mono">
+                      {eventosData?.eventos_dia?.qtd_pontos_pararam || 0} pts
+                    </span>
+                  </div>
+                  <div className="px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-cyan-500/30">
+                    <span className="text-[10px] text-cyan-300 font-semibold block">🔄 Retornaram Hoje</span>
+                    <span className="text-lg font-extrabold text-cyan-400 font-mono">
+                      {eventosData?.eventos_dia?.qtd_pontos_retornaram || 0} pts
+                    </span>
+                  </div>
+                  <div className="px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-emerald-500/30">
+                    <span className="text-[10px] text-emerald-300 font-semibold block">🆕 Novos Sellers</span>
+                    <span className="text-lg font-extrabold text-emerald-400 font-mono">
+                      {eventosData?.eventos_dia?.qtd_estreias_sellers || 0}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {loadingEventos ? (
+                <div className="py-16 text-center text-slate-400 flex flex-col items-center justify-center gap-3">
+                  <RefreshCw className="w-7 h-7 animate-spin text-fuchsia-400" />
+                  <span className="text-xs">Consultando eventos e linha do tempo operacional...</span>
+                </div>
+              ) : (
+                <>
+                  {/* GRID DOS 3 BLOCOS DE ACONTECIMENTOS DO DIA SELECIONADO */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    {/* BLOCO 1: ESTREIA DE PONTOS (1º PACOTE BIPADO) */}
+                    <div className="p-4 rounded-xl bg-[#131926]/95 border border-amber-500/30 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                          <div>
+                            <h4 className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                              <Sparkles className="w-4 h-4 text-amber-400" />
+                              Estreias de Pontos (1º Pacote Bipado)
+                            </h4>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              Unidades que iniciaram operação em {selectedDia?.startsWith("MES:") ? selectedDia.slice(4) : selectedDia}
+                            </p>
+                          </div>
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                            {eventosData?.eventos_dia?.estreias_pontos?.length || 0}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 max-h-64 overflow-y-auto space-y-2 pr-1">
+                          {(eventosData?.eventos_dia?.estreias_pontos || []).length === 0 ? (
+                            <div className="py-8 text-center text-xs text-slate-500">
+                              Nenhum ponto estreou seu 1º pacote exatamente nesta data. Veja abaixo na Linha do Tempo todas as datas com inaugurações!
+                            </div>
+                          ) : (
+                            (eventosData?.eventos_dia?.estreias_pontos || []).map((pt: any, idx: number) => (
+                              <div
+                                key={pt.md_codigo + idx}
+                                className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 hover:border-amber-500/40 flex items-center justify-between gap-2 transition-colors"
+                              >
+                                <div>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-mono font-bold text-xs text-white">{pt.md_codigo}</span>
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                      {pt.tipo_ponto}
+                                    </span>
+                                    {pt.dia_estreia && selectedDia?.startsWith("MES:") && (
+                                      <span className="text-[10px] font-mono text-slate-400">• {pt.dia_estreia}</span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 mt-0.5">
+                                    {pt.cidade} / {pt.estado}
+                                  </p>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <span className="text-xs font-mono font-extrabold text-amber-400 block">
+                                    {(pt.volume_estreia || 0).toLocaleString("pt-BR")} pcts
+                                  </span>
+                                  <span className="text-[10px] text-slate-500">no 1º dia</span>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* BLOCO 2: PONTOS QUE PARARAM HOJE OU RETORNARAM */}
+                    <div className="p-4 rounded-xl bg-[#131926]/95 border border-rose-500/30 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                          <div>
+                            <h4 className="text-xs font-bold text-rose-300 uppercase tracking-wider flex items-center gap-1.5">
+                              <AlertTriangle className="w-4 h-4 text-rose-400" />
+                              Paradas Súbitas no Dia
+                            </h4>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              Biparam no dia anterior ({eventosData?.eventos_dia?.dia_anterior || "anterior"}) e zeraram hoje
+                            </p>
+                          </div>
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                            {eventosData?.eventos_dia?.qtd_pontos_pararam || 0}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 max-h-64 overflow-y-auto space-y-2 pr-1">
+                          {(eventosData?.eventos_dia?.pontos_pararam || []).length === 0 ? (
+                            <div className="py-8 text-center text-xs text-slate-500">
+                              Nenhuma parada súbita registrada para este período.
+                            </div>
+                          ) : (
+                            (eventosData?.eventos_dia?.pontos_pararam || []).map((pt: any, idx: number) => (
+                              <div
+                                key={pt.md_codigo + idx}
+                                className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between gap-2"
+                              >
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-mono font-bold text-xs text-white">{pt.md_codigo}</span>
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-800 text-slate-300">
+                                      {pt.tipo_ponto}
+                                    </span>
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 mt-0.5">
+                                    {pt.cidade} / {pt.estado}
+                                  </p>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <span className="text-xs font-mono font-bold text-rose-400 block">
+                                    0 hoje
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    Ontem: {(pt.volume_dia_anterior || 0).toLocaleString("pt-BR")} pcts
+                                  </span>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* BLOCO 3: NOVOS CLIENTES, SELLERS & DIÁRIO DE BORDO */}
+                    <div className="p-4 rounded-xl bg-[#131926]/95 border border-emerald-500/30 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                          <div>
+                            <h4 className="text-xs font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+                              <Building2 className="w-4 h-4 text-emerald-400" />
+                              Estreias de Clientes & Sellers
+                            </h4>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              Embarcadores que operaram pela 1ª vez na data
+                            </p>
+                          </div>
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                            {(eventosData?.eventos_dia?.estreias_clientes?.length || 0) +
+                              (eventosData?.eventos_dia?.qtd_estreias_sellers || 0)}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 max-h-64 overflow-y-auto space-y-2 pr-1">
+                          {(eventosData?.eventos_dia?.estreias_clientes || []).map((c: any, idx: number) => (
+                            <div
+                              key={"cli-" + idx}
+                              className="p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-500/40 flex items-center justify-between gap-2"
+                            >
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase bg-emerald-500/20 text-emerald-300">
+                                    NOVO CLIENTE
+                                  </span>
+                                  <span className="font-bold text-xs text-white">{c.cliente}</span>
+                                </div>
+                                <p className="text-[10px] text-slate-400 mt-0.5">
+                                  Operou em {c.qtd_pontos} unidade(s) {c.dia_estreia ? `• ${c.dia_estreia}` : ""}
+                                </p>
+                              </div>
+                              <span className="text-xs font-mono font-extrabold text-emerald-400">
+                                {(c.volume_estreia || 0).toLocaleString("pt-BR")} pcts
+                              </span>
+                            </div>
+                          ))}
+
+                          {(eventosData?.eventos_dia?.estreias_sellers || []).map((s: any, idx: number) => (
+                            <div
+                              key={"sel-" + idx}
+                              className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between gap-2"
+                            >
+                              <div className="min-w-0">
+                                <p className="font-semibold text-xs text-white truncate" title={s.merchant_nome}>
+                                  {s.merchant_nome}
+                                </p>
+                                <p className="text-[10px] text-slate-400 font-mono truncate">
+                                  {s.ponto_colecao} • {s.cliente} {s.dia_estreia && selectedDia?.startsWith("MES:") ? `(${s.dia_estreia})` : ""}
+                                </p>
+                              </div>
+                              <span className="text-xs font-mono font-bold text-cyan-300 shrink-0">
+                                {(s.volume_estreia || 0).toLocaleString("pt-BR")} pcts
+                              </span>
+                            </div>
+                          ))}
+
+                          {(eventosData?.eventos_dia?.estreias_clientes || []).length === 0 &&
+                            (eventosData?.eventos_dia?.estreias_sellers || []).length === 0 && (
+                              <div className="py-8 text-center text-xs text-slate-500">
+                                Nenhum novo cliente ou seller estreou nesta data.
+                              </div>
+                            )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* DIÁRIO DE BORDO OPERACIONAL (NOTAS MANUAIS DA DATA) */}
+                  {(isLocalOffline || (eventosData?.eventos_dia?.notas_manuais || []).length > 0) && (
+                    <div className="p-5 rounded-xl bg-[#131926]/90 border border-slate-800 space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                        <div>
+                          <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                            📝 Diário de Bordo Operacional ({selectedDia})
+                          </h4>
+                          <p className="text-xs text-slate-400">
+                            Registros e observações operacionais anotados para esta data (ex: inauguração de rota, ocorrência em MD, mudança de janela).
+                          </p>
+                        </div>
+                      </div>
+
+                      {(eventosData?.eventos_dia?.notas_manuais || []).length > 0 && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {(eventosData?.eventos_dia?.notas_manuais || []).map((n: any) => (
+                            <div
+                              key={n.id}
+                              className="p-3.5 rounded-xl bg-slate-900/90 border border-fuchsia-500/30 flex items-start justify-between gap-3"
+                            >
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-fuchsia-500/20 text-fuchsia-300">
+                                    {n.categoria}
+                                  </span>
+                                  {n.ponto_codigo && (
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-cyan-300">
+                                      {n.ponto_codigo}
+                                    </span>
+                                  )}
+                                  <span className="text-[11px] font-mono text-slate-400">{n.dia_base}</span>
+                                </div>
+                                <p className="text-xs font-bold text-white">{n.titulo}</p>
+                                {n.descricao && <p className="text-xs text-slate-300">{n.descricao}</p>}
+                              </div>
+                              {isLocalOffline && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoverNotaDiario(n.id)}
+                                  className="text-slate-500 hover:text-rose-400 p-1 cursor-pointer"
+                                  title="Remover anotação"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {isLocalOffline && (
+                        <form onSubmit={handleSalvarNotaDiario} className="grid grid-cols-1 md:grid-cols-12 gap-2.5 pt-1 text-xs">
+                          <select
+                            value={novaNota.categoria}
+                            onChange={(e) => setNovaNota({ ...novaNota, categoria: e.target.value })}
+                            className="md:col-span-2 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-2 text-white"
+                          >
+                            <option value="OPERACIONAL">📌 Operacional</option>
+                            <option value="ESTREIA_PONTO">🌟 Estreia Ponto</option>
+                            <option value="ROTA_TRANSPORTE">🚛 Rota / Frota</option>
+                            <option value="OCORRENCIA">⚠️ Ocorrência</option>
+                          </select>
+                          <input
+                            type="text"
+                            value={novaNota.ponto_codigo}
+                            onChange={(e) => setNovaNota({ ...novaNota, ponto_codigo: e.target.value.toUpperCase() })}
+                            placeholder="Código MD/HUB (opcional)"
+                            className="md:col-span-2 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono"
+                          />
+                          <input
+                            type="text"
+                            required
+                            value={novaNota.titulo}
+                            onChange={(e) => setNovaNota({ ...novaNota, titulo: e.target.value })}
+                            placeholder="Título do acontecimento (ex: Primeiro carregamento rota ABC)"
+                            className="md:col-span-3 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white"
+                          />
+                          <input
+                            type="text"
+                            value={novaNota.descricao}
+                            onChange={(e) => setNovaNota({ ...novaNota, descricao: e.target.value })}
+                            placeholder="Detalhes adicionais..."
+                            className="md:col-span-3 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white"
+                          />
+                          <button
+                            type="submit"
+                            disabled={salvandoNota}
+                            className="md:col-span-2 bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold rounded-lg px-3 py-2 flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                          >
+                            <Plus className="w-4 h-4" />
+                            {salvandoNota ? "Salvando..." : "Registrar no Dia"}
+                          </button>
+                        </form>
+                      )}
+                    </div>
+                  )}
+
+                  {/* SELETOR INFERIOR: CATÁLOGO DE 1º BIP DE CADA PONTO vs LINHA DO TEMPO DIA A DIA */}
+                  <div className="p-5 rounded-xl bg-[#131926]/90 border border-slate-800 space-y-4">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                      <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-xl border border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => setSubAbaEventos("catalogo")}
+                          className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            subAbaEventos === "catalogo"
+                              ? "bg-fuchsia-600 text-white shadow"
+                              : "text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          🏅 Catálogo de Estreia por Ponto ({eventosData?.catalogo_pontos?.length || 0} Unidades)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSubAbaEventos("timeline")}
+                          className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            subAbaEventos === "timeline"
+                              ? "bg-fuchsia-600 text-white shadow"
+                              : "text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          🗓️ Linha do Tempo Dia a Dia ({eventosData?.linha_do_tempo?.length || 0} Datas)
+                        </button>
+                      </div>
+
+                      {subAbaEventos === "catalogo" && (
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <select
+                            value={filtroTipoCatalogo}
+                            onChange={(e) => setFiltroTipoCatalogo(e.target.value)}
+                            className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white cursor-pointer"
+                          >
+                            <option value="TODOS">Tipo: Todos ({eventosData?.catalogo_pontos?.length || 0})</option>
+                            <option value="MINIDROP">🏪 MINIDROP (MD)</option>
+                            <option value="HUB">🏭 HUB ANJUN</option>
+                            <option value="PONTO DE APOIO">📍 PONTO DE APOIO</option>
+                            <option value="PONTO DE REDE">🌐 PONTO DE REDE</option>
+                          </select>
+
+                          <select
+                            value={filtroDataEstreiaCatalogo}
+                            onChange={(e) => setFiltroDataEstreiaCatalogo(e.target.value)}
+                            className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white cursor-pointer"
+                          >
+                            <option value="">Data do 1º Pacote: Todas</option>
+                            {Array.from(
+                              new Set((eventosData?.catalogo_pontos || []).map((p: any) => p.data_primeiro_pacote))
+                            ).map((dt: any) => (
+                              <option key={dt} value={dt}>
+                                Estreou em {dt}
+                              </option>
+                            ))}
+                          </select>
+
+                          <div className="relative">
+                            <Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-slate-400" />
+                            <input
+                              type="text"
+                              value={buscaCatalogoEventos}
+                              onChange={(e) => setBuscaCatalogoEventos(e.target.value)}
+                              placeholder="Buscar código MD/HUB, cidade, UF..."
+                              className="bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-white placeholder-slate-500 w-64 focus:outline-none focus:border-fuchsia-500"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {subAbaEventos === "catalogo" ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-slate-800 text-slate-400 bg-slate-900/60">
+                              <th className="py-2.5 px-3">Unidade / IATA</th>
+                              <th className="py-2.5 px-3">Tipo na Malha</th>
+                              <th className="py-2.5 px-3">Cidade / UF</th>
+                              <th className="py-2.5 px-3">📅 Data do 1º Pacote Bipado</th>
+                              <th className="py-2.5 px-3 text-right">Vol. 1º Dia</th>
+                              <th className="py-2.5 px-3">Última Bipagem</th>
+                              <th className="py-2.5 px-3 text-center">Dias Operando</th>
+                              <th className="py-2.5 px-3 text-right">Pico Diário</th>
+                              <th className="py-2.5 px-3 text-right">Volume Total Histórico</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/60">
+                            {(eventosData?.catalogo_pontos || [])
+                              .filter((pt: any) => {
+                                if (filtroTipoCatalogo !== "TODOS" && pt.tipo_ponto !== filtroTipoCatalogo) return false;
+                                if (filtroDataEstreiaCatalogo && pt.data_primeiro_pacote !== filtroDataEstreiaCatalogo)
+                                  return false;
+                                if (buscaCatalogoEventos.trim()) {
+                                  const q = buscaCatalogoEventos.trim().toLowerCase();
+                                  return (
+                                    (pt.md_codigo || "").toLowerCase().includes(q) ||
+                                    (pt.cidade || "").toLowerCase().includes(q) ||
+                                    (pt.estado || "").toLowerCase().includes(q) ||
+                                    (pt.data_primeiro_pacote || "").toLowerCase().includes(q)
+                                  );
+                                }
+                                return true;
+                              })
+                              .slice(0, 250)
+                              .map((pt: any) => (
+                                <tr key={pt.md_codigo} className="hover:bg-slate-800/40 transition-colors">
+                                  <td className="py-2.5 px-3 font-mono font-bold text-white">{pt.md_codigo}</td>
+                                  <td className="py-2.5 px-3">
+                                    <span
+                                      className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                        pt.tipo_ponto === "HUB"
+                                          ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
+                                          : pt.tipo_ponto === "PONTO DE APOIO"
+                                          ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                                          : pt.tipo_ponto === "PONTO DE REDE"
+                                          ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                                          : "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
+                                      }`}
+                                    >
+                                      {pt.tipo_ponto}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-slate-300">
+                                    {pt.cidade} - {pt.estado}
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setModoPeriodo("DIA");
+                                        setSelectedDia(pt.data_primeiro_pacote);
+                                      }}
+                                      className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 font-mono font-bold text-[11px] cursor-pointer transition-colors"
+                                      title="Clique para inspecionar o dia de estreia deste ponto"
+                                    >
+                                      🌟 {pt.data_primeiro_pacote}
+                                    </button>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-300">
+                                    {(pt.volume_primeiro_dia || 0).toLocaleString("pt-BR")} pcts
+                                  </td>
+                                  <td className="py-2.5 px-3 font-mono text-slate-300">
+                                    {pt.data_ultimo_pacote}{" "}
+                                    <span className="text-[10px] text-slate-500">
+                                      ({(pt.volume_ultimo_dia || 0).toLocaleString("pt-BR")})
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-center font-mono font-bold text-cyan-300">
+                                    {pt.dias_operando} {pt.dias_operando === 1 ? "dia" : "dias"}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono text-slate-300">
+                                    {(pt.maior_volume_dia || 0).toLocaleString("pt-BR")}{" "}
+                                    <span className="text-[10px] text-slate-500">({pt.data_maior_volume})</span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono font-extrabold text-emerald-400">
+                                    {(pt.volume_total_historico || 0).toLocaleString("pt-BR")}
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5 max-h-[600px] overflow-y-auto pr-1">
+                        {(eventosData?.linha_do_tempo || []).map((item: any) => {
+                          const isSelected = item.dia === selectedDia;
+                          return (
+                            <div
+                              key={item.dia}
+                              onClick={() => {
+                                setModoPeriodo("DIA");
+                                setSelectedDia(item.dia);
+                              }}
+                              className={`p-3.5 rounded-xl border transition-all cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-3 ${
+                                isSelected
+                                  ? "bg-fuchsia-950/30 border-fuchsia-500/60"
+                                  : "bg-slate-900/80 border-slate-800 hover:border-slate-700"
+                              }`}
+                            >
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-2.5 flex-wrap">
+                                  <span className="px-2.5 py-1 rounded-lg bg-slate-800 text-white font-mono font-extrabold text-xs border border-slate-700">
+                                    📅 {item.dia}
+                                  </span>
+                                  <span className="text-xs text-slate-300 font-mono">
+                                    Volume: <strong className="text-emerald-400">{(item.volume_total || 0).toLocaleString("pt-BR")}</strong> pcts
+                                  </span>
+                                  <span className="text-xs text-slate-400 font-mono">
+                                    • <strong>{item.pontos_ativos}</strong> pontos ativos
+                                  </span>
+                                  {item.qtd_estreias_pontos > 0 && (
+                                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                      🌟 {item.qtd_estreias_pontos} {item.qtd_estreias_pontos === 1 ? "ponto estreou (1º bip)" : "pontos estrearam (1º bip)"}
+                                    </span>
+                                  )}
+                                  {item.qtd_pontos_pararam > 0 && (
+                                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                                      ⚠️ {item.qtd_pontos_pararam} pararam
+                                    </span>
+                                  )}
+                                  {item.qtd_estreias_sellers > 0 && (
+                                    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                                      🆕 {item.qtd_estreias_sellers} novos sellers
+                                    </span>
+                                  )}
+                                </div>
+
+                                {(item.estreias_pontos_resumo || []).length > 0 && (
+                                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                                    <span className="text-[10px] text-slate-400">1º pacote bipado em:</span>
+                                    {(item.estreias_pontos_resumo || []).map((p: any) => (
+                                      <span
+                                        key={p.md_codigo}
+                                        className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-200 font-mono text-[10px]"
+                                      >
+                                        {p.md_codigo} ({p.volume_estreia})
+                                      </span>
+                                    ))}
+                                    {item.qtd_estreias_pontos > (item.estreias_pontos_resumo || []).length && (
+                                      <span className="text-[10px] text-amber-400 font-mono">
+                                        +{item.qtd_estreias_pontos - (item.estreias_pontos_resumo || []).length} mais
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              <button
+                                type="button"
+                                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-fuchsia-600 text-slate-200 hover:text-white text-xs font-semibold shrink-0 self-start md:self-center transition-colors"
+                              >
+                                Inspecionar Dia →
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

@@ -38,6 +38,7 @@ from routers.coletas import (
     get_coletas_horarios,
     get_coletas_no_dia,
     get_d2d_sp_analise,
+    construir_indice_eventos_malha,
 )
 from routers.implantacao import (
     get_cockpit_d1,
@@ -290,14 +291,15 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
             bytes_totais += salvar_json(f"d2d_sp_{per}_latest.json", d2d_per)
             arquivos_gerados += 1
 
-        print("🚀 [5/5] Exportando dados de Implantação FM & Governança da Malha...")
+        print("🚀 [5/5] Exportando dados de Implantação FM, Linha do Tempo & Governança da Malha...")
         bytes_totais += salvar_json("implantacao_stats.json", get_stats(db=db))
         bytes_totais += salvar_json(
             "implantacao_solicitacoes.json", list_solicitacoes(status=None, search=None, db=db)
         )
         bytes_totais += salvar_json("implantacao_relatorio_quarta.json", get_relatorio_quarta(db=db))
         bytes_totais += salvar_json("implantacao_classificacoes.json", listar_classificacoes_pontos(db=db))
-        arquivos_gerados += 4
+        bytes_totais += salvar_json("eventos_malha.json", construir_indice_eventos_malha(db=db))
+        arquivos_gerados += 5
 
     finally:
         db.close()

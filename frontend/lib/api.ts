@@ -349,6 +349,47 @@ async function resolveSnapshotRequest(urlStr: string): Promise<Response | null> 
       if (data) return jsonResponse(data);
     }
 
+    if (path === "/api/coletas/eventos-dia") {
+      const idx = await fetchStaticSnapshot("eventos_malha.json");
+      if (idx) {
+        let diaAlvo = diaParam;
+        if (!diaAlvo || ["TODOS", "LATEST", "HOJE", ""].includes(diaAlvo.toUpperCase())) {
+          diaAlvo = idx.dia_mais_recente || "";
+        }
+        let evDia = (idx.eventos_por_dia || {})[diaAlvo];
+        if (!evDia && diaAlvo.length === 7 && diaAlvo[2] === "/") {
+          evDia = (idx.eventos_por_dia || {})[`MES:${diaAlvo}`];
+        }
+        if (!evDia) {
+          evDia = {
+            dia: diaAlvo,
+            dia_anterior: "",
+            volume_total: 0,
+            pontos_ativos: 0,
+            estreias_pontos: [],
+            pontos_pararam: [],
+            qtd_pontos_pararam: 0,
+            pontos_retornaram: [],
+            qtd_pontos_retornaram: 0,
+            estreias_clientes: [],
+            estreias_sellers: [],
+            qtd_estreias_sellers: 0,
+            top_pontos: [],
+            notas_manuais: [],
+          };
+        }
+        return jsonResponse({
+          dia_selecionado: diaAlvo,
+          dia_mais_recente: idx.dia_mais_recente || "",
+          total_pontos_historico: idx.total_pontos_historico || 0,
+          total_dias_historico: idx.total_dias_historico || 0,
+          eventos_dia: evDia,
+          catalogo_pontos: idx.catalogo_pontos || [],
+          linha_do_tempo: idx.linha_do_tempo || [],
+        });
+      }
+    }
+
     if (path === "/api/coletas/no-dia") {
       const data = await fetchStaticSnapshot(`no_dia_${safeDia}.json`, "no_dia_latest.json");
       if (data && Array.isArray(data.mds)) {
@@ -2632,3 +2673,46 @@ export async function uploadCaminhoesD2d(file: File): Promise<{ status: string; 
 }
 
 
+
+
+// === LINHA DO TEMPO & EVENTOS DA MALHA ===
+export async function fetchEventosDia(dia?: string): Promise<any> {
+  const params = new URLSearchParams();
+  if (dia && dia !== "TODOS") params.append("dia", dia);
+  const res = await safeFetch(`${API_URL}/api/coletas/eventos-dia?${params.toString()}`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error("Falha ao carregar Linha do Tempo e Eventos do Dia.");
+  return res.json();
+}
+
+export async function criarNotaDiarioBordo(payload: {
+  dia_base: string;
+  categoria?: string;
+  ponto_codigo?: string;
+  titulo: string;
+  descricao?: string;
+  autor?: string;
+}): Promise<any> {
+  const res = await safeFetch(`${API_URL}/api/coletas/eventos-nota`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Falha ao registrar nota no Diário de Bordo." }));
+    throw new Error(err.detail || "Falha ao registrar nota no Diário de Bordo.");
+  }
+  invalidateApiCache();
+  return res.json();
+}
+
+export async function removerNotaDiarioBordo(notaId: number): Promise<any> {
+  const res = await safeFetch(`${API_URL}/api/coletas/eventos-nota/${notaId}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error("Falha ao remover nota do Diário de Bordo.");
+  invalidateApiCache();
+  return res.json();
+}

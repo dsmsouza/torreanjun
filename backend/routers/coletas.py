@@ -2725,3 +2725,585 @@ def get_metricas_completas(dia: Optional[str] = None, db: Session = Depends(get_
 
 
 
+
+
+# === LINHA DO TEMPO & EVENTOS DA MALHA ===
+
+class NotaDiarioBordoPayload(BaseModel):
+    dia_base: str
+    categoria: Optional[str] = "OPERACIONAL"
+    ponto_codigo: Optional[str] = ""
+    titulo: str
+    descricao: Optional[str] = ""
+    autor: Optional[str] = "Torre de Controle"
+
+
+def _garantir_tabela_diario_bordo(db: Session):
+    db.execute(text("""
+        CREATE TABLE IF NOT EXISTS diario_bordo_operacional (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dia_base TEXT NOT NULL,
+            categoria TEXT DEFAULT 'OPERACIONAL',
+            ponto_codigo TEXT DEFAULT '',
+            titulo TEXT NOT NULL,
+            descricao TEXT DEFAULT '',
+            autor TEXT DEFAULT 'Torre de Controle',
+            criado_em TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+    """))
+    db.commit()
+
+
+def _normalizar_categoria_malha_evento(codigo: str, tipo_raw: str = "") -> str:
+    t = (tipo_raw or "").strip().upper()
+    c = (codigo or "").strip().upper()
+    if t in ["HUB", "MINIDROP", "PONTO DE REDE", "PONTO DE APOIO"]:
+        return t
+    if "HUB" in t or "GALP" in t or "TRANSFER" in t or "CD" in t:
+        return "HUB"
+    if "APOIO" in t or "P.A" in t or "BASE" in t:
+        return "PONTO DE APOIO"
+    if "REDE" in t or "CROSS" in t or "FRANQUIA" in t:
+        return "PONTO DE REDE"
+    if "MD" in t or "MINIDROP" in t or "PONTO DE COLETA" in t:
+        return "MINIDROP"
+    if c.startswith("MD-") or re.match(r"^[A-Z]{2}-W-MD", c):
+        return "MINIDROP"
+    if "-H" in c or c.startswith("HUB") or "GLP" in c:
+        return "HUB"
+    if "-PA" in c or "-RR-" in c:
+        return "PONTO DE APOIO"
+    return "PONTO DE REDE"
+
+
+def _dia_para_iso(dia_str: str) -> str:
+    if not dia_str or len(dia_str) < 10:
+        return "0000-00-00"
+    return f"{dia_str[6:10]}-{dia_str[3:5]}-{dia_str[0:2]}"
+
+
+def construir_indice_eventos_malha(db: Session) -> Dict[str, Any]:
+    """Constrói o índice histórico completo de eventos da malha (estreia do 1º pacote bipado por ponto,
+    clientes e sellers estreantes por data, paradas súbitas, linha do tempo diária e catálogo de estreia)."""
+    _garantir_tabela_diario_bordo(db)
+
+    # 1. Metadados de pontos cadastrados (md_mapping + malha_coordenadas)
+    meta_pontos: Dict[str, Dict[str, str]] = {}
+    try:
+        rows_mc = db.execute(text("""
+            SELECT UPPER(TRIM(md_codigo)), COALESCE(cidade, ''), COALESCE(uf, ''), COALESCE(tipo, '')
+            FROM malha_coordenadas
+            WHERE md_codigo IS NOT NULL AND TRIM(md_codigo) != ''
+        """)).fetchall()
+        for r in rows_mc:
+            cd = r[0]
+            meta_pontos[cd] = {
+                "cidade": r[1] or "São Paulo",
+                "estado": r[2] or (cd[:2] if len(cd) >= 2 and cd[:2].isalpha() else "SP"),
+                "tipo_ponto": _normalizar_categoria_malha_evento(cd, r[3] or ""),
+            }
+    except Exception:
+        pass
+
+    try:
+        rows_mm = db.execute(text("""
+            SELECT UPPER(TRIM(md_codigo)), COALESCE(cidade, ''), COALESCE(estado, ''), COALESCE(tipo_ponto, '')
+            FROM md_mapping
+            WHERE md_codigo IS NOT NULL AND TRIM(md_codigo) != ''
+        """)).fetchall()
+        for r in rows_mm:
+            cd = r[0]
+            prev = meta_pontos.get(cd, {})
+            meta_pontos[cd] = {
+                "cidade": r[1] or prev.get("cidade") or "São Paulo",
+                "estado": r[2] or prev.get("estado") or (cd[:2] if len(cd) >= 2 and cd[:2].isalpha() else "SP"),
+                "tipo_ponto": _normalizar_categoria_malha_evento(cd, r[3] or prev.get("tipo_ponto") or ""),
+            }
+    except Exception:
+        pass
+
+    # 2. Movimentação diária por ponto em criacao_pedidos_historico e detalhe_md_historico
+    # Estrutura: mov_dia_ponto[dia][ponto] = vol
+    mov_dia_ponto: Dict[str, Dict[str, int]] = {}
+
+    rows_cp = db.execute(text("""
+        SELECT 
+            dia_base,
+            UPPER(TRIM(ponto_colecao)) as ponto,
+            SUM(total_pedidos) as vol,
+            MAX(cidade) as cidade,
+            MAX(estado) as estado
+        FROM criacao_pedidos_historico
+        WHERE dia_base IS NOT NULL AND LENGTH(TRIM(dia_base)) = 10
+          AND ponto_colecao IS NOT NULL
+          AND TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')
+          AND UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'
+          AND UPPER(ponto_colecao) NOT LIKE '%ANJUN%'
+        GROUP BY dia_base, UPPER(TRIM(ponto_colecao))
+        HAVING SUM(total_pedidos) > 0;
+    """)).fetchall()
+
+    for r in rows_cp:
+        d = str(r[0]).strip()
+        pt = str(r[1]).strip()
+        vol = int(r[2] or 0)
+        if vol <= 0:
+            continue
+        mov_dia_ponto.setdefault(d, {})[pt] = vol
+        if pt not in meta_pontos:
+            meta_pontos[pt] = {
+                "cidade": r[3] or "São Paulo",
+                "estado": r[4] or (pt[:2] if len(pt) >= 2 and pt[:2].isalpha() else "SP"),
+                "tipo_ponto": _normalizar_categoria_malha_evento(pt, ""),
+            }
+        else:
+            if not meta_pontos[pt].get("cidade") and r[3]:
+                meta_pontos[pt]["cidade"] = r[3]
+            if not meta_pontos[pt].get("estado") and r[4]:
+                meta_pontos[pt]["estado"] = r[4]
+
+    rows_dm = db.execute(text("""
+        SELECT 
+            dia_base,
+            UPPER(TRIM(md)) as ponto,
+            SUM(total) as vol
+        FROM detalhe_md_historico
+        WHERE dia_base IS NOT NULL AND LENGTH(TRIM(dia_base)) = 10
+          AND md IS NOT NULL
+          AND TRIM(md) NOT IN ('', 'nan', 'None', 'null', '-')
+          AND UPPER(md) NOT LIKE '%SP-R-TFK001%'
+          AND UPPER(md) NOT LIKE '%ANJUN%'
+        GROUP BY dia_base, UPPER(TRIM(md))
+        HAVING SUM(total) > 0;
+    """)).fetchall()
+
+    for r in rows_dm:
+        d = str(r[0]).strip()
+        pt = str(r[1]).strip()
+        vol = int(r[2] or 0)
+        if vol <= 0:
+            continue
+        dia_dict = mov_dia_ponto.setdefault(d, {})
+        if pt not in dia_dict:
+            dia_dict[pt] = vol
+        if pt not in meta_pontos:
+            meta_pontos[pt] = {
+                "cidade": "São Paulo",
+                "estado": pt[:2] if len(pt) >= 2 and pt[:2].isalpha() else "SP",
+                "tipo_ponto": _normalizar_categoria_malha_evento(pt, ""),
+            }
+
+    # 3. Ordenar datas cronologicamente (da mais antiga para a mais recente)
+    dias_cronologicos = sorted(mov_dia_ponto.keys(), key=_dia_para_iso)
+    dia_mais_recente = dias_cronologicos[-1] if dias_cronologicos else ""
+
+    # 4. Percorrer histórico cronológico de pontos
+    historico_ponto: Dict[str, Dict[str, Any]] = {}
+    eventos_por_dia: Dict[str, Dict[str, Any]] = {}
+
+    pontos_dia_anterior: Dict[str, int] = {}
+    dia_anterior_str: str = ""
+
+    for d in dias_cronologicos:
+        pontos_hoje = mov_dia_ponto.get(d, {})
+        vol_total_dia = sum(pontos_hoje.values())
+        estreias_pontos_dia = []
+        pontos_pararam_dia = []
+        pontos_retornaram_dia = []
+
+        for pt, vol in sorted(pontos_hoje.items(), key=lambda x: x[1], reverse=True):
+            info_meta = meta_pontos.get(pt, {
+                "cidade": "São Paulo",
+                "estado": "SP",
+                "tipo_ponto": _normalizar_categoria_malha_evento(pt, ""),
+            })
+            if pt not in historico_ponto:
+                historico_ponto[pt] = {
+                    "md_codigo": pt,
+                    "tipo_ponto": info_meta["tipo_ponto"],
+                    "cidade": info_meta["cidade"],
+                    "estado": info_meta["estado"],
+                    "data_primeiro_pacote": d,
+                    "iso_primeiro_pacote": _dia_para_iso(d),
+                    "volume_primeiro_dia": vol,
+                    "data_ultimo_pacote": d,
+                    "iso_ultimo_pacote": _dia_para_iso(d),
+                    "volume_ultimo_dia": vol,
+                    "maior_volume_dia": vol,
+                    "data_maior_volume": d,
+                    "dias_operando": 1,
+                    "volume_total_historico": vol,
+                }
+                estreias_pontos_dia.append({
+                    "md_codigo": pt,
+                    "tipo_ponto": info_meta["tipo_ponto"],
+                    "cidade": info_meta["cidade"],
+                    "estado": info_meta["estado"],
+                    "volume_estreia": vol,
+                    "dia_estreia": d,
+                })
+            else:
+                hp = historico_ponto[pt]
+                hp["data_ultimo_pacote"] = d
+                hp["iso_ultimo_pacote"] = _dia_para_iso(d)
+                hp["volume_ultimo_dia"] = vol
+                hp["dias_operando"] += 1
+                hp["volume_total_historico"] += vol
+                if vol > hp["maior_volume_dia"]:
+                    hp["maior_volume_dia"] = vol
+                    hp["data_maior_volume"] = d
+                if pontos_dia_anterior and pt not in pontos_dia_anterior:
+                    pontos_retornaram_dia.append({
+                        "md_codigo": pt,
+                        "tipo_ponto": info_meta["tipo_ponto"],
+                        "cidade": info_meta["cidade"],
+                        "estado": info_meta["estado"],
+                        "volume_hoje": vol,
+                        "primeiro_dia": hp["data_primeiro_pacote"],
+                    })
+
+        if pontos_dia_anterior:
+            for pt_ant, vol_ant in sorted(pontos_dia_anterior.items(), key=lambda x: x[1], reverse=True):
+                if pt_ant not in pontos_hoje:
+                    info_meta = meta_pontos.get(pt_ant, {
+                        "cidade": "São Paulo",
+                        "estado": "SP",
+                        "tipo_ponto": _normalizar_categoria_malha_evento(pt_ant, ""),
+                    })
+                    pontos_pararam_dia.append({
+                        "md_codigo": pt_ant,
+                        "tipo_ponto": info_meta["tipo_ponto"],
+                        "cidade": info_meta["cidade"],
+                        "estado": info_meta["estado"],
+                        "volume_dia_anterior": vol_ant,
+                        "dia_anterior": dia_anterior_str,
+                    })
+
+        top_pontos_dia = [
+            {
+                "md_codigo": pt,
+                "tipo_ponto": meta_pontos.get(pt, {}).get("tipo_ponto", _normalizar_categoria_malha_evento(pt, "")),
+                "cidade": meta_pontos.get(pt, {}).get("cidade", "São Paulo"),
+                "estado": meta_pontos.get(pt, {}).get("estado", "SP"),
+                "volume": vol,
+            }
+            for pt, vol in sorted(pontos_hoje.items(), key=lambda x: x[1], reverse=True)[:8]
+        ]
+
+        eventos_por_dia[d] = {
+            "dia": d,
+            "dia_anterior": dia_anterior_str,
+            "volume_total": vol_total_dia,
+            "pontos_ativos": len(pontos_hoje),
+            "estreias_pontos": estreias_pontos_dia,
+            "pontos_pararam": pontos_pararam_dia[:25],
+            "qtd_pontos_pararam": len(pontos_pararam_dia),
+            "pontos_retornaram": pontos_retornaram_dia[:20],
+            "qtd_pontos_retornaram": len(pontos_retornaram_dia),
+            "estreias_clientes": [],
+            "estreias_sellers": [],
+            "qtd_estreias_sellers": 0,
+            "top_pontos": top_pontos_dia,
+            "notas_manuais": [],
+        }
+
+        pontos_dia_anterior = pontos_hoje
+        dia_anterior_str = d
+
+    # 5. Estreia de Clientes e Sellers (em criacao_pedidos_historico)
+    rows_cli_dia = db.execute(text("""
+        SELECT 
+            dia_base,
+            TRIM(nome_cliente) as cliente,
+            SUM(total_pedidos) as vol,
+            COUNT(DISTINCT UPPER(TRIM(ponto_colecao))) as qtd_pontos
+        FROM criacao_pedidos_historico
+        WHERE dia_base IS NOT NULL AND LENGTH(TRIM(dia_base)) = 10
+          AND nome_cliente IS NOT NULL AND TRIM(nome_cliente) NOT IN ('', 'nan', 'None')
+          AND ponto_colecao IS NOT NULL
+          AND TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')
+          AND UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'
+          AND UPPER(ponto_colecao) NOT LIKE '%ANJUN%'
+        GROUP BY dia_base, TRIM(nome_cliente)
+        HAVING SUM(total_pedidos) > 0;
+    """)).fetchall()
+
+    cli_por_dia: Dict[str, List[Any]] = {}
+    for r in rows_cli_dia:
+        cli_por_dia.setdefault(str(r[0]).strip(), []).append((str(r[1]).strip(), int(r[2] or 0), int(r[3] or 0)))
+
+    clientes_vistos = set()
+    for d in dias_cronologicos:
+        novos_cli = []
+        for cli_nome, vol_c, q_pts in sorted(cli_por_dia.get(d, []), key=lambda x: x[1], reverse=True):
+            key_c = cli_nome.lower()
+            if key_c not in clientes_vistos:
+                clientes_vistos.add(key_c)
+                novos_cli.append({
+                    "cliente": cli_nome,
+                    "volume_estreia": vol_c,
+                    "qtd_pontos": q_pts,
+                    "dia_estreia": d,
+                })
+        if d in eventos_por_dia:
+            eventos_por_dia[d]["estreias_clientes"] = novos_cli
+
+    rows_sel_dia = db.execute(text("""
+        SELECT 
+            dia_base,
+            TRIM(merchant_nome) as seller,
+            MAX(TRIM(nome_cliente)) as cliente,
+            MAX(UPPER(TRIM(ponto_colecao))) as ponto,
+            MAX(cidade) as cidade,
+            MAX(estado) as estado,
+            SUM(total_pedidos) as vol
+        FROM criacao_pedidos_historico
+        WHERE dia_base IS NOT NULL AND LENGTH(TRIM(dia_base)) = 10
+          AND merchant_nome IS NOT NULL AND TRIM(merchant_nome) NOT IN ('', 'nan', 'None', 'Seller Não Identificado')
+          AND ponto_colecao IS NOT NULL
+          AND TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')
+          AND UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'
+          AND UPPER(ponto_colecao) NOT LIKE '%ANJUN%'
+        GROUP BY dia_base, TRIM(merchant_nome)
+        HAVING SUM(total_pedidos) > 0;
+    """)).fetchall()
+
+    sel_por_dia: Dict[str, List[Any]] = {}
+    for r in rows_sel_dia:
+        sel_por_dia.setdefault(str(r[0]).strip(), []).append(r)
+
+    sellers_vistos = set()
+    for d in dias_cronologicos:
+        novos_sel = []
+        for r in sorted(sel_por_dia.get(d, []), key=lambda x: int(x[6] or 0), reverse=True):
+            s_nome = str(r[1]).strip()
+            key_s = s_nome.lower()
+            if key_s not in sellers_vistos:
+                sellers_vistos.add(key_s)
+                novos_sel.append({
+                    "merchant_nome": s_nome,
+                    "cliente": r[2] or "N/A",
+                    "ponto_colecao": r[3] or "N/A",
+                    "cidade": r[4] or "São Paulo",
+                    "estado": r[5] or "SP",
+                    "volume_estreia": int(r[6] or 0),
+                    "dia_estreia": d,
+                })
+        if d in eventos_por_dia:
+            eventos_por_dia[d]["qtd_estreias_sellers"] = len(novos_sel)
+            eventos_por_dia[d]["estreias_sellers"] = novos_sel[:30]
+
+    # 6. Notas Manuais do Diário de Bordo Operacional
+    rows_notas = db.execute(text("""
+        SELECT id, dia_base, categoria, ponto_codigo, titulo, descricao, autor, criado_em
+        FROM diario_bordo_operacional
+        ORDER BY id DESC;
+    """)).fetchall()
+
+    todas_notas = []
+    for rn in rows_notas:
+        nota_obj = {
+            "id": rn[0],
+            "dia_base": rn[1],
+            "categoria": rn[2] or "OPERACIONAL",
+            "ponto_codigo": rn[3] or "",
+            "titulo": rn[4] or "",
+            "descricao": rn[5] or "",
+            "autor": rn[6] or "Torre de Controle",
+            "criado_em": rn[7] or "",
+        }
+        todas_notas.append(nota_obj)
+        if rn[1] in eventos_por_dia:
+            eventos_por_dia[rn[1]]["notas_manuais"].append(nota_obj)
+
+    # 7. Construir consolidações mensais (MES:MM/YYYY) em eventos_por_dia
+    meses_map: Dict[str, List[str]] = {}
+    for d in dias_cronologicos:
+        if len(d) == 10 and d[2] == "/" and d[5] == "/":
+            meses_map.setdefault(d[3:10], []).append(d)
+
+    for mes_ano, dias_do_mes in meses_map.items():
+        chave_mes = f"MES:{mes_ano}"
+        estreias_pts_mes = []
+        estreias_cli_mes = []
+        estreias_sel_mes = []
+        qtd_sel_mes = 0
+        notas_mes = []
+        vol_mes = 0
+        pontos_ativos_mes_dict: Dict[str, int] = {}
+
+        for dm in sorted(dias_do_mes, key=_dia_para_iso, reverse=True):
+            ev_d = eventos_por_dia.get(dm, {})
+            vol_mes += int(ev_d.get("volume_total", 0))
+            estreias_pts_mes.extend(ev_d.get("estreias_pontos", []))
+            estreias_cli_mes.extend(ev_d.get("estreias_clientes", []))
+            estreias_sel_mes.extend(ev_d.get("estreias_sellers", []))
+            qtd_sel_mes += int(ev_d.get("qtd_estreias_sellers", 0))
+            notas_mes.extend(ev_d.get("notas_manuais", []))
+            for pt, v in mov_dia_ponto.get(dm, {}).items():
+                pontos_ativos_mes_dict[pt] = pontos_ativos_mes_dict.get(pt, 0) + v
+
+        top_pts_mes = [
+            {
+                "md_codigo": pt,
+                "tipo_ponto": meta_pontos.get(pt, {}).get("tipo_ponto", _normalizar_categoria_malha_evento(pt, "")),
+                "cidade": meta_pontos.get(pt, {}).get("cidade", "São Paulo"),
+                "estado": meta_pontos.get(pt, {}).get("estado", "SP"),
+                "volume": vol,
+            }
+            for pt, vol in sorted(pontos_ativos_mes_dict.items(), key=lambda x: x[1], reverse=True)[:10]
+        ]
+
+        eventos_por_dia[chave_mes] = {
+            "dia": chave_mes,
+            "dia_anterior": f"{len(dias_do_mes)} dias no mês {mes_ano}",
+            "volume_total": vol_mes,
+            "pontos_ativos": len(pontos_ativos_mes_dict),
+            "estreias_pontos": estreias_pts_mes,
+            "pontos_pararam": [],
+            "qtd_pontos_pararam": 0,
+            "pontos_retornaram": [],
+            "qtd_pontos_retornaram": 0,
+            "estreias_clientes": estreias_cli_mes,
+            "estreias_sellers": estreias_sel_mes[:50],
+            "qtd_estreias_sellers": qtd_sel_mes,
+            "top_pontos": top_pts_mes,
+            "notas_manuais": notas_mes,
+        }
+
+    # 8. Catálogo Completo de Estreia de Pontos (ordenado pela estreia mais recente primeiro, depois maior volume)
+    catalogo_pontos = []
+    pontos_ativos_ultimo_dia = set(mov_dia_ponto.get(dia_mais_recente, {}).keys())
+    for pt, hp in historico_ponto.items():
+        dias_op = max(int(hp["dias_operando"]), 1)
+        vol_tot = int(hp["volume_total_historico"])
+        catalogo_pontos.append({
+            **hp,
+            "media_diaria": round(vol_tot / dias_op, 1),
+            "ativo_ultimo_dia": pt in pontos_ativos_ultimo_dia,
+        })
+
+    catalogo_pontos.sort(
+        key=lambda x: (x["iso_primeiro_pacote"], x["volume_primeiro_dia"]),
+        reverse=True,
+    )
+
+    # 9. Linha do Tempo Cronológica (do dia mais recente para o mais antigo)
+    linha_do_tempo = []
+    for d in reversed(dias_cronologicos):
+        ev = eventos_por_dia[d]
+        linha_do_tempo.append({
+            "dia": d,
+            "volume_total": ev["volume_total"],
+            "pontos_ativos": ev["pontos_ativos"],
+            "qtd_estreias_pontos": len(ev["estreias_pontos"]),
+            "estreias_pontos_resumo": [
+                {
+                    "md_codigo": p["md_codigo"],
+                    "tipo_ponto": p["tipo_ponto"],
+                    "volume_estreia": p["volume_estreia"],
+                }
+                for p in ev["estreias_pontos"][:8]
+            ],
+            "qtd_estreias_clientes": len(ev["estreias_clientes"]),
+            "qtd_estreias_sellers": ev["qtd_estreias_sellers"],
+            "qtd_pontos_pararam": ev["qtd_pontos_pararam"],
+            "qtd_pontos_retornaram": ev["qtd_pontos_retornaram"],
+            "qtd_notas": len(ev["notas_manuais"]),
+        })
+
+    return {
+        "dia_mais_recente": dia_mais_recente,
+        "total_pontos_historico": len(catalogo_pontos),
+        "total_dias_historico": len(dias_cronologicos),
+        "catalogo_pontos": catalogo_pontos,
+        "linha_do_tempo": linha_do_tempo,
+        "eventos_por_dia": eventos_por_dia,
+        "todas_notas": todas_notas,
+    }
+
+
+@router.get("/eventos-dia")
+def get_eventos_dia(
+    dia: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Retorna os eventos operacionais de uma data ou mês específico, além do catálogo histórico de estreia
+    de todos os pontos da malha e da linha do tempo dia a dia."""
+    indice = construir_indice_eventos_malha(db)
+    dia_alvo = (dia or "").strip()
+    if not dia_alvo or dia_alvo.upper() in ["TODOS", "LATEST", "HOJE"]:
+        dia_alvo = indice["dia_mais_recente"]
+
+    eventos_dia = indice["eventos_por_dia"].get(dia_alvo)
+    if not eventos_dia and len(dia_alvo) == 7 and dia_alvo[2] == "/":
+        eventos_dia = indice["eventos_por_dia"].get(f"MES:{dia_alvo}")
+
+    if not eventos_dia:
+        eventos_dia = {
+            "dia": dia_alvo,
+            "dia_anterior": "",
+            "volume_total": 0,
+            "pontos_ativos": 0,
+            "estreias_pontos": [],
+            "pontos_pararam": [],
+            "qtd_pontos_pararam": 0,
+            "pontos_retornaram": [],
+            "qtd_pontos_retornaram": 0,
+            "estreias_clientes": [],
+            "estreias_sellers": [],
+            "qtd_estreias_sellers": 0,
+            "top_pontos": [],
+            "notas_manuais": [],
+        }
+
+    return {
+        "dia_selecionado": dia_alvo,
+        "dia_mais_recente": indice["dia_mais_recente"],
+        "total_pontos_historico": indice["total_pontos_historico"],
+        "total_dias_historico": indice["total_dias_historico"],
+        "eventos_dia": eventos_dia,
+        "catalogo_pontos": indice["catalogo_pontos"],
+        "linha_do_tempo": indice["linha_do_tempo"],
+    }
+
+
+@router.post("/eventos-nota")
+def adicionar_nota_diario_bordo(
+    payload: NotaDiarioBordoPayload,
+    db: Session = Depends(get_db)
+):
+    """Adiciona um registro manual no Diário de Bordo Operacional de uma data."""
+    _garantir_tabela_diario_bordo(db)
+    if not payload.titulo or not payload.titulo.strip():
+        raise HTTPException(status_code=400, detail="O título do registro é obrigatório.")
+
+    dia_b = (payload.dia_base or "").strip()
+    if dia_b.upper().startswith("MES:"):
+        dia_b = f"01/{dia_b[4:]}"
+
+    db.execute(text("""
+        INSERT INTO diario_bordo_operacional (dia_base, categoria, ponto_codigo, titulo, descricao, autor)
+        VALUES (:dia_base, :categoria, :ponto_codigo, :titulo, :descricao, :autor)
+    """), {
+        "dia_base": dia_b,
+        "categoria": (payload.categoria or "OPERACIONAL").strip().upper(),
+        "ponto_codigo": (payload.ponto_codigo or "").strip().upper(),
+        "titulo": payload.titulo.strip(),
+        "descricao": (payload.descricao or "").strip(),
+        "autor": (payload.autor or "Torre de Controle").strip(),
+    })
+    db.commit()
+    return {"status": "sucesso", "mensagem": "Evento registrado no Diário de Bordo!"}
+
+
+@router.delete("/eventos-nota/{nota_id}")
+def remover_nota_diario_bordo(
+    nota_id: int,
+    db: Session = Depends(get_db)
+):
+    """Remove uma nota manual do Diário de Bordo Operacional."""
+    _garantir_tabela_diario_bordo(db)
+    db.execute(text("DELETE FROM diario_bordo_operacional WHERE id = :id"), {"id": nota_id})
+    db.commit()
+    return {"status": "sucesso"}
