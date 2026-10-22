@@ -171,18 +171,21 @@ def get_resumo_coletas(
 
     where_sql = "WHERE " + " AND ".join(clauses)
 
-    # 2. Obter totais da tabela criacao_pedidos_historico (separando estritamente MDs de HUBs como SP-Z-H005)
+    # 2. Obter totais da tabela criacao_pedidos_historico (com os 4 status oficiais e separação Dropoff vs Pickup pelo ponto de coleta)
     tot_row = db.execute(text(f"""
         SELECT 
             COALESCE(SUM(total_pedidos), 0) as total,
             COUNT(DISTINCT CASE WHEN (UPPER(TRIM(ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(ponto_colecao)) LIKE '__-W-MD%') AND UPPER(TRIM(ponto_colecao)) NOT LIKE '%-H%' THEN UPPER(TRIM(ponto_colecao)) END) as total_mds,
             COUNT(DISTINCT CASE WHEN merchant_nome IS NOT NULL AND trim(merchant_nome) != '' THEN merchant_nome END) as total_sellers,
-            SUM(CASE WHEN LOWER(status_pedido) IN ('circuito fechado', 'carregamento', 'descarregamento') THEN total_pedidos ELSE 0 END) as coletados,
-            SUM(CASE WHEN LOWER(status_pedido) IN ('coleta', 'coletado', 'saco selado', 'foi assinado', 'pendente', 'aguardando') THEN total_pedidos ELSE 0 END) as backlog_geral,
-            SUM(CASE WHEN LOWER(maneira_coleta) LIKE '%entrega%' OR LOWER(maneira_coleta) LIKE '%dropoff%' THEN total_pedidos ELSE 0 END) as vol_dropoff,
-            SUM(CASE WHEN LOWER(maneira_coleta) LIKE '%coleta%' OR LOWER(maneira_coleta) LIKE '%pickup%' THEN total_pedidos ELSE 0 END) as vol_pickup,
-            SUM(CASE WHEN (UPPER(TRIM(ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(ponto_colecao)) LIKE '__-W-MD%') AND UPPER(TRIM(ponto_colecao)) NOT LIKE '%-H%' AND LOWER(status_pedido) IN ('coleta', 'coletado', 'saco selado', 'foi assinado', 'pendente', 'aguardando') THEN total_pedidos ELSE 0 END) as backlog_estrito_md,
-            COUNT(DISTINCT CASE WHEN NOT ((UPPER(TRIM(ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(ponto_colecao)) LIKE '__-W-MD%') AND UPPER(TRIM(ponto_colecao)) NOT LIKE '%-H%') THEN UPPER(TRIM(ponto_colecao)) END) as total_hubs
+            SUM(CASE WHEN LOWER(TRIM(status_pedido)) IN ('circuito fechado', 'carregamento', 'descarregamento') THEN total_pedidos ELSE 0 END) as coletados,
+            SUM(CASE WHEN LOWER(TRIM(status_pedido)) IN ('coleta', 'coletado', 'saco selado', 'não coletado', 'nao coletado', 'pendente', 'aguardando', 'no ponto', 'problema') OR status_pedido IS NULL OR TRIM(status_pedido) = '' THEN total_pedidos ELSE 0 END) as backlog_coleta,
+            SUM(CASE WHEN (UPPER(TRIM(ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(ponto_colecao)) LIKE '__-W-MD%') AND UPPER(TRIM(ponto_colecao)) NOT LIKE '%-H%' THEN total_pedidos ELSE 0 END) as vol_dropoff_ponto,
+            SUM(CASE WHEN NOT ((UPPER(TRIM(ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(ponto_colecao)) LIKE '__-W-MD%') AND UPPER(TRIM(ponto_colecao)) NOT LIKE '%-H%') THEN total_pedidos ELSE 0 END) as vol_pickup_ponto,
+            SUM(CASE WHEN (UPPER(TRIM(ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(ponto_colecao)) LIKE '__-W-MD%') AND UPPER(TRIM(ponto_colecao)) NOT LIKE '%-H%' AND (LOWER(TRIM(status_pedido)) IN ('coleta', 'coletado', 'saco selado', 'não coletado', 'nao coletado', 'pendente', 'aguardando', 'no ponto', 'problema') OR status_pedido IS NULL OR TRIM(status_pedido) = '') THEN total_pedidos ELSE 0 END) as backlog_estrito_md,
+            COUNT(DISTINCT CASE WHEN NOT ((UPPER(TRIM(ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(ponto_colecao)) LIKE '__-W-MD%') AND UPPER(TRIM(ponto_colecao)) NOT LIKE '%-H%') THEN UPPER(TRIM(ponto_colecao)) END) as total_hubs,
+            SUM(CASE WHEN LOWER(TRIM(status_pedido)) = 'circuito fechado' THEN total_pedidos ELSE 0 END) as circuito_fechado,
+            SUM(CASE WHEN LOWER(TRIM(status_pedido)) IN ('carregamento', 'descarregamento') THEN total_pedidos ELSE 0 END) as em_transito,
+            SUM(CASE WHEN LOWER(TRIM(status_pedido)) = 'foi assinado' THEN total_pedidos ELSE 0 END) as foi_assinado
         FROM criacao_pedidos_historico
         {where_sql};
     """), params).fetchone()
@@ -191,11 +194,15 @@ def get_resumo_coletas(
     total_mds = int(tot_row[1] or 0)
     total_sellers = int(tot_row[2] or 0)
     coletados = int(tot_row[3] or 0)
-    backlog = int(tot_row[4] or 0)
+    backlog_coleta = int(tot_row[4] or 0)
     vol_dropoff = int(tot_row[5] or 0)
     vol_pickup = int(tot_row[6] or 0)
     backlog_estrito_md = int(tot_row[7] or 0)
     total_hubs = int(tot_row[8] or 0)
+    circuito_fechado = int(tot_row[9] or 0)
+    em_transito = int(tot_row[10] or 0)
+    foi_assinado = int(tot_row[11] or 0)
+    backlog = backlog_coleta
 
     # Fallback para detalhe_md_historico se criacao_pedidos_historico estiver vazio nesta data
     if total_pedidos == 0:
@@ -213,13 +220,17 @@ def get_resumo_coletas(
             total_mds = int(row_md_tot[1] or 0)
             coletados = int(row_md_tot[2] or 0)
             backlog = int(row_md_tot[3] or 0)
+            backlog_coleta = backlog
             backlog_estrito_md = backlog
+            circuito_fechado = coletados
+            em_transito = 0
+            foi_assinado = 0
             vol_dropoff = total_pedidos
             vol_pickup = 0
 
-    # Fallback se backlog + coletados não baterem
     if coletados == 0 and backlog == 0 and total_pedidos > 0:
         coletados = total_pedidos
+        circuito_fechado = total_pedidos
 
     taxa_coleta = round((coletados / max(total_pedidos, 1) * 100), 1) if total_pedidos > 0 else 0.0
 
@@ -438,6 +449,187 @@ def get_resumo_coletas(
                     "share_pct": 0.0
                 })
 
+    # 5. Construir Cards por Macro-Região (Sudeste, Sul, Centro-Oeste, Nordeste, Norte) + Estados (UF)
+    # Separando Dropoff vs Pickup pelo PONTO que fez a coleta (MD = Dropoff, HUB/CD = Pickup) e os 4 Status Oficiais
+    ESTADOS_NOMES = {
+        "SP": "São Paulo", "RJ": "Rio de Janeiro", "MG": "Minas Gerais", "ES": "Espírito Santo",
+        "PR": "Paraná", "SC": "Santa Catarina", "RS": "Rio Grande do Sul",
+        "GO": "Goiás", "DF": "Distrito Federal", "MT": "Mato Grosso", "MS": "Mato Grosso do Sul",
+        "BA": "Bahia", "PE": "Pernambuco", "CE": "Ceará", "RN": "Rio Grande do Norte",
+        "PB": "Paraíba", "AL": "Alagoas", "SE": "Sergipe", "MA": "Maranhão", "PI": "Piauí",
+        "AM": "Amazonas", "PA": "Pará", "RO": "Rondônia", "TO": "Tocantins",
+        "AC": "Acre", "AP": "Amapá", "RR": "Roraima",
+    }
+    MACRO_REGIOES_DEF = [
+        ("Sudeste", ["SP", "RJ", "MG", "ES"]),
+        ("Sul", ["PR", "SC", "RS"]),
+        ("Centro-Oeste", ["GO", "DF", "MT", "MS"]),
+        ("Nordeste", ["BA", "PE", "CE", "RN", "PB", "AL", "SE", "MA", "PI"]),
+        ("Norte", ["AM", "PA", "RO", "TO", "AC", "AP", "RR"]),
+    ]
+
+    # Mapa de UF por ponto cadastrado
+    uf_por_ponto: Dict[str, str] = {}
+    try:
+        for r_uf in db.execute(text("SELECT UPPER(TRIM(md_codigo)), UPPER(TRIM(COALESCE(uf, estado, ''))) FROM malha_coordenadas WHERE md_codigo IS NOT NULL")).fetchall():
+            if r_uf[0] and len(r_uf[1]) == 2:
+                uf_por_ponto[r_uf[0]] = r_uf[1]
+        for r_uf in db.execute(text("SELECT UPPER(TRIM(md_codigo)), UPPER(TRIM(COALESCE(estado, ''))) FROM md_mapping WHERE md_codigo IS NOT NULL")).fetchall():
+            if r_uf[0] and len(r_uf[1]) == 2:
+                uf_por_ponto[r_uf[0]] = r_uf[1]
+    except Exception:
+        pass
+
+    rows_reg_pts = db.execute(text(f"""
+        SELECT 
+            UPPER(TRIM(ponto_colecao)) as ponto,
+            MAX(UPPER(TRIM(COALESCE(estado, 'SP')))) as uf_col,
+            SUM(total_pedidos) as total,
+            SUM(CASE WHEN LOWER(TRIM(status_pedido)) = 'circuito fechado' THEN total_pedidos ELSE 0 END) as circuito_fechado,
+            SUM(CASE WHEN LOWER(TRIM(status_pedido)) IN ('carregamento', 'descarregamento') THEN total_pedidos ELSE 0 END) as em_transito,
+            SUM(CASE WHEN LOWER(TRIM(status_pedido)) IN ('coleta', 'coletado', 'saco selado', 'não coletado', 'nao coletado', 'pendente', 'aguardando', 'no ponto', 'problema') OR status_pedido IS NULL OR TRIM(status_pedido) = '' THEN total_pedidos ELSE 0 END) as backlog_coleta,
+            SUM(CASE WHEN LOWER(TRIM(status_pedido)) = 'foi assinado' THEN total_pedidos ELSE 0 END) as foi_assinado
+        FROM criacao_pedidos_historico
+        {where_sql}
+        GROUP BY UPPER(TRIM(ponto_colecao));
+    """), params).fetchall()
+
+    if len(rows_reg_pts) == 0:
+        rows_reg_pts = db.execute(text("""
+            SELECT 
+                UPPER(TRIM(md)) as ponto,
+                MAX(UPPER(TRIM(COALESCE(estado, 'SP')))) as uf_col,
+                SUM(total) as total,
+                SUM(carregamento + descarregamento) as circuito_fechado,
+                0 as em_transito,
+                SUM(backlog) as backlog_coleta,
+                0 as foi_assinado
+            FROM detalhe_md_historico
+            WHERE dia_base LIKE :dia AND md IS NOT NULL AND TRIM(md) != ''
+            GROUP BY UPPER(TRIM(md));
+        """), {"dia": _normalizar_parametro_dia(dia)}).fetchall()
+
+    dados_uf: Dict[str, Dict[str, Any]] = {}
+    for uf_sigla in ESTADOS_NOMES.keys():
+        dados_uf[uf_sigla] = {
+            "uf": uf_sigla,
+            "estado": uf_sigla,
+            "nome_estado": ESTADOS_NOMES[uf_sigla],
+            "volume": 0,
+            "vol_dropoff": 0,
+            "vol_pickup": 0,
+            "qtd_pontos_dropoff": 0,
+            "qtd_pontos_pickup": 0,
+            "circuito_fechado": 0,
+            "em_transito": 0,
+            "backlog_coleta": 0,
+            "foi_assinado": 0,
+            "coletados": 0,
+            "backlog": 0,
+        }
+
+    for rp in rows_reg_pts:
+        pt = str(rp[0] or "").strip().upper()
+        uf_col = str(rp[1] or "SP").strip().upper()
+        vol_p = int(rp[2] or 0)
+        cf_p = int(rp[3] or 0)
+        tr_p = int(rp[4] or 0)
+        bk_p = int(rp[5] or 0)
+        fa_p = int(rp[6] or 0)
+        if vol_p <= 0:
+            continue
+
+        # Determinar UF real baseada no ponto que fez a coleta
+        prefixo_pt = pt[:2] if len(pt) >= 3 and pt[2] == "-" else ""
+        if prefixo_pt in ESTADOS_NOMES:
+            uf_ponto = prefixo_pt
+        elif pt in uf_por_ponto and uf_por_ponto[pt] in ESTADOS_NOMES:
+            uf_ponto = uf_por_ponto[pt]
+        elif uf_col in ESTADOS_NOMES:
+            uf_ponto = uf_col
+        else:
+            uf_ponto = "SP"
+
+        # Separar Dropoff vs Pickup baseado no ponto que fez a coleta (MD = Dropoff, HUB/Galpão = Pickup)
+        is_ponto_dropoff = eh_md(pt)
+
+        du = dados_uf[uf_ponto]
+        du["volume"] += vol_p
+        du["circuito_fechado"] += cf_p
+        du["em_transito"] += tr_p
+        du["backlog_coleta"] += bk_p
+        du["foi_assinado"] += fa_p
+        du["coletados"] += (cf_p + tr_p)
+        du["backlog"] += bk_p
+        if is_ponto_dropoff:
+            du["vol_dropoff"] += vol_p
+            du["qtd_pontos_dropoff"] += 1
+        else:
+            du["vol_pickup"] += vol_p
+            du["qtd_pontos_pickup"] += 1
+
+    macro_regioes = []
+    regionais_flat = []
+
+    for nome_regiao, lista_ufs in MACRO_REGIOES_DEF:
+        vol_reg = 0
+        dp_reg = 0
+        pk_reg = 0
+        pts_dp_reg = 0
+        pts_pk_reg = 0
+        cf_reg = 0
+        tr_reg = 0
+        bk_reg = 0
+        fa_reg = 0
+        estados_reg = []
+
+        for uf_s in lista_ufs:
+            du = dados_uf[uf_s]
+            v_u = du["volume"]
+            c_u = du["coletados"]
+            du["taxa_coleta"] = round((c_u / max(v_u, 1)) * 100, 1) if v_u > 0 else 0.0
+            du["taxa_finalizacao_pct"] = round((du["circuito_fechado"] / max(v_u, 1)) * 100, 1) if v_u > 0 else 0.0
+            du["share_nacional_pct"] = round((v_u / max(total_pedidos, 1)) * 100, 1) if total_pedidos > 0 else 0.0
+
+            vol_reg += v_u
+            dp_reg += du["vol_dropoff"]
+            pk_reg += du["vol_pickup"]
+            pts_dp_reg += du["qtd_pontos_dropoff"]
+            pts_pk_reg += du["qtd_pontos_pickup"]
+            cf_reg += du["circuito_fechado"]
+            tr_reg += du["em_transito"]
+            bk_reg += du["backlog_coleta"]
+            fa_reg += du["foi_assinado"]
+
+            estados_reg.append(du)
+            if v_u > 0:
+                regionais_flat.append(du)
+
+        # Ordenar estados dentro da região por volume decrescente
+        estados_reg.sort(key=lambda x: x["volume"], reverse=True)
+        for est_item in estados_reg:
+            est_item["share_regiao_pct"] = round((est_item["volume"] / max(vol_reg, 1)) * 100, 1) if vol_reg > 0 else 0.0
+
+        macro_regioes.append({
+            "regiao": nome_regiao,
+            "volume_total": vol_reg,
+            "share_pct": round((vol_reg / max(total_pedidos, 1)) * 100, 1) if total_pedidos > 0 else 0.0,
+            "vol_dropoff": dp_reg,
+            "dropoff_pct": round((dp_reg / max(vol_reg, 1)) * 100, 1) if vol_reg > 0 else 0.0,
+            "qtd_pontos_dropoff": pts_dp_reg,
+            "vol_pickup": pk_reg,
+            "pickup_pct": round((pk_reg / max(vol_reg, 1)) * 100, 1) if vol_reg > 0 else 0.0,
+            "qtd_pontos_pickup": pts_pk_reg,
+            "circuito_fechado": cf_reg,
+            "em_transito": tr_reg,
+            "backlog_coleta": bk_reg,
+            "foi_assinado": fa_reg,
+            "taxa_finalizacao_pct": round((cf_reg / max(vol_reg, 1)) * 100, 1) if vol_reg > 0 else 0.0,
+            "estados": estados_reg,
+        })
+
+    regionais_flat.sort(key=lambda x: x["volume"], reverse=True)
+
     kpis_data = {
         "total_pedidos": total_pedidos,
         "total_mds": total_mds,
@@ -445,6 +637,14 @@ def get_resumo_coletas(
         "total_sellers": total_sellers,
         "total_coletados": coletados,
         "coletados": coletados,
+        "circuito_fechado": circuito_fechado,
+        "circuito_fechado_pct": round(circuito_fechado / max(total_pedidos, 1) * 100, 1),
+        "em_transito": em_transito,
+        "em_transito_pct": round(em_transito / max(total_pedidos, 1) * 100, 1),
+        "backlog_coleta": backlog_coleta,
+        "backlog_coleta_pct": round(backlog_coleta / max(total_pedidos, 1) * 100, 1),
+        "foi_assinado": foi_assinado,
+        "foi_assinado_pct": round(foi_assinado / max(total_pedidos, 1) * 100, 1),
         "backlog_md": backlog_estrito_md,
         "backlog_hub": max(0, backlog - backlog_estrito_md),
         "backlog": backlog,
@@ -460,6 +660,8 @@ def get_resumo_coletas(
         "dia_selecionado": dia,
         "kpis": kpis_data,
         "totais": kpis_data,
+        "macro_regioes": macro_regioes,
+        "regionais": regionais_flat,
         "alertas": {
             "total_primeira_bipagem": len(pontos_primeira_bipagem),
             "primeira_bipagem": pontos_primeira_bipagem[:10],
@@ -3307,3 +3509,11 @@ def remover_nota_diario_bordo(
     db.execute(text("DELETE FROM diario_bordo_operacional WHERE id = :id"), {"id": nota_id})
     db.commit()
     return {"status": "sucesso"}
+
+
+
+@router.get("/reconciliacao-pacotes")
+def get_reconciliacao_pacotes_endpoint(db: Session = Depends(get_db)):
+    """Retorna o painel de reconciliação de pacotes atualizados retroativamente e pacotes há X dias sem atualização."""
+    from services.reconciliacao_pacotes import construir_painel_atualizacoes_e_aging
+    return construir_painel_atualizacoes_e_aging(db)

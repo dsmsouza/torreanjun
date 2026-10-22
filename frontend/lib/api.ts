@@ -349,6 +349,11 @@ async function resolveSnapshotRequest(urlStr: string): Promise<Response | null> 
       if (data) return jsonResponse(data);
     }
 
+    if (path === "/api/coletas/reconciliacao-pacotes") {
+      const data = await fetchStaticSnapshot("reconciliacao_pacotes.json");
+      if (data) return jsonResponse(data);
+    }
+
     if (path === "/api/coletas/eventos-dia") {
       const idx = await fetchStaticSnapshot("eventos_malha.json");
       if (idx) {
@@ -2714,5 +2719,14 @@ export async function removerNotaDiarioBordo(notaId: number): Promise<any> {
   });
   if (!res.ok) throw new Error("Falha ao remover nota do Diário de Bordo.");
   invalidateApiCache();
+  return res.json();
+}
+
+
+export async function fetchReconciliacaoPacotes(): Promise<any> {
+  const res = await safeFetch(`${API_URL}/api/coletas/reconciliacao-pacotes`, {
+    headers: getAuthHeaders(),
+  });
+  if (!res.ok) throw new Error("Falha ao carregar painel de reconciliação e aging de pacotes.");
   return res.json();
 }

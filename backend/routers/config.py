@@ -160,6 +160,20 @@ async def post_otimizar_planilha(
                         caminho_otimizado_xlsx = os.path.join(UPLOAD_OTIMIZADOR_DIR, res["arquivo_xlsx"])
                         caminho_usar = caminho_otimizado_csv if os.path.exists(caminho_otimizado_csv) else caminho_otimizado_xlsx
 
+                        # 0. Reconciliação Retroativa de Pacotes (identifica códigos de barras existentes e atualiza status no dia de origem)
+                        try:
+                            from services.reconciliacao_pacotes import reconciliar_planilha_otimizada_csv
+                            _log(job_id, "🔄 Verificando pacotes já existentes no banco para atualização retroativa de status...", "info")
+                            reconciliar_planilha_otimizada_csv(
+                                db=db,
+                                caminho_csv=caminho_otimizado_csv,
+                                dia_planilha=dt_br,
+                                semana_planilha=f"SEMANA {sem_final}",
+                                callback_log=lambda m: _log(job_id, m, "success")
+                            )
+                        except Exception as e_rec:
+                            _log(job_id, f"⚠️ Aviso na reconciliação de pacotes: {e_rec}", "info")
+
                         # 1. Atualizar Criação de Pedidos (Alimenta o Cockpit D-1 em "Fluxo de Novas Solicitações")
                         _log(job_id, "📊 Atualizando Cockpit D-1 (Fluxo de Novas Solicitações)...", "info")
                         res_criacao = op_service.processar_planilha_criacao_pedidos(

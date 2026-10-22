@@ -42,13 +42,14 @@ import {
   fetchHorariosColetas,
   fetchClienteDetalhes,
   fetchEventosDia,
+  fetchReconciliacaoPacotes,
   criarNotaDiarioBordo,
   removerNotaDiarioBordo,
   cadastrarPontoColeta,
   otimizarPlanilha
 } from "@/lib/api";
 
-type TabType = "visao_geral" | "mds" | "sellers" | "horarios" | "eventos";
+type TabType = "visao_geral" | "mds" | "sellers" | "horarios" | "eventos" | "reconciliacao";
 
 export default function CentralColetasPage() {
   const [loading, setLoading] = useState(true);
@@ -78,6 +79,13 @@ export default function CentralColetasPage() {
   const [horariosData, setHorariosData] = useState<any>(null);
   const [loadingHorarios, setLoadingHorarios] = useState(false);
   const [selectedMdHorario, setSelectedMdHorario] = useState<string>("");
+
+  // Aba 6: Reconciliação Retroativa & Pacotes Sem Atualização (Aging)
+  const [reconciliacaoData, setReconciliacaoData] = useState<any>(null);
+  const [loadingReconciliacao, setLoadingReconciliacao] = useState<boolean>(false);
+  const [subAbaReconciliacao, setSubAbaReconciliacao] = useState<"dias" | "pontos" | "pacotes" | "atualizados">("dias");
+  const [buscaReconciliacao, setBuscaReconciliacao] = useState<string>("");
+  const [filtroFaixaAging, setFiltroFaixaAging] = useState<string>("TODOS");
 
   // Aba 5: Linha do Tempo & Eventos do Dia
   const [eventosData, setEventosData] = useState<any>(null);
@@ -263,6 +271,24 @@ export default function CentralColetasPage() {
       carregarEventos();
     }
   }, [activeTab, selectedDia]);
+
+  useEffect(() => {
+    if (activeTab === "reconciliacao") {
+      carregarReconciliacao();
+    }
+  }, [activeTab, selectedDia]);
+
+  const carregarReconciliacao = async () => {
+    setLoadingReconciliacao(true);
+    try {
+      const data = await fetchReconciliacaoPacotes();
+      setReconciliacaoData(data);
+    } catch (err) {
+      console.warn("Aviso ao carregar reconciliação de pacotes:", err);
+    } finally {
+      setLoadingReconciliacao(false);
+    }
+  };
 
   const carregarEventos = async () => {
     setLoadingEventos(true);
@@ -816,6 +842,21 @@ export default function CentralColetasPage() {
                 1º Bip & Diário
               </span>
             </button>
+
+            <button
+              onClick={() => setActiveTab("reconciliacao")}
+              className={`px-4 py-2.5 text-xs font-semibold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
+                activeTab === "reconciliacao"
+                  ? "border-emerald-500 text-white"
+                  : "border-transparent text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <RefreshCw className="w-4 h-4 text-cyan-400" />
+              6. Reconciliação & Dias Sem Atualização
+              <span className="px-1.5 py-0.2 bg-cyan-500/20 text-cyan-300 text-[10px] rounded font-mono">
+                Aging & Baixas
+              </span>
+            </button>
           </div>
         </div>
 
@@ -862,93 +903,357 @@ export default function CentralColetasPage() {
                 </div>
               )}
 
-              {/* Cards de Métricas Principais */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Total de Pedidos */}
+              {/* Cards de Métricas Principais (4 Status Oficiais + Dropoff vs Pickup pelo Ponto de Coleta) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+                {/* 1. Volume Total + Mix por Ponto (Dropoff MD vs Pickup HUB) */}
                 <div className="p-4 rounded-xl bg-[#131926]/90 border border-slate-800 flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
+                  <div className="flex items-center justify-between text-slate-300 text-xs font-semibold">
                     <span>Volume Total Movimentado</span>
                     <Package className="w-4 h-4 text-blue-400" />
                   </div>
-                  <div className="mt-3">
-                    <p className="text-2xl font-bold text-white tracking-tight">
+                  <div className="mt-2">
+                    <p className="text-2xl font-extrabold text-white tracking-tight font-mono">
                       {kpis?.total_pedidos ? kpis.total_pedidos.toLocaleString("pt-BR") : "0"}
                     </p>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      Pacotes registrados na data
-                    </p>
+                    <div className="mt-2 pt-2 border-t border-slate-800/80 space-y-1 text-[11px]">
+                      <div className="flex justify-between text-cyan-300">
+                        <span>🏪 Dropoff (Pontos MD):</span>
+                        <span className="font-mono font-bold">
+                          {(kpis?.dropoff_volume || 0).toLocaleString("pt-BR")} ({kpis?.dropoff_pct || 0}%)
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-indigo-300">
+                        <span>🚛 Pickup (Pontos HUB):</span>
+                        <span className="font-mono font-bold">
+                          {(kpis?.pickup_volume || 0).toLocaleString("pt-BR")} ({kpis?.pickup_pct || 0}%)
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                {/* Coletados ANJUN */}
-                <div className="p-4 rounded-xl bg-[#131926]/90 border border-emerald-500/30 flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-emerald-400 text-xs font-medium">
-                    <span>Coletados ANJUN (Sucesso)</span>
+                {/* 2. Circuito Fechado (Finalizados Corretamente) */}
+                <div className="p-4 rounded-xl bg-[#131926]/90 border border-emerald-500/35 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-emerald-400 text-xs font-bold">
+                    <span>🟢 Circuito Fechado</span>
                     <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                   </div>
-                  <div className="mt-3">
+                  <div className="mt-2">
                     <div className="flex items-baseline gap-2">
-                      <p className="text-2xl font-bold text-emerald-400 tracking-tight">
-                        {kpis?.total_coletados ? kpis.total_coletados.toLocaleString("pt-BR") : "0"}
+                      <p className="text-2xl font-extrabold text-emerald-400 tracking-tight font-mono">
+                        {(kpis?.circuito_fechado ?? kpis?.total_coletados ?? 0).toLocaleString("pt-BR")}
                       </p>
-                      <span className="text-xs font-bold text-emerald-300">
-                        {kpis?.taxa_coleta_pct || 0}%
+                      <span className="text-xs font-bold text-emerald-300 font-mono">
+                        {kpis?.circuito_fechado_pct ?? kpis?.taxa_coleta_pct ?? 0}%
                       </span>
                     </div>
-                    {/* Barra de Progresso */}
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Pedidos finalizados corretamente
+                    </p>
                     <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-2">
                       <div
                         className="bg-emerald-500 h-full rounded-full transition-all duration-500"
-                        style={{ width: `${Math.min(100, kpis?.taxa_coleta_pct || 0)}%` }}
+                        style={{ width: `${Math.min(100, kpis?.circuito_fechado_pct ?? kpis?.taxa_coleta_pct ?? 0)}%` }}
                       />
                     </div>
                   </div>
                 </div>
 
-                {/* Backlog no MD */}
-                <div className="p-4 rounded-xl bg-[#131926]/90 border border-amber-500/30 flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-amber-400 text-xs font-medium">
-                    <span>Backlog Retido nos MDs</span>
-                    <Clock className="w-4 h-4 text-amber-400" />
+                {/* 3. Carregamento e Descarregamento (Em Trânsito) */}
+                <div className="p-4 rounded-xl bg-[#131926]/90 border border-blue-500/35 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-blue-300 text-xs font-bold">
+                    <span>🚛 Em Trânsito</span>
+                    <Truck className="w-4 h-4 text-blue-400" />
                   </div>
-                  <div className="mt-3">
-                    <p className="text-2xl font-bold text-amber-400 tracking-tight">
-                      {kpis?.backlog_md ? kpis.backlog_md.toLocaleString("pt-BR") : "0"}
-                    </p>
+                  <div className="mt-2">
+                    <div className="flex items-baseline gap-2">
+                      <p className="text-2xl font-extrabold text-blue-400 tracking-tight font-mono">
+                        {(kpis?.em_transito || 0).toLocaleString("pt-BR")}
+                      </p>
+                      <span className="text-xs font-bold text-blue-300 font-mono">
+                        {kpis?.em_transito_pct || 0}%
+                      </span>
+                    </div>
                     <p className="text-[11px] text-slate-400 mt-1">
-                      Aguardando coleta física do caminhão
+                      Carregamento & Descarregamento
                     </p>
+                    <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-2">
+                      <div
+                        className="bg-blue-500 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, kpis?.em_transito_pct || 0)}%` }}
+                      />
+                    </div>
                   </div>
                 </div>
 
-                {/* Modalidade Dropoff vs Pickup */}
-                <div className="p-4 rounded-xl bg-[#131926]/90 border border-slate-800 flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
-                    <span>Mix de Modalidade</span>
-                    <Layers className="w-4 h-4 text-cyan-400" />
+                {/* 4. Coleta e Saco Selado (Backlog) */}
+                <div className="p-4 rounded-xl bg-[#131926]/90 border border-amber-500/35 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-amber-300 text-xs font-bold">
+                    <span>📦 Coleta & Saco Selado</span>
+                    <Clock className="w-4 h-4 text-amber-400" />
                   </div>
-                  <div className="mt-3 space-y-1.5 text-xs">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-300 flex items-center gap-1.5">
-                        <Store className="w-3 h-3 text-cyan-400" /> Dropoff (Balcão):
-                      </span>
-                      <span className="font-bold text-white">
-                        {kpis?.dropoff_volume?.toLocaleString("pt-BR") || 0}{" "}
-                        <span className="text-slate-400 font-normal">({kpis?.dropoff_pct || 0}%)</span>
+                  <div className="mt-2">
+                    <div className="flex items-baseline gap-2">
+                      <p className="text-2xl font-extrabold text-amber-400 tracking-tight font-mono">
+                        {(kpis?.backlog_coleta ?? kpis?.backlog ?? 0).toLocaleString("pt-BR")}
+                      </p>
+                      <span className="text-xs font-bold text-amber-300 font-mono">
+                        {kpis?.backlog_coleta_pct || 0}%
                       </span>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-300 flex items-center gap-1.5">
-                        <Truck className="w-3 h-3 text-indigo-400" /> Pickup (Coleta):
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Backlog (No MD: {(kpis?.backlog_md || 0).toLocaleString("pt-BR")})
+                    </p>
+                    <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-2">
+                      <div
+                        className="bg-amber-500 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, kpis?.backlog_coleta_pct || 0)}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. Foi Assinado (Possíveis Extravios) */}
+                <div className="p-4 rounded-xl bg-[#131926]/90 border border-rose-500/35 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-rose-300 text-xs font-bold">
+                    <span>🚨 Foi Assinado</span>
+                    <AlertTriangle className="w-4 h-4 text-rose-400" />
+                  </div>
+                  <div className="mt-2">
+                    <div className="flex items-baseline gap-2">
+                      <p className="text-2xl font-extrabold text-rose-400 tracking-tight font-mono">
+                        {(kpis?.foi_assinado || 0).toLocaleString("pt-BR")}
+                      </p>
+                      <span className="text-xs font-bold text-rose-300 font-mono">
+                        {kpis?.foi_assinado_pct || 0}%
                       </span>
-                      <span className="font-bold text-white">
-                        {kpis?.pickup_volume?.toLocaleString("pt-BR") || 0}{" "}
-                        <span className="text-slate-400 font-normal">({kpis?.pickup_pct || 0}%)</span>
-                      </span>
+                    </div>
+                    <p className="text-[11px] text-rose-300/80 mt-1">
+                      Possíveis extravios (atenção crítica)
+                    </p>
+                    <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-2">
+                      <div
+                        className="bg-rose-500 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, kpis?.foi_assinado_pct || 0)}%` }}
+                      />
                     </div>
                   </div>
                 </div>
               </div>
+
+              {/* ============================================================ */}
+              {/* SEÇÃO DE CARDS POR MACRO-REGIÃO DO BRASIL + ESTADOS (UF) */}
+              {/* Sudeste • Sul • Centro-Oeste • Nordeste • Norte */}
+              {/* Separados em Dropoff (Ponto MD) e Pickup (Ponto HUB) + 4 Status */}
+              {/* ============================================================ */}
+              {Array.isArray(resumo?.macro_regioes) && resumo.macro_regioes.length > 0 && (
+                <div className="p-5 rounded-2xl bg-gradient-to-b from-[#131926] to-[#0D131F] border border-cyan-500/30 space-y-4 shadow-xl">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                          Visão Nacional por Macro-Região & Estado (UF)
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          Sudeste • Sul • Centro-Oeste • Nordeste • Norte
+                        </span>
+                      </div>
+                      <h3 className="text-sm md:text-base font-bold text-white mt-1">
+                        Cards por Regiões do Brasil — Dropoff (MD) vs Pickup (HUB) e Status Operacional
+                      </h3>
+                      <p className="text-xs text-slate-400">
+                        Classificação de <strong>Dropoff</strong> e <strong>Pickup</strong> apurada diretamente pelo <strong>ponto que realizou a coleta</strong>, detalhada por Estado e Total da Região. Clique em qualquer Estado para filtrar o painel.
+                      </p>
+                    </div>
+                    {selectedRegional && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRegional("")}
+                        className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer self-start md:self-center"
+                      >
+                        <X className="w-3.5 h-3.5" /> Limpar Filtro UF ({selectedRegional})
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {resumo.macro_regioes.map((reg: any) => {
+                      const hasVol = Number(reg.volume_total || 0) > 0;
+                      const estadosComVolume = (reg.estados || []).filter((e: any) => Number(e.volume || 0) > 0);
+                      const estadosExibir = estadosComVolume.length > 0 ? estadosComVolume : (reg.estados || []).slice(0, 4);
+
+                      return (
+                        <div
+                          key={reg.regiao}
+                          className={`p-4 rounded-xl border flex flex-col justify-between transition-all ${
+                            hasVol
+                              ? "bg-slate-900/90 border-slate-700/80 shadow-lg"
+                              : "bg-slate-900/40 border-slate-800/70 opacity-75"
+                          }`}
+                        >
+                          <div>
+                            {/* Cabeçalho do Card da Região + Total da Região */}
+                            <div className="flex items-start justify-between gap-2 pb-3 border-b border-slate-800">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <MapPin className="w-4 h-4 text-cyan-400" />
+                                  <h4 className="text-sm font-extrabold text-white uppercase tracking-wide">
+                                    Região {reg.regiao}
+                                  </h4>
+                                </div>
+                                <p className="text-[11px] text-slate-400 mt-0.5">
+                                  {reg.qtd_pontos_dropoff || 0} MDs (Dropoff) • {reg.qtd_pontos_pickup || 0} HUBs (Pickup)
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-[10px] text-slate-400 uppercase font-semibold block">
+                                  Total {reg.regiao}
+                                </span>
+                                <span className="text-lg font-extrabold text-white font-mono">
+                                  {(reg.volume_total || 0).toLocaleString("pt-BR")}
+                                </span>
+                                <span className="text-[10px] text-cyan-300 font-mono block">
+                                  {reg.share_pct || 0}% do Brasil
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Separação Dropoff vs Pickup baseada no Ponto que fez a coleta */}
+                            <div className="grid grid-cols-2 gap-2 my-3">
+                              <div className="p-2.5 rounded-lg bg-cyan-950/30 border border-cyan-500/30">
+                                <div className="flex items-center justify-between text-[10px] text-cyan-300 font-bold">
+                                  <span>🏪 DROPOFF (Ponto MD)</span>
+                                  <span>{reg.dropoff_pct || 0}%</span>
+                                </div>
+                                <div className="text-sm font-extrabold text-white font-mono mt-0.5">
+                                  {(reg.vol_dropoff || 0).toLocaleString("pt-BR")}{" "}
+                                  <span className="text-[10px] font-normal text-slate-400">pcts</span>
+                                </div>
+                              </div>
+
+                              <div className="p-2.5 rounded-lg bg-indigo-950/30 border border-indigo-500/30">
+                                <div className="flex items-center justify-between text-[10px] text-indigo-300 font-bold">
+                                  <span>🚛 PICKUP (Ponto HUB)</span>
+                                  <span>{reg.pickup_pct || 0}%</span>
+                                </div>
+                                <div className="text-sm font-extrabold text-white font-mono mt-0.5">
+                                  {(reg.vol_pickup || 0).toLocaleString("pt-BR")}{" "}
+                                  <span className="text-[10px] font-normal text-slate-400">pcts</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Os 4 Status Oficiais na Região */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pb-3 border-b border-slate-800 text-[10px]">
+                              <div className="p-1.5 rounded bg-emerald-500/10 border border-emerald-500/25">
+                                <span className="text-emerald-300 font-semibold block truncate" title="Circuito Fechado (Finalizado Corretamente)">
+                                  🟢 Circ. Fechado
+                                </span>
+                                <span className="font-mono font-bold text-white text-xs">
+                                  {(reg.circuito_fechado || 0).toLocaleString("pt-BR")}
+                                </span>
+                              </div>
+                              <div className="p-1.5 rounded bg-blue-500/10 border border-blue-500/25">
+                                <span className="text-blue-300 font-semibold block truncate" title="Carregamento e Descarregamento (Em Trânsito)">
+                                  🚛 Em Trânsito
+                                </span>
+                                <span className="font-mono font-bold text-white text-xs">
+                                  {(reg.em_transito || 0).toLocaleString("pt-BR")}
+                                </span>
+                              </div>
+                              <div className="p-1.5 rounded bg-amber-500/10 border border-amber-500/25">
+                                <span className="text-amber-300 font-semibold block truncate" title="Coleta e Saco Selado (Backlog)">
+                                  📦 Backlog
+                                </span>
+                                <span className="font-mono font-bold text-white text-xs">
+                                  {(reg.backlog_coleta || 0).toLocaleString("pt-BR")}
+                                </span>
+                              </div>
+                              <div className="p-1.5 rounded bg-rose-500/10 border border-rose-500/25">
+                                <span className="text-rose-300 font-semibold block truncate" title="Foi Assinado (Possíveis Extravios)">
+                                  🚨 Foi Assinado
+                                </span>
+                                <span className="font-mono font-bold text-white text-xs">
+                                  {(reg.foi_assinado || 0).toLocaleString("pt-BR")}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Lista de Estados (UFs) da Região */}
+                            <div className="mt-3 space-y-1.5">
+                              <div className="flex items-center justify-between text-[10px] font-bold uppercase text-slate-400 px-1">
+                                <span>Estado (UF)</span>
+                                <span>Dropoff / Pickup • Status • Total</span>
+                              </div>
+                              {estadosExibir.map((est: any) => {
+                                const isUfSelected = selectedRegional?.toUpperCase() === est.uf;
+                                return (
+                                  <div
+                                    key={est.uf}
+                                    onClick={() => setSelectedRegional(isUfSelected ? "" : est.uf)}
+                                    className={`p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                                      isUfSelected
+                                        ? "bg-emerald-950/40 border-emerald-500/60"
+                                        : "bg-slate-950/60 border-slate-800/80 hover:border-slate-700"
+                                    }`}
+                                    title={`Clique para filtrar o painel pelo estado ${est.nome_estado} (${est.uf})`}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="px-1.5 py-0.5 rounded bg-slate-800 text-white font-mono font-extrabold text-[11px] border border-slate-700">
+                                          {est.uf}
+                                        </span>
+                                        <span className="font-semibold text-slate-200 truncate">
+                                          {est.nome_estado}
+                                        </span>
+                                      </div>
+                                      <span className="font-mono font-extrabold text-white">
+                                        {(est.volume || 0).toLocaleString("pt-BR")}{" "}
+                                        <span className="text-[10px] font-normal text-slate-400">
+                                          ({est.share_regiao_pct || 0}%)
+                                        </span>
+                                      </span>
+                                    </div>
+
+                                    {est.volume > 0 && (
+                                      <div className="mt-1.5 pt-1.5 border-t border-slate-800/60 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10px] font-mono">
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-cyan-300" title="Dropoff nos Pontos MD do Estado">
+                                            🏪 Drop: {(est.vol_dropoff || 0).toLocaleString("pt-BR")}
+                                          </span>
+                                          <span className="text-indigo-300" title="Pickup nos Pontos HUB do Estado">
+                                            🚛 Pick: {(est.vol_pickup || 0).toLocaleString("pt-BR")}
+                                          </span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-emerald-400" title="Circuito Fechado">
+                                            🟢{(est.circuito_fechado || 0).toLocaleString("pt-BR")}
+                                          </span>
+                                          <span className="text-blue-400" title="Carregamento e Descarregamento (Em Trânsito)">
+                                            🚛{(est.em_transito || 0).toLocaleString("pt-BR")}
+                                          </span>
+                                          <span className="text-amber-400" title="Coleta e Saco Selado (Backlog)">
+                                            📦{(est.backlog_coleta || 0).toLocaleString("pt-BR")}
+                                          </span>
+                                          {est.foi_assinado > 0 && (
+                                            <span className="text-rose-400" title="Foi Assinado (Possíveis Extravios)">
+                                              🚨{(est.foi_assinado || 0).toLocaleString("pt-BR")}
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* ============================================================ */}
               {/* SEÇÃO 1: MARKETPLACES OFICIAIS (SHEIN • TEMU • TIKTOK • KWAI) */}
@@ -2515,6 +2820,485 @@ export default function CentralColetasPage() {
                             </div>
                           );
                         })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ============================================================ */}
+          {/* ABA 6: RECONCILIAÇÃO RETROATIVA & PACOTES HÁ X DIAS SEM ATUALIZAÇÃO */}
+          {/* ============================================================ */}
+          {activeTab === "reconciliacao" && (
+            <div className="space-y-6">
+              {/* Banner Explicativo da Reconciliação Automática */}
+              <div className="p-5 rounded-2xl bg-gradient-to-r from-cyan-950/35 via-[#131926] to-[#131926] border border-cyan-500/35 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="flex items-start gap-3.5">
+                  <div className="w-11 h-11 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 shrink-0">
+                    <RefreshCw className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                        Reconciliação Automática de Planilhas & Aging de Pacotes
+                      </span>
+                      <span className="text-xs font-mono text-slate-400">
+                        • Data de Referência: {reconciliacaoData?.dia_referencia || selectedDia}
+                      </span>
+                    </div>
+                    <h3 className="text-base md:text-lg font-bold text-white mt-1">
+                      Rastreio de Pacotes Atualizados & Pacotes Sem Baixa ("Há X dias sem atualização")
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-0.5 max-w-4xl">
+                      Sempre que você subir uma planilha (seja de um dia novo como <strong>06/10</strong> ou re-subindo um dia antigo como <strong>03/10</strong>), o sistema verifica pelo <strong>código de barras</strong> se o pacote já existe no banco, atualiza o status no dia de origem, cria o registro da mudança e monitora abaixo todos os pacotes que ainda não chegaram em <strong>Circuito Fechado</strong>.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={carregarReconciliacao}
+                  className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold flex items-center gap-2 shrink-0 self-start lg:self-center cursor-pointer transition-colors"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingReconciliacao ? "animate-spin" : ""}`} />
+                  Atualizar Auditoria
+                </button>
+              </div>
+
+              {loadingReconciliacao ? (
+                <div className="py-16 text-center text-slate-400 flex flex-col items-center justify-center gap-3">
+                  <RefreshCw className="w-7 h-7 animate-spin text-cyan-400" />
+                  <span className="text-xs">Calculando aging de pacotes e histórico de reconciliações...</span>
+                </div>
+              ) : (
+                <>
+                  {/* Cards de Faixas de Dias Sem Atualização (Aging) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+                    <div
+                      onClick={() => setFiltroFaixaAging("TODOS")}
+                      className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                        filtroFaixaAging === "TODOS"
+                          ? "bg-slate-900 border-cyan-500/70"
+                          : "bg-[#131926]/90 border-slate-800 hover:border-slate-700"
+                      }`}
+                    >
+                      <span className="text-xs font-bold text-cyan-300 block">🔄 Atualizados Retroativos</span>
+                      <p className="text-2xl font-extrabold text-white font-mono mt-2">
+                        {(reconciliacaoData?.totais_gerais?.total_atualizados_retroativos || 0).toLocaleString("pt-BR")}
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Pacotes que mudaram de status após re-upload
+                      </p>
+                    </div>
+
+                    <div
+                      onClick={() => setFiltroFaixaAging(filtroFaixaAging === "ATE_2" ? "TODOS" : "ATE_2")}
+                      className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                        filtroFaixaAging === "ATE_2"
+                          ? "bg-blue-950/30 border-blue-400"
+                          : "bg-[#131926]/90 border-blue-500/30 hover:border-blue-500/60"
+                      }`}
+                    >
+                      <span className="text-xs font-bold text-blue-300 block">⏳ Há 1 a 2 dias sem finalizar</span>
+                      <p className="text-2xl font-extrabold text-blue-400 font-mono mt-2">
+                        {(reconciliacaoData?.faixas_aging?.ate_2_dias || 0).toLocaleString("pt-BR")}
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Pendentes recentes (D-1 / D-2)
+                      </p>
+                    </div>
+
+                    <div
+                      onClick={() => setFiltroFaixaAging(filtroFaixaAging === "DE_3_5" ? "TODOS" : "DE_3_5")}
+                      className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                        filtroFaixaAging === "DE_3_5"
+                          ? "bg-amber-950/30 border-amber-400"
+                          : "bg-[#131926]/90 border-amber-500/30 hover:border-amber-500/60"
+                      }`}
+                    >
+                      <span className="text-xs font-bold text-amber-300 block">⚠️ Há 3 a 5 dias sem atualização</span>
+                      <p className="text-2xl font-extrabold text-amber-400 font-mono mt-2">
+                        {(reconciliacaoData?.faixas_aging?.de_3_a_5_dias || 0).toLocaleString("pt-BR")}
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Recomendado re-subir planilha da data
+                      </p>
+                    </div>
+
+                    <div
+                      onClick={() => setFiltroFaixaAging(filtroFaixaAging === "DE_6_10" ? "TODOS" : "DE_6_10")}
+                      className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                        filtroFaixaAging === "DE_6_10"
+                          ? "bg-orange-950/30 border-orange-400"
+                          : "bg-[#131926]/90 border-orange-500/30 hover:border-orange-500/60"
+                      }`}
+                    >
+                      <span className="text-xs font-bold text-orange-300 block">🔶 Há 6 a 10 dias sem atualização</span>
+                      <p className="text-2xl font-extrabold text-orange-400 font-mono mt-2">
+                        {(reconciliacaoData?.faixas_aging?.de_6_a_10_dias || 0).toLocaleString("pt-BR")}
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Estagnados em Coleta / Trânsito / Assinado
+                      </p>
+                    </div>
+
+                    <div
+                      onClick={() => setFiltroFaixaAging(filtroFaixaAging === "MAIS_10" ? "TODOS" : "MAIS_10")}
+                      className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                        filtroFaixaAging === "MAIS_10"
+                          ? "bg-rose-950/30 border-rose-400"
+                          : "bg-[#131926]/90 border-rose-500/30 hover:border-rose-500/60"
+                      }`}
+                    >
+                      <span className="text-xs font-bold text-rose-300 block">🚨 Há +10 dias sem atualização</span>
+                      <p className="text-2xl font-extrabold text-rose-400 font-mono mt-2">
+                        {(reconciliacaoData?.faixas_aging?.mais_10_dias || 0).toLocaleString("pt-BR")}
+                      </p>
+                      <p className="text-[11px] text-rose-300/80 mt-1">
+                        Atenção crítica (re-exportar ou auditar)
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Painel Principal com Sub-Abas */}
+                  <div className="p-5 rounded-2xl bg-[#131926]/90 border border-slate-800 space-y-4">
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                      <div className="flex flex-wrap items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800">
+                        <button
+                          type="button"
+                          onClick={() => setSubAbaReconciliacao("dias")}
+                          className={`px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            subAbaReconciliacao === "dias"
+                              ? "bg-cyan-600 text-white"
+                              : "text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          📅 Dias com Pacotes Sem Atualização ({reconciliacaoData?.aging_por_data?.length || 0})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSubAbaReconciliacao("pontos")}
+                          className={`px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            subAbaReconciliacao === "pontos"
+                              ? "bg-cyan-600 text-white"
+                              : "text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          🏪 Por Ponto MD / HUB ({reconciliacaoData?.pontos_sem_atualizacao?.length || 0})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSubAbaReconciliacao("pacotes")}
+                          className={`px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            subAbaReconciliacao === "pacotes"
+                              ? "bg-cyan-600 text-white"
+                              : "text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          📦 Pacotes Parados Há X Dias ({reconciliacaoData?.pacotes_pendentes_amostra?.length || 0})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSubAbaReconciliacao("atualizados")}
+                          className={`px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            subAbaReconciliacao === "atualizados"
+                              ? "bg-cyan-600 text-white"
+                              : "text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          🔄 Registro de Pacotes Atualizados ({reconciliacaoData?.historico_pacotes_atualizados?.length || 0})
+                        </button>
+                      </div>
+
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-slate-400" />
+                        <input
+                          type="text"
+                          value={buscaReconciliacao}
+                          onChange={(e) => setBuscaReconciliacao(e.target.value)}
+                          placeholder="Buscar data, código de barras, ponto, cliente..."
+                          className="bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 w-72 focus:outline-none focus:border-cyan-500"
+                        />
+                      </div>
+                    </div>
+
+                    {subAbaReconciliacao === "dias" && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-slate-800 text-slate-400 bg-slate-900/60">
+                              <th className="py-2.5 px-3">Data de Origem</th>
+                              <th className="py-2.5 px-3">Tempo Sem Finalizar</th>
+                              <th className="py-2.5 px-3 text-right">Volume Total</th>
+                              <th className="py-2.5 px-3 text-right text-emerald-400">🟢 Circuito Fechado</th>
+                              <th className="py-2.5 px-3 text-right text-amber-300">⏳ Total Sem Atualização</th>
+                              <th className="py-2.5 px-3 text-right">📦 Coleta / Saco Selado</th>
+                              <th className="py-2.5 px-3 text-right">🚛 Carreg. / Descarreg.</th>
+                              <th className="py-2.5 px-3 text-right text-rose-400">🚨 Foi Assinado</th>
+                              <th className="py-2.5 px-3 text-center">🔄 Atualizados Depois</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/60">
+                            {(reconciliacaoData?.aging_por_data || [])
+                              .filter((item: any) => {
+                                const d = Number(item.dias_sem_atualizacao || 0);
+                                if (filtroFaixaAging === "ATE_2" && d > 2) return false;
+                                if (filtroFaixaAging === "DE_3_5" && (d < 3 || d > 5)) return false;
+                                if (filtroFaixaAging === "DE_6_10" && (d < 6 || d > 10)) return false;
+                                if (filtroFaixaAging === "MAIS_10" && d <= 10) return false;
+                                if (buscaReconciliacao.trim()) {
+                                  return (item.dia_base || "").toLowerCase().includes(buscaReconciliacao.trim().toLowerCase());
+                                }
+                                return true;
+                              })
+                              .map((item: any) => (
+                                <tr key={item.dia_base} className="hover:bg-slate-800/40 transition-colors">
+                                  <td className="py-2.5 px-3">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setModoPeriodo("DIA");
+                                        setSelectedDia(item.dia_base);
+                                        setActiveTab("visao_geral");
+                                      }}
+                                      className="font-mono font-bold text-white hover:text-cyan-300 underline cursor-pointer"
+                                    >
+                                      📅 {item.dia_base}
+                                    </button>
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    <span
+                                      className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border ${
+                                        item.dias_sem_atualizacao > 10
+                                          ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
+                                          : item.dias_sem_atualizacao > 5
+                                          ? "bg-orange-500/20 text-orange-300 border-orange-500/40"
+                                          : item.dias_sem_atualizacao > 2
+                                          ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                                          : "bg-blue-500/20 text-blue-300 border-blue-500/40"
+                                      }`}
+                                    >
+                                      {item.rotulo_aging}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono font-bold text-white">
+                                    {(item.total_pedidos || 0).toLocaleString("pt-BR")}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-400">
+                                    {(item.circuito_fechado || 0).toLocaleString("pt-BR")}{" "}
+                                    <span className="text-[10px] font-normal text-slate-400">
+                                      ({item.taxa_finalizacao_pct}%)
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono font-extrabold text-amber-300">
+                                    {(item.sem_atualizacao_total || 0).toLocaleString("pt-BR")}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono text-amber-400">
+                                    {(item.backlog_coleta || 0).toLocaleString("pt-BR")}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono text-blue-400">
+                                    {(item.em_transito || 0).toLocaleString("pt-BR")}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono text-rose-400 font-semibold">
+                                    {(item.foi_assinado || 0).toLocaleString("pt-BR")}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-center font-mono">
+                                    {item.qtd_atualizados_retroativos > 0 ? (
+                                      <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold text-[10px]">
+                                        🔄 {item.qtd_atualizados_retroativos.toLocaleString("pt-BR")} ({item.ultima_atualizacao_em})
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-500 text-[10px]">—</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {subAbaReconciliacao === "pontos" && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-slate-800 text-slate-400 bg-slate-900/60">
+                              <th className="py-2.5 px-3">Ponto de Coleta</th>
+                              <th className="py-2.5 px-3">Modalidade (pelo Ponto)</th>
+                              <th className="py-2.5 px-3">Cidade / UF</th>
+                              <th className="py-2.5 px-3">Pacote Mais Antigo Sem Baixa</th>
+                              <th className="py-2.5 px-3 text-right">Total Sem Atualização</th>
+                              <th className="py-2.5 px-3 text-right">📦 Coleta / Saco Selado</th>
+                              <th className="py-2.5 px-3 text-right">🚛 Carreg. / Descarreg.</th>
+                              <th className="py-2.5 px-3 text-right text-rose-400">🚨 Foi Assinado</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/60">
+                            {(reconciliacaoData?.pontos_sem_atualizacao || [])
+                              .filter((pt: any) => {
+                                if (!buscaReconciliacao.trim()) return true;
+                                const q = buscaReconciliacao.trim().toLowerCase();
+                                return (
+                                  (pt.ponto_colecao || "").toLowerCase().includes(q) ||
+                                  (pt.cidade || "").toLowerCase().includes(q) ||
+                                  (pt.estado || "").toLowerCase().includes(q)
+                                );
+                              })
+                              .map((pt: any) => (
+                                <tr key={pt.ponto_colecao} className="hover:bg-slate-800/40">
+                                  <td className="py-2.5 px-3 font-mono font-bold text-white">{pt.ponto_colecao}</td>
+                                  <td className="py-2.5 px-3">
+                                    <span
+                                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                        String(pt.modalidade_ponto).includes("DROPOFF")
+                                          ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30"
+                                          : "bg-indigo-500/15 text-indigo-300 border border-indigo-500/30"
+                                      }`}
+                                    >
+                                      {pt.modalidade_ponto}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-slate-300">
+                                    {pt.cidade} - {pt.estado}
+                                  </td>
+                                  <td className="py-2.5 px-3 font-mono text-amber-300">
+                                    Desde {pt.data_mais_antiga} (há {pt.dias_sem_atualizacao_max} dias)
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono font-extrabold text-white">
+                                    {(pt.total_sem_atualizacao || 0).toLocaleString("pt-BR")}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono text-amber-400">
+                                    {(pt.backlog_coleta || 0).toLocaleString("pt-BR")}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono text-blue-400">
+                                    {(pt.em_transito || 0).toLocaleString("pt-BR")}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono text-rose-400 font-bold">
+                                    {(pt.foi_assinado || 0).toLocaleString("pt-BR")}
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {subAbaReconciliacao === "pacotes" && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-slate-800 text-slate-400 bg-slate-900/60">
+                              <th className="py-2.5 px-3">Código de Barras</th>
+                              <th className="py-2.5 px-3">Data de Origem</th>
+                              <th className="py-2.5 px-3">Tempo Sem Atualização</th>
+                              <th className="py-2.5 px-3">Ponto de Coleta</th>
+                              <th className="py-2.5 px-3">Seller / Remetente</th>
+                              <th className="py-2.5 px-3">Cidade / UF</th>
+                              <th className="py-2.5 px-3">Status Parado</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/60">
+                            {(reconciliacaoData?.pacotes_pendentes_amostra || [])
+                              .filter((pk: any) => {
+                                if (!buscaReconciliacao.trim()) return true;
+                                const q = buscaReconciliacao.trim().toLowerCase();
+                                return (
+                                  (pk.codigo_barras || "").toLowerCase().includes(q) ||
+                                  (pk.ponto_colecao || "").toLowerCase().includes(q) ||
+                                  (pk.seller || "").toLowerCase().includes(q) ||
+                                  (pk.dia_origem || "").toLowerCase().includes(q)
+                                );
+                              })
+                              .map((pk: any, idx: number) => (
+                                <tr key={pk.codigo_barras + idx} className="hover:bg-slate-800/40">
+                                  <td className="py-2.5 px-3 font-mono font-bold text-white">{pk.codigo_barras}</td>
+                                  <td className="py-2.5 px-3 font-mono text-slate-300">{pk.dia_origem}</td>
+                                  <td className="py-2.5 px-3">
+                                    <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono text-[10px] font-bold">
+                                      ⏳ {pk.rotulo_aging}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 font-mono">
+                                    <span className="text-white font-bold">{pk.ponto_colecao}</span>{" "}
+                                    <span className="text-[10px] text-cyan-300">({pk.modalidade_ponto})</span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-slate-300 max-w-[200px] truncate" title={pk.seller}>
+                                    {pk.seller}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-slate-400">
+                                    {pk.cidade}/{pk.estado}
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    <span
+                                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                        String(pk.status_atual).toLowerCase() === "foi assinado"
+                                          ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                                          : "bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                                      }`}
+                                    >
+                                      {pk.status_atual}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    {subAbaReconciliacao === "atualizados" && (
+                      <div className="space-y-4">
+                        {(reconciliacaoData?.historico_pacotes_atualizados || []).length === 0 ? (
+                          <div className="py-10 text-center text-xs text-slate-400 bg-slate-900/50 rounded-xl border border-slate-800 p-6">
+                            <p className="font-bold text-white text-sm mb-1">
+                              Motor de Reconciliação Ativo e Pronto!
+                            </p>
+                            <p>
+                              Assim que você subir novamente uma planilha de um dia anterior (ex: re-subir <strong>03/10</strong>) ou subir uma planilha nova (ex: <strong>22/10</strong>) contendo pacotes que antes estavam como <em>Coleta / Saco Selado / Carregamento / Foi Assinado</em>, todos os pacotes que tiverem o status atualizado aparecerão listados aqui com a data exata da atualização!
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs">
+                              <thead>
+                                <tr className="border-b border-slate-800 text-slate-400 bg-slate-900/60">
+                                  <th className="py-2.5 px-3">Código de Barras</th>
+                                  <th className="py-2.5 px-3">Data de Origem</th>
+                                  <th className="py-2.5 px-3">Atualizado na Planilha de</th>
+                                  <th className="py-2.5 px-3">Ponto de Coleta</th>
+                                  <th className="py-2.5 px-3">Cliente / Seller</th>
+                                  <th className="py-2.5 px-3">Evolução de Status</th>
+                                  <th className="py-2.5 px-3">Data/Hora do Registro</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-800/60">
+                                {(reconciliacaoData?.historico_pacotes_atualizados || []).map((item: any) => (
+                                  <tr key={item.id} className="hover:bg-slate-800/40">
+                                    <td className="py-2.5 px-3 font-mono font-bold text-white">{item.codigo_barras}</td>
+                                    <td className="py-2.5 px-3 font-mono text-amber-300">{item.dia_origem}</td>
+                                    <td className="py-2.5 px-3 font-mono text-cyan-300 font-bold">{item.dia_atualizacao}</td>
+                                    <td className="py-2.5 px-3 font-mono text-white">{item.ponto_colecao}</td>
+                                    <td className="py-2.5 px-3 text-slate-300">
+                                      {item.nome_cliente} • {item.merchant_nome}
+                                    </td>
+                                    <td className="py-2.5 px-3 font-mono">
+                                      <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300">
+                                        {item.status_anterior}
+                                      </span>
+                                      <span className="mx-1.5 text-slate-400">→</span>
+                                      <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                                        {item.status_novo}
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-3 font-mono text-slate-400">{item.registrado_em}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

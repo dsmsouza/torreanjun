@@ -40,6 +40,7 @@ from routers.coletas import (
     get_d2d_sp_analise,
     construir_indice_eventos_malha,
 )
+from services.reconciliacao_pacotes import construir_painel_atualizacoes_e_aging
 from routers.implantacao import (
     get_cockpit_d1,
     get_stats,
@@ -151,6 +152,17 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
             if not force_all and idx >= 2:
                 existe, b_exist = _arquivos_data_existem(safe_d)
                 if existe:
+                    p_res = SNAPSHOT_DIR / f"resumo_{safe_d}.json"
+                    precisa_resumo = True
+                    try:
+                        if p_res.exists() and '"macro_regioes"' in p_res.read_text(encoding="utf-8"):
+                            precisa_resumo = False
+                    except Exception:
+                        pass
+                    if precisa_resumo:
+                        resumo = get_resumo_coletas(dia=d, cliente=None, regional=None, db=db)
+                        salvar_json(f"resumo_{safe_d}.json", resumo)
+                        arquivos_gerados += 1
                     bytes_totais += b_exist
                     arquivos_reutilizados += 7
                     continue
@@ -266,6 +278,13 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
             # Cache para meses passados já gerados (exceto o mês mais recente m_idx == 0)
             p_res_m = SNAPSHOT_DIR / f"resumo_{safe_m}.json"
             if not force_all and m_idx >= 1 and p_res_m.exists() and p_res_m.stat().st_size > 0:
+                try:
+                    if '"macro_regioes"' not in p_res_m.read_text(encoding="utf-8"):
+                        res_m = get_resumo_coletas(dia=dia_mes, cliente=None, regional=None, db=db)
+                        salvar_json(f"resumo_{safe_m}.json", res_m)
+                        arquivos_gerados += 1
+                except Exception:
+                    pass
                 arquivos_reutilizados += 5
                 continue
 
@@ -291,7 +310,7 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
             bytes_totais += salvar_json(f"d2d_sp_{per}_latest.json", d2d_per)
             arquivos_gerados += 1
 
-        print("🚀 [5/5] Exportando dados de Implantação FM, Linha do Tempo & Governança da Malha...")
+        print("🚀 [5/5] Exportando dados de Implantação FM, Linha do Tempo, Reconciliação & Governança da Malha...")
         bytes_totais += salvar_json("implantacao_stats.json", get_stats(db=db))
         bytes_totais += salvar_json(
             "implantacao_solicitacoes.json", list_solicitacoes(status=None, search=None, db=db)
@@ -299,7 +318,8 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
         bytes_totais += salvar_json("implantacao_relatorio_quarta.json", get_relatorio_quarta(db=db))
         bytes_totais += salvar_json("implantacao_classificacoes.json", listar_classificacoes_pontos(db=db))
         bytes_totais += salvar_json("eventos_malha.json", construir_indice_eventos_malha(db=db))
-        arquivos_gerados += 5
+        bytes_totais += salvar_json("reconciliacao_pacotes.json", construir_painel_atualizacoes_e_aging(db=db))
+        arquivos_gerados += 6
 
     finally:
         db.close()
