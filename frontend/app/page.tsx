@@ -348,12 +348,16 @@ export default function CentralColetasPage() {
     else if (cdUpper.startsWith("PE-")) ufSugerida = "PE";
     else if (cdUpper.startsWith("CE-")) ufSugerida = "CE";
 
-    if (cdUpper.includes("-H") || cdUpper.includes("HUB")) {
+    if (/-[ZWA]-H|HUB-|-H\d{2,4}$/.test(cdUpper) || cdUpper.startsWith("HUB")) {
       tipoSugerido = "HUB (Transferência)";
-    } else if (cdUpper.includes("GLP") || cdUpper.includes("-CD") || cdUpper.includes("WR-")) {
+    } else if (cdUpper.includes("GLP") || cdUpper.includes("-CD") || cdUpper.startsWith("WR-GLP")) {
       tipoSugerido = "Galpão / CD (Distribuição)";
     } else if (cdUpper.includes("CROSS")) {
       tipoSugerido = "Crossdocking";
+    } else if (/-[A-Z]-D\d+|-[A-Z]-FQ\d+|-[A-Z]-A\d+/.test(cdUpper)) {
+      tipoSugerido = "Ponto de Rede";
+    } else {
+      tipoSugerido = "MD (Ponto de Coleta)";
     }
 
     setFormCadastro({

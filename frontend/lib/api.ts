@@ -214,11 +214,15 @@ async function resolveSnapshotRequest(urlStr: string): Promise<Response | null> 
       const pontoMap: Record<string, any> = {};
       for (const s of sList) {
         const pt = String(s.ponto_colecao || "N/A").toUpperCase();
-        const isMd = (pt.startsWith("MD-") || /^[A-Z]{2}-W-MD/.test(pt)) && !pt.includes("-H");
+        const isHub = /-[ZWA]-H|HUB-|-H\d{2,4}$|^HUB/.test(pt) || pt.startsWith("WR-GLP") || pt.includes("GLP");
+        const isRede = /-[A-Z]-D\d+|-[A-Z]-FQ\d+|-[A-Z]-A\d+/.test(pt);
+        const isApoio = pt.includes("-PA") || pt.includes("-RR-") || pt.includes("APOIO");
+        const tipoCalculado = isHub ? "HUB (Transferência)" : isRede ? "Ponto de Rede" : isApoio ? "Ponto de Apoio" : "MD (Ponto de Coleta)";
+        const isMd = !isHub;
         if (!pontoMap[pt]) {
           pontoMap[pt] = {
             ponto_colecao: pt,
-            tipo_ponto: isMd ? "MD (Ponto de Coleta)" : "HUB (Transferência)",
+            tipo_ponto: tipoCalculado,
             is_md: isMd,
             cidade: s.cidade || "São Paulo",
             estado: s.estado || "SP",
@@ -252,10 +256,13 @@ async function resolveSnapshotRequest(urlStr: string): Promise<Response | null> 
         estado: s.estado || "",
         ponto_colecao: s.ponto_colecao || "N/A",
         tipo_ponto:
-          (String(s.ponto_colecao || "").startsWith("MD-") || /^[A-Z]{2}-W-MD/.test(String(s.ponto_colecao || ""))) &&
-          !String(s.ponto_colecao || "").includes("-H")
-            ? "MD (Ponto de Coleta)"
-            : "HUB (Transferência)",
+          /-[ZWA]-H|HUB-|-H\d{2,4}$|^HUB/.test(String(s.ponto_colecao || "").toUpperCase()) || String(s.ponto_colecao || "").toUpperCase().startsWith("WR-GLP") || String(s.ponto_colecao || "").toUpperCase().includes("GLP")
+            ? "HUB (Transferência)"
+            : /-[A-Z]-D\d+|-[A-Z]-FQ\d+|-[A-Z]-A\d+/.test(String(s.ponto_colecao || "").toUpperCase())
+            ? "Ponto de Rede"
+            : String(s.ponto_colecao || "").toUpperCase().includes("-PA") || String(s.ponto_colecao || "").toUpperCase().includes("-RR-")
+            ? "Ponto de Apoio"
+            : "MD (Ponto de Coleta)",
         maneira_coleta: s.maneira_coleta || "Dropoff",
         modalidade:
           (s.maneira_coleta || "").toLowerCase().includes("coleta") || (s.maneira_coleta || "").toLowerCase().includes("pickup")

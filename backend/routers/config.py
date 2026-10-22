@@ -953,8 +953,11 @@ def listar_md_mapping(db: Session = Depends(get_db)):
                     COALESCE(MAX(NULLIF(TRIM(c.estado), '')), 'SP'),
                     COALESCE(MAX(NULLIF(TRIM(c.estado), '')), 'SP'),
                     CASE 
-                        WHEN UPPER(TRIM(c.ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(c.ponto_colecao)) LIKE '__-W-MD%' THEN 'MINIDROP'
-                        ELSE 'HUB'
+                        WHEN UPPER(TRIM(c.ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(c.ponto_colecao)) LIKE '__-W-MD%' OR UPPER(TRIM(c.ponto_colecao)) LIKE '__-R-MD%' THEN 'MINIDROP'
+                        WHEN UPPER(TRIM(c.ponto_colecao)) LIKE '%-H%' OR UPPER(TRIM(c.ponto_colecao)) LIKE 'HUB%' OR UPPER(TRIM(c.ponto_colecao)) LIKE 'WR-GLP%' THEN 'HUB'
+                        WHEN UPPER(TRIM(c.ponto_colecao)) LIKE '%-PA%' OR UPPER(TRIM(c.ponto_colecao)) LIKE '%-RR-%' THEN 'PONTO DE APOIO'
+                        WHEN UPPER(TRIM(c.ponto_colecao)) LIKE '%-D%' OR UPPER(TRIM(c.ponto_colecao)) LIKE '%-FQ%' OR UPPER(TRIM(c.ponto_colecao)) LIKE '%-A%' THEN 'PONTO DE REDE'
+                        ELSE 'MINIDROP'
                     END,
                     1
                 FROM criacao_pedidos_historico c

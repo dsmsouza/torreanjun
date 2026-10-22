@@ -382,7 +382,7 @@ def identificar_tipo_ponto(iata_code: str, nome: str = "", overrides_dict: Optio
             "manual": False
         }
 
-    if "-PR" in code or "REDE" in code or "REDE" in n:
+    if "-PR" in code or "REDE" in code or "REDE" in n or bool(re.search(r"-[RDFA]\d{2,4}$|-[RDFA][A-Z0-9]{2,4}$", code)):
         return {
             "tipo": "PONTO_REDE",
             "tipo_label": "Ponto de Rede Parceiro",
@@ -391,21 +391,22 @@ def identificar_tipo_ponto(iata_code: str, nome: str = "", overrides_dict: Optio
             "manual": False
         }
 
-    if code.startswith("MD-") or code.startswith("MD ") or bool(re.match(r"^[A-Z]{2}-W-MD", code)):
+    # HUB estrito: somente se contiver explicitamente -H, HUB, GLP ou CD
+    if re.search(r"-[ZWA]-H|HUB-|-H\d{2,4}$|-H0|-H1|-H2|-H3", code) or code.startswith("HUB") or "HUB" in code or "GLP" in code or "CD" in code:
         return {
-            "tipo": "MD",
-            "tipo_label": "Minidrop Parceiro (MD)",
-            "badge_color": "emerald",
-            "operacao": "Ponto de Coleta Dropoff",
+            "tipo": "HUB",
+            "tipo_label": "HUB Operacional ANJUN",
+            "badge_color": "purple",
+            "operacao": "Recepção / Pickup / Transferência",
             "manual": False
         }
 
-    # 3. Demais unidades operacionais (ex: SP-Z-H005, SC-W-H001, WR-GLP-01, HUBs)
+    # Todo o restante na malha de coleta é Minidrop (MD) por padrão
     return {
-        "tipo": "HUB",
-        "tipo_label": "HUB Operacional ANJUN",
-        "badge_color": "purple",
-        "operacao": "Recepção / Pickup / Transferência",
+        "tipo": "MD",
+        "tipo_label": "Minidrop Parceiro (MD)",
+        "badge_color": "emerald",
+        "operacao": "Ponto de Coleta Dropoff",
         "manual": False
     }
 

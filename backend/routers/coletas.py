@@ -28,16 +28,13 @@ class CadastrarPontoPayload(BaseModel):
 
 
 def eh_md(codigo: str) -> bool:
-    """Verifica se o ponto é estritamente um Mini Drop (MD).
-    Regra ANJUN: MD é tudo o que começa com 'MD-' ou '[UF]-W-MD' (ex: SP-W-MD, RJ-W-MD, MG-W-MD, etc.).
-    Unidades como SP-Z-H005 são HUBs e NÃO são MDs.
-    """
+    """Verifica se o ponto é uma unidade de coleta (MD, Ponto de Rede, Ponto de Apoio) e NÃO um HUB/Galpão de transferência."""
     if not codigo:
         return False
     c = str(codigo).strip().upper()
-    if "-H" in c or c.startswith("HUB") or "GLP" in c:
+    if re.search(r"-[ZWA]-H|HUB-|-H\d{2,4}$", c) or c.startswith("HUB") or c.startswith("WR-GLP") or "GLP" in c or "GALPAO" in c:
         return False
-    return bool(c.startswith("MD-") or re.match(r"^[A-Z]{2}-W-MD", c))
+    return True
 
 
 def eh_cliente_marketplace(nome_cliente: str) -> bool:
@@ -67,23 +64,24 @@ def classificar_marketplace_grupo(nome_cliente: str) -> str:
 
 def determinar_tipo_ponto(codigo: str) -> str:
     """Classifica com precisão o tipo da unidade na malha conforme convenção operacional:
-    - MD (Ponto de Coleta): prefixos 'MD-' ou '[UF]-W-MD' (ex: SP-W-MD, RJ-W-MD, MG-W-MD)
-    - HUB (Transferência): unidades contendo '-H', '-Z-H', '-W-H', 'HUB-' (ex: SP-Z-H005, SP-Z-H001, RJ-W-H001)
+    - MD (Ponto de Coleta): prefixos 'MD-' ou '[UF]-W-MD'
+    - HUB (Transferência): unidades contendo '-H', '-Z-H', '-W-H', 'HUB-'
     - Galpão / CD (Distribuição): prefixos 'WR-GLP', 'GLP', 'CD'
     - Ponto de Apoio / Base: prefixos contendo '-PA', '-RR-'
+    - Ponto de Rede: prefixos contendo '-D', '-FQ', '-A'
     """
     if not codigo:
-        return "Outros"
-    c = str(codigo).strip().upper()
-    if c.startswith("MD-") or re.match(r"^[A-Z]{2}-W-MD", c):
         return "MD (Ponto de Coleta)"
-    if re.search(r"-[ZWA]-H|HUB-|-H\d{2,4}$|-H0|-H1|-H2|-H3", c) or c.startswith("HUB") or "HUB" in c:
+    c = str(codigo).strip().upper()
+    if re.search(r"-[ZWA]-H|HUB-|-H\d{2,4}$|-H0|-H1|-H2|-H3", c) or c.startswith("HUB"):
         return "HUB (Transferência)"
     if c.startswith("WR-GLP") or "GLP" in c or "GALPAO" in c or "CD" in c:
         return "Galpão / CD (Distribuição)"
-    if "-PA" in c or "-RR-" in c:
+    if "-PA" in c or "-RR-" in c or "APOIO" in c:
         return "Ponto de Apoio / Base"
-    return "Outros"
+    if re.search(r"-[A-Z]-D\d+|-[A-Z]-FQ\d+|-[A-Z]-A\d+", c):
+        return "Ponto de Rede"
+    return "MD (Ponto de Coleta)"
 
 
 @router.get("/dias")
@@ -175,14 +173,14 @@ def get_resumo_coletas(
     tot_row = db.execute(text(f"""
         SELECT 
             COALESCE(SUM(total_pedidos), 0) as total,
-            COUNT(DISTINCT CASE WHEN (UPPER(TRIM(ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(ponto_colecao)) LIKE '__-W-MD%') AND UPPER(TRIM(ponto_colecao)) NOT LIKE '%-H%' THEN UPPER(TRIM(ponto_colecao)) END) as total_mds,
+            COUNT(DISTINCT CASE WHEN NOT (UPPER(TRIM(ponto_colecao)) LIKE '%-Z-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-W-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H0%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H1%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H2%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H3%' OR UPPER(TRIM(ponto_colecao)) LIKE 'HUB%' OR UPPER(TRIM(ponto_colecao)) LIKE 'WR-GLP%' OR UPPER(TRIM(ponto_colecao)) LIKE '%GLP%') AND UPPER(TRIM(ponto_colecao)) NOT IN ('', 'NAN', 'NULL', 'NONE', '-') THEN UPPER(TRIM(ponto_colecao)) END) as total_mds,
             COUNT(DISTINCT CASE WHEN merchant_nome IS NOT NULL AND trim(merchant_nome) != '' THEN merchant_nome END) as total_sellers,
             SUM(CASE WHEN LOWER(TRIM(status_pedido)) IN ('circuito fechado', 'carregamento', 'descarregamento') THEN total_pedidos ELSE 0 END) as coletados,
             SUM(CASE WHEN LOWER(TRIM(status_pedido)) IN ('coleta', 'coletado', 'saco selado', 'não coletado', 'nao coletado', 'pendente', 'aguardando', 'no ponto', 'problema') OR status_pedido IS NULL OR TRIM(status_pedido) = '' THEN total_pedidos ELSE 0 END) as backlog_coleta,
-            SUM(CASE WHEN (UPPER(TRIM(ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(ponto_colecao)) LIKE '__-W-MD%') AND UPPER(TRIM(ponto_colecao)) NOT LIKE '%-H%' THEN total_pedidos ELSE 0 END) as vol_dropoff_ponto,
-            SUM(CASE WHEN NOT ((UPPER(TRIM(ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(ponto_colecao)) LIKE '__-W-MD%') AND UPPER(TRIM(ponto_colecao)) NOT LIKE '%-H%') THEN total_pedidos ELSE 0 END) as vol_pickup_ponto,
-            SUM(CASE WHEN (UPPER(TRIM(ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(ponto_colecao)) LIKE '__-W-MD%') AND UPPER(TRIM(ponto_colecao)) NOT LIKE '%-H%' AND (LOWER(TRIM(status_pedido)) IN ('coleta', 'coletado', 'saco selado', 'não coletado', 'nao coletado', 'pendente', 'aguardando', 'no ponto', 'problema') OR status_pedido IS NULL OR TRIM(status_pedido) = '') THEN total_pedidos ELSE 0 END) as backlog_estrito_md,
-            COUNT(DISTINCT CASE WHEN NOT ((UPPER(TRIM(ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(ponto_colecao)) LIKE '__-W-MD%') AND UPPER(TRIM(ponto_colecao)) NOT LIKE '%-H%') THEN UPPER(TRIM(ponto_colecao)) END) as total_hubs,
+            SUM(CASE WHEN NOT (UPPER(TRIM(ponto_colecao)) LIKE '%-Z-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-W-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H0%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H1%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H2%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H3%' OR UPPER(TRIM(ponto_colecao)) LIKE 'HUB%' OR UPPER(TRIM(ponto_colecao)) LIKE 'WR-GLP%' OR UPPER(TRIM(ponto_colecao)) LIKE '%GLP%') THEN total_pedidos ELSE 0 END) as vol_dropoff_ponto,
+            SUM(CASE WHEN (UPPER(TRIM(ponto_colecao)) LIKE '%-Z-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-W-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H0%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H1%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H2%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H3%' OR UPPER(TRIM(ponto_colecao)) LIKE 'HUB%' OR UPPER(TRIM(ponto_colecao)) LIKE 'WR-GLP%' OR UPPER(TRIM(ponto_colecao)) LIKE '%GLP%') THEN total_pedidos ELSE 0 END) as vol_pickup_ponto,
+            SUM(CASE WHEN NOT (UPPER(TRIM(ponto_colecao)) LIKE '%-Z-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-W-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H0%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H1%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H2%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H3%' OR UPPER(TRIM(ponto_colecao)) LIKE 'HUB%' OR UPPER(TRIM(ponto_colecao)) LIKE 'WR-GLP%' OR UPPER(TRIM(ponto_colecao)) LIKE '%GLP%') AND (LOWER(TRIM(status_pedido)) IN ('coleta', 'coletado', 'saco selado', 'não coletado', 'nao coletado', 'pendente', 'aguardando', 'no ponto', 'problema') OR status_pedido IS NULL OR TRIM(status_pedido) = '') THEN total_pedidos ELSE 0 END) as backlog_estrito_md,
+            COUNT(DISTINCT CASE WHEN (UPPER(TRIM(ponto_colecao)) LIKE '%-Z-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-W-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H0%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H1%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H2%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H3%' OR UPPER(TRIM(ponto_colecao)) LIKE 'HUB%' OR UPPER(TRIM(ponto_colecao)) LIKE 'WR-GLP%' OR UPPER(TRIM(ponto_colecao)) LIKE '%GLP%') THEN UPPER(TRIM(ponto_colecao)) END) as total_hubs,
             SUM(CASE WHEN LOWER(TRIM(status_pedido)) = 'circuito fechado' THEN total_pedidos ELSE 0 END) as circuito_fechado,
             SUM(CASE WHEN LOWER(TRIM(status_pedido)) IN ('carregamento', 'descarregamento') THEN total_pedidos ELSE 0 END) as em_transito,
             SUM(CASE WHEN LOWER(TRIM(status_pedido)) = 'foi assinado' THEN total_pedidos ELSE 0 END) as foi_assinado
