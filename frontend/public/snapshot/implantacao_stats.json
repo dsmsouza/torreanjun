@@ -1,1 +1,12 @@
-{"total":4,"em_analise":0,"visita_tecnica":0,"em_preparacao":1,"golive_definido":0,"concluidos":1,"restricao_pendente":2,"suspensos":2,"focal_projetos":"@Diego de Souza Mandarino","focal_operacao":"@Thatiane Silva Santos"}
+{
+  "total": 5,
+  "em_analise": 0,
+  "visita_tecnica": 0,
+  "em_preparacao": 2,
+  "golive_definido": 0,
+  "concluidos": 1,
+  "restricao_pendente": 2,
+  "suspensos": 2,
+  "focal_projetos": "@Diego de Souza Mandarino",
+  "focal_operacao": "@Thatiane Silva Santos"
+}

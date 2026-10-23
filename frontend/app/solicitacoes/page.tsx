@@ -131,6 +131,15 @@ function getProjectExecutionStepper(item: SolicitacaoImplantacaoItem): StepperPh
       { step: "5", name: "Go-Live", status: "paused", desc: "Sem Previsão (Suspenso)" },
     ];
   }
+  if (nome.includes("renner")) {
+    return [
+      { step: "1", name: "1. Alinhamento", status: "done", desc: "Expansão 5.000 pac/dia" },
+      { step: "2", name: "2. Turno T3 Noturno", status: "warning", desc: "Cris + 1 no T3 (22h-06h)" },
+      { step: "3", name: "3. Camicado Big Goods", status: "warning", desc: "Layout & POP p/ 28/10" },
+      { step: "4", name: "4. Frota (21h e 06h)", status: "warning", desc: "2 Veículos Extras" },
+      { step: "5", name: "5. TI & Reversa", status: "danger", desc: "Tracking + Destravar Reversa" },
+    ];
+  }
   if (nome.includes("shopmult")) {
     return [
       { step: "1", name: "Comercial", status: "done", desc: "Modelo Itinerante" },
