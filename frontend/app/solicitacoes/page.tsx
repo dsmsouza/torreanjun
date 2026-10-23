@@ -71,7 +71,9 @@ import {
   fetchRelatorioQuartaImplantacao,
   fetchCockpitD1,
   CockpitD1Data,
-  SolicitacaoImplantacaoItem
+  SolicitacaoImplantacaoItem,
+  fetchPAsAtivos,
+  PAAtivoItem
 } from "@/lib/api";
 import ViabilidadeModal from "@/components/ViabilidadeModal";
 
@@ -151,6 +153,9 @@ function getProjectExecutionStepper(item: SolicitacaoImplantacaoItem): StepperPh
 export default function ImplantacaoFMPage() {
   const [loading, setLoading] = useState(true);
   const [solicitacoes, setSolicitacoes] = useState<SolicitacaoImplantacaoItem[]>([]);
+  const [pasAtivos, setPasAtivos] = useState<PAAtivoItem[]>([]);
+  const [selectedPAAtivo, setSelectedPAAtivo] = useState<PAAtivoItem | null>(null);
+  const [executivoSubTab, setExecutivoSubTab] = useState<"todos" | "ativos" | "projetos">("todos");
   const [stats, setStats] = useState<any>({
     total: 0,
     em_analise: 0,
@@ -272,12 +277,16 @@ export default function ImplantacaoFMPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [sData, stData] = await Promise.all([
+      const [sData, stData, pasData] = await Promise.all([
         fetchSolicitacoesImplantacao(),
-        fetchImplantacaoStats()
+        fetchImplantacaoStats(),
+        fetchPAsAtivos().catch(() => [])
       ]);
       setSolicitacoes(sData);
       setStats(stData);
+      if (pasData && pasData.length > 0) {
+        setPasAtivos(pasData);
+      }
     } catch (err) {
       console.error("Erro ao carregar solicitações:", err);
     } finally {
@@ -731,332 +740,469 @@ export default function ImplantacaoFMPage() {
                         Visão Executiva Liderança
                       </span>
                       <span className="text-xs text-slate-400 font-mono">
-                        Última Atualização: Hoje (23/10/2026)
+                        Base: Mapeamento dos PAs.xlsx (Atualizado 23/10/2026)
                       </span>
                     </div>
                     <h2 className="text-xl md:text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
                       <Rocket className="w-6 h-6 text-amber-400" />
-                      Status e Cronograma de Postos Avançados (P.As) & Implantações
+                      Panorama Executivo dos Postos de Atendimento (P.As) & Implantações
                     </h2>
                     <p className="text-xs text-slate-300 mt-1 max-w-3xl leading-relaxed">
-                      Painel sintetizado para acompanhamento de prazos, gargalos departamentais e viabilidade operacional da malha First Mile.
+                      Visão unificada para Diretoria: acompanhamento dos <strong>5 P.As ativos em operação plena</strong> e das <strong>4 demandas em implantação/bloqueio</strong>.
                     </p>
                   </div>
 
                   {/* Summary Quick Badges */}
                   <div className="flex items-center gap-2 flex-wrap">
                     <div className="px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-center min-w-[90px]">
-                      <span className="text-[10px] text-slate-400 block font-medium">Total Demandas</span>
-                      <span className="text-lg font-black text-white">{solicitacoes.length}</span>
+                      <span className="text-[10px] text-slate-400 block font-medium">P.As Mapeados</span>
+                      <span className="text-lg font-black text-white">7 P.As</span>
                     </div>
                     <div className="px-3 py-2 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-center min-w-[90px]">
-                      <span className="text-[10px] text-emerald-400 block font-medium">Em Operação</span>
-                      <span className="text-lg font-black text-emerald-300">
-                        {solicitacoes.filter(s => s.status === "Iniciado" || s.status === "Concluído").length}
-                      </span>
+                      <span className="text-[10px] text-emerald-400 block font-medium">Ativos / Operando</span>
+                      <span className="text-lg font-black text-emerald-300">5 Bases</span>
+                    </div>
+                    <div className="px-3 py-2 rounded-xl bg-purple-950/40 border border-purple-500/30 text-center min-w-[90px]">
+                      <span className="text-[10px] text-purple-400 block font-medium">Capacidade Ativa</span>
+                      <span className="text-lg font-black text-purple-300">24k pac/dia</span>
                     </div>
                     <div className="px-3 py-2 rounded-xl bg-amber-950/40 border border-amber-500/30 text-center min-w-[90px]">
-                      <span className="text-[10px] text-amber-400 block font-medium">Em Andamento</span>
-                      <span className="text-lg font-black text-amber-300">
-                        {solicitacoes.filter(s => s.status === "Em andamento" || s.status === "Em preparação").length}
-                      </span>
+                      <span className="text-[10px] text-amber-400 block font-medium">Em Implantação</span>
+                      <span className="text-lg font-black text-amber-300">1 (Bravium)</span>
                     </div>
                     <div className="px-3 py-2 rounded-xl bg-rose-950/40 border border-rose-500/30 text-center min-w-[90px]">
                       <span className="text-[10px] text-rose-400 block font-medium">Suspensos</span>
-                      <span className="text-lg font-black text-rose-300">
-                        {solicitacoes.filter(s => s.status === "Suspenso" || s.status === "Restrição/Pendente").length}
-                      </span>
+                      <span className="text-lg font-black text-rose-300">2 (Boticário/Shop)</span>
                     </div>
                   </div>
+                </div>
+
+                {/* Sub-Tabs Pills */}
+                <div className="mt-5 pt-4 border-t border-slate-800/80 flex items-center gap-2 flex-wrap relative z-10">
+                  <button
+                    onClick={() => setExecutivoSubTab("todos")}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      executivoSubTab === "todos"
+                        ? "bg-amber-500 text-slate-950 shadow-md shadow-amber-900/30 font-black"
+                        : "bg-slate-950/80 text-slate-400 hover:text-white border border-slate-800"
+                    }`}
+                  >
+                    🌟 Todos os P.As & Projetos (9)
+                  </button>
+                  <button
+                    onClick={() => setExecutivoSubTab("ativos")}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      executivoSubTab === "ativos"
+                        ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-900/30 font-black"
+                        : "bg-slate-950/80 text-emerald-400 hover:text-emerald-300 border border-slate-800"
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    🟢 P.As Ativos em Operação Plena (5)
+                  </button>
+                  <button
+                    onClick={() => setExecutivoSubTab("projetos")}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      executivoSubTab === "projetos"
+                        ? "bg-rose-500 text-white shadow-md shadow-rose-900/30 font-black"
+                        : "bg-slate-950/80 text-amber-400 hover:text-white border border-slate-800"
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    🟡/🔴 P.As em Implantação & Gargalos (4)
+                  </button>
                 </div>
               </div>
 
-              {/* Matriz Departamental de Bloqueios */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-amber-400" />
-                    Matriz de Bloqueios e Prazos por Departamento (Onde estão os gargalos?)
-                  </h3>
-                  <span className="text-[11px] text-slate-400">Diretrizes de Ação para Destravar Go-Live</span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {/* TI & Equipamentos */}
-                  <div className="p-4 rounded-xl bg-slate-900/80 border border-rose-500/30 relative overflow-hidden">
-                    <div className="flex items-center justify-between text-xs mb-2">
-                      <span className="font-bold text-white flex items-center gap-1.5">
-                        💻 T.I & Equipamentos
-                      </span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                        2 PAs Impactados
-                      </span>
+              {/* SEÇÃO 1: P.As ATIVOS EM OPERAÇÃO PLENA (5 BASES MAPEADAS) */}
+              {(executivoSubTab === "todos" || executivoSubTab === "ativos") && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                        <Store className="w-4 h-4 text-emerald-400" />
+                        P.As Ativos em Operação Plena — Malha First Mile (5 Bases)
+                      </h3>
+                      <p className="text-xs text-slate-400">
+                        Postos com supervisores dedicados, operadores em escala fixa, cortes sincronizados e infraestrutura instalada.
+                      </p>
                     </div>
-                    <p className="text-xs text-rose-300 font-semibold">
-                      Equipamentos suspensos pelo T.I com prazo de até 45 dias úteis.
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-1 leading-snug">
-                      Afeta: <strong className="text-slate-200">Bravium</strong> (PCs/Coletores/Paleteira) e <strong className="text-slate-200">Shopmult</strong> (Kit itinerante).
-                    </p>
-                    <div className="mt-2.5 pt-2 border-t border-slate-800 text-[10px] text-amber-400 font-medium">
-                      🎯 Ação: Alinhar com TI/Almoxarifado priorização de compras.
-                    </div>
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Capacidade Total: 24.000 pac/dia
+                    </span>
                   </div>
 
-                  {/* Segurança do Trabalho / SST */}
-                  <div className="p-4 rounded-xl bg-slate-900/80 border border-rose-500/30 relative overflow-hidden">
-                    <div className="flex items-center justify-between text-xs mb-2">
-                      <span className="font-bold text-white flex items-center gap-1.5">
-                        🦺 Segurança (SST)
-                      </span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                        1 Bloqueio Crítico
-                      </span>
-                    </div>
-                    <p className="text-xs text-rose-300 font-semibold">
-                      Falta de documentação mandatória (PGR e PCMSO).
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-1 leading-snug">
-                      Afeta: <strong className="text-slate-200">Grupo Boticário</strong> (2 PAs em Cajamar e Paraná). Sem liberação para equipe entrar.
-                    </p>
-                    <div className="mt-2.5 pt-2 border-t border-slate-800 text-[10px] text-rose-400 font-medium">
-                      🎯 Ação: Cobrar time de Segurança envio/validação dos laudos.
-                    </div>
-                  </div>
-
-                  {/* RH / Gente & Gestão */}
-                  <div className="p-4 rounded-xl bg-slate-900/80 border border-amber-500/30 relative overflow-hidden">
-                    <div className="flex items-center justify-between text-xs mb-2">
-                      <span className="font-bold text-white flex items-center gap-1.5">
-                        👥 RH & Contratação
-                      </span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                        1 Demanda Aberta
-                      </span>
-                    </div>
-                    <p className="text-xs text-amber-300 font-semibold">
-                      Solicitação via Lark aberta para 2 funcionários.
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-1 leading-snug">
-                      Afeta: <strong className="text-slate-200">Bravium</strong> (alocação de equipe operacional e liberação de acessos).
-                    </p>
-                    <div className="mt-2.5 pt-2 border-t border-slate-800 text-[10px] text-amber-400 font-medium">
-                      🎯 Ação: Acompanhar recrutamento para coincidir c/ entrega de TI.
-                    </div>
-                  </div>
-
-                  {/* Operação First Mile */}
-                  <div className="p-4 rounded-xl bg-slate-900/80 border border-emerald-500/30 relative overflow-hidden">
-                    <div className="flex items-center justify-between text-xs mb-2">
-                      <span className="font-bold text-white flex items-center gap-1.5">
-                        🚚 Operação First Mile
-                      </span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                        100% Operacional
-                      </span>
-                    </div>
-                    <p className="text-xs text-emerald-300 font-semibold">
-                      Coletas diárias ativas e rodando pontualmente às 16:00.
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-1 leading-snug">
-                      Atende: <strong className="text-slate-200">Olist</strong> (Marketplace com coletas diárias estáveis).
-                    </p>
-                    <div className="mt-2.5 pt-2 border-t border-slate-800 text-[10px] text-emerald-400 font-medium">
-                      🎯 Status: Operação fluindo dentro dos SLAs acordados.
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Cards Executivos Individuais de Cada P.A / Projeto */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                    <Store className="w-4 h-4 text-emerald-400" />
-                    Detalhamento Executivo por Posto Avançado / Projeto ({listFiltered.length})
-                  </h3>
-                  <span className="text-[11px] text-slate-400">Clique no card para abrir o dossiê com formulários</span>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {listFiltered.map((item) => {
-                    const steppers = getProjectExecutionStepper(item);
-                    const isSuspenso = item.status === "Suspenso" || item.status === "Restrição/Pendente";
-                    const isIniciado = item.status === "Iniciado" || item.status === "Concluído";
-                    const isAndamento = item.status === "Em andamento" || item.status === "Em preparação";
-
-                    return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {pasAtivos.filter(p => p.status_operacional === "Ativo").map((pa) => (
                       <div
-                        key={item.id}
-                        onClick={() => handleOpenDetailModal(item)}
-                        className={`p-5 rounded-2xl border transition-all cursor-pointer group shadow-xl relative overflow-hidden ${
-                          isSuspenso
-                            ? "bg-gradient-to-b from-slate-900 via-slate-900 to-rose-950/20 border-rose-500/40 hover:border-rose-400"
-                            : isIniciado
-                            ? "bg-gradient-to-b from-slate-900 via-slate-900 to-emerald-950/20 border-emerald-500/40 hover:border-emerald-400"
-                            : "bg-gradient-to-b from-slate-900 via-slate-900 to-amber-950/20 border-amber-500/40 hover:border-amber-400"
-                        }`}
+                        key={pa.id}
+                        onClick={() => setSelectedPAAtivo(pa)}
+                        className="p-5 rounded-2xl bg-gradient-to-b from-slate-900 via-slate-900 to-emerald-950/20 border border-emerald-500/30 hover:border-emerald-400 transition-all cursor-pointer group shadow-xl relative overflow-hidden flex flex-col justify-between"
                       >
-                        {/* Card Header */}
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-mono font-bold text-slate-400 group-hover:text-white transition-colors">
-                                {item.codigo}
+                        <div>
+                          {/* Card Header */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <span className="text-[10px] font-mono text-emerald-400 font-bold uppercase tracking-wider">
+                                Posto de Atendimento
                               </span>
-                              <span className="text-[10px] text-slate-500 font-medium">
-                                • {item.segmento || "Posto Avançado / FM"}
-                              </span>
+                              <h4 className="text-lg font-black text-white group-hover:text-emerald-300 transition-colors mt-0.5">
+                                {pa.nome}
+                              </h4>
+                              <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                                <MapPin className="w-3 h-3 text-slate-500 shrink-0" />
+                                <span className="truncate">{pa.cidade} / {pa.estado}</span>
+                              </p>
                             </div>
-                            <h4 className="text-lg font-black text-white mt-1 group-hover:text-amber-300 transition-colors">
-                              {item.cliente_nome}
-                            </h4>
-                          </div>
 
-                          {/* Big Status Badge */}
-                          <div>
-                            {isSuspenso && (
-                              <div className="px-3 py-1.5 rounded-xl bg-rose-500/20 border border-rose-500/50 text-rose-300 text-xs font-black flex items-center gap-1.5 shadow-lg shadow-rose-950/50">
-                                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-                                🔴 SUSPENSO
-                              </div>
-                            )}
-                            {isIniciado && (
-                              <div className="px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 text-xs font-black flex items-center gap-1.5 shadow-lg shadow-emerald-950/50">
-                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                                🟢 EM OPERAÇÃO
-                              </div>
-                            )}
-                            {isAndamento && (
-                              <div className="px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/50 text-amber-300 text-xs font-black flex items-center gap-1.5 shadow-lg shadow-amber-950/50">
-                                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                                🟡 EM ANDAMENTO
-                              </div>
-                            )}
-                            {!isSuspenso && !isIniciado && !isAndamento && (
-                              <div className="px-3 py-1.5 rounded-xl bg-blue-500/20 border border-blue-500/50 text-blue-300 text-xs font-black">
-                                {item.status}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Metadados Operacionais em Pílulas */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 text-xs">
-                          <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80">
-                            <span className="text-[10px] text-slate-500 block">Localização</span>
-                            <span className="font-bold text-slate-200 truncate block">
-                              {item.cidade}/{item.estado}
+                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-black bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 flex items-center gap-1 shrink-0">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                              OPERANDO
                             </span>
                           </div>
-                          <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80">
-                            <span className="text-[10px] text-slate-500 block">Volume Previsto</span>
-                            <span className="font-bold text-emerald-400">
-                              {item.volume_estimado_diario ? `${item.volume_estimado_diario} pcts/dia` : "Em definição"}
-                            </span>
-                          </div>
-                          <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80">
-                            <span className="text-[10px] text-slate-500 block">Janela Operacional</span>
-                            <span className="font-bold text-slate-200">
-                              {item.horario_coleta_janela || "Flexível"}
-                            </span>
-                          </div>
-                          <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80">
-                            <span className="text-[10px] text-slate-500 block">Prazo / Go-Live</span>
-                            <span className={`font-bold ${isSuspenso ? "text-rose-400" : isIniciado ? "text-emerald-400" : "text-amber-400"}`}>
-                              {item.data_go_live_prevista || "A definir"}
-                            </span>
-                          </div>
-                        </div>
 
-                        {/* Bloco Executivo "Em que pé estamos" (Gargalo Direto) */}
-                        <div className={`mt-3.5 p-3.5 rounded-xl border text-xs ${
-                          isSuspenso
-                            ? "bg-rose-950/20 border-rose-500/30 text-rose-200"
-                            : isIniciado
-                            ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-200"
-                            : "bg-amber-950/20 border-amber-500/30 text-amber-200"
-                        }`}>
-                          <div className="flex items-center gap-1.5 font-bold mb-1">
-                            {isSuspenso ? (
-                              <>
-                                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-                                <span className="text-rose-400 uppercase tracking-wide text-[11px]">Em que pé estamos / Bloqueio:</span>
-                              </>
-                            ) : isIniciado ? (
-                              <>
-                                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                                <span className="text-emerald-400 uppercase tracking-wide text-[11px]">Em que pé estamos / Operação:</span>
-                              </>
-                            ) : (
-                              <>
-                                <Clock className="w-4 h-4 text-amber-400 shrink-0" />
-                                <span className="text-amber-400 uppercase tracking-wide text-[11px]">Em que pé estamos / Gargalo:</span>
-                              </>
-                            )}
-                          </div>
-                          <p className="leading-relaxed text-slate-200 font-medium">
-                            {item.parecer_operacional || item.observacoes_comercial}
-                          </p>
-
-                          {item.parecer_gestor_ressalvas && (
-                            <div className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] text-slate-300">
-                              <strong className="text-amber-400">Ressalva Estratégica: </strong>
-                              {item.parecer_gestor_ressalvas}
+                          {/* Operacional Box */}
+                          <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
+                            <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                              <span className="text-[10px] text-slate-500 block">Volumetria Diária</span>
+                              <span className="font-black text-emerald-400">{pa.volumetria} pac/dia</span>
                             </div>
-                          )}
-                        </div>
+                            <div className="p-2.5 rounded-xl bg-slate-950/70 border border-slate-800">
+                              <span className="text-[10px] text-slate-500 block">Horário de Corte</span>
+                              <span className="font-bold text-slate-200 truncate block">{pa.horario_corte || "Regular"}</span>
+                            </div>
+                          </div>
 
-                        {/* Linha do Tempo Visual / Stepper de 5 Etapas */}
-                        <div className="mt-4 pt-3.5 border-t border-slate-800/80">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2.5">
-                            Esteira de Implantação & Progresso
-                          </span>
+                          {/* Equipe & Responsavel */}
+                          <div className="mt-3 p-3 rounded-xl bg-slate-950/50 border border-slate-800/80 text-xs space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] text-slate-400">Responsável:</span>
+                              <span className="font-bold text-slate-200">{pa.responsavel || "Supervisor Designado"}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] text-slate-400">Operadores Dedicados:</span>
+                              <span className="font-bold text-emerald-400">{pa.total_operadores} operadores escalados</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] text-slate-400">Escala:</span>
+                              <span className="text-[11px] text-slate-300 truncate max-w-[180px]">{pa.escala_operacao}</span>
+                            </div>
+                          </div>
 
-                          <div className="grid grid-cols-5 gap-1.5 text-center">
-                            {steppers.map((st, idx) => (
-                              <div
-                                key={idx}
-                                className={`p-2 rounded-lg border flex flex-col items-center justify-between min-h-[58px] ${
-                                  st.status === "done"
-                                    ? "bg-emerald-950/30 border-emerald-500/40 text-emerald-300"
-                                    : st.status === "live"
-                                    ? "bg-emerald-500 text-slate-950 font-black border-emerald-400 shadow-md shadow-emerald-500/30"
-                                    : st.status === "warning"
-                                    ? "bg-amber-950/40 border-amber-500/50 text-amber-300 font-bold"
-                                    : st.status === "danger"
-                                    ? "bg-rose-950/40 border-rose-500/50 text-rose-300 font-bold"
-                                    : "bg-slate-950/60 border-slate-800 text-slate-500"
-                                }`}
-                              >
-                                <div className="text-[9px] uppercase font-bold tracking-tight">
-                                  {st.name}
-                                </div>
-                                <div className="text-[10px] leading-tight font-medium mt-1 line-clamp-2">
-                                  {st.desc}
-                                </div>
-                              </div>
-                            ))}
+                          {/* Equipamentos Alocados Resumo */}
+                          <div className="mt-3 pt-2.5 border-t border-slate-800/80 text-[11px] text-slate-400">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                              Inventário em Campo:
+                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {Object.entries(pa.insumos).slice(0, 4).map(([k, v]: [string, any]) => (
+                                <span key={k} className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-[10px] text-slate-300">
+                                  {k}: <strong className="text-white">{v}</strong>
+                                </span>
+                              ))}
+                              {Object.keys(pa.insumos).length > 4 && (
+                                <span className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-[10px] text-emerald-400">
+                                  +{Object.keys(pa.insumos).length - 4} itens
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
 
                         {/* Card Footer */}
-                        <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-400">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-slate-500">Comercial:</span>
-                            <span className="font-semibold text-slate-300">{item.vendedor_comercial}</span>
-                          </div>
-
-                          <span className="text-emerald-400 font-semibold group-hover:underline flex items-center gap-1 text-[11px]">
-                            Ver Dossiê Completo
-                            <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                          </span>
+                        <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-emerald-400 font-semibold group-hover:underline">
+                          <span>Ver Ficha Técnica & Escalas</span>
+                          <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                         </div>
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* SEÇÃO 2: P.As EM IMPLANTAÇÃO & PROJETOS COM GARGALOS */}
+              {(executivoSubTab === "todos" || executivoSubTab === "projetos") && (
+                <div className="space-y-4 pt-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-amber-400" />
+                        P.As em Implantação, Projetos & Bloqueios Corporativos (4 Demandas)
+                      </h3>
+                      <p className="text-xs text-slate-400">
+                        Projetos novos em estruturação, com esteira de progresso, gargalos departamentais e cronograma de Go-Live.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Matriz Departamental de Bloqueios */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {/* TI & Equipamentos */}
+                    <div className="p-4 rounded-xl bg-slate-900/80 border border-rose-500/30 relative overflow-hidden">
+                      <div className="flex items-center justify-between text-xs mb-2">
+                        <span className="font-bold text-white flex items-center gap-1.5">
+                          💻 T.I & Equipamentos
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                          2 PAs Impactados
+                        </span>
+                      </div>
+                      <p className="text-xs text-rose-300 font-semibold">
+                        Equipamentos suspensos pelo T.I com prazo de até 45 dias úteis.
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                        Afeta: <strong className="text-slate-200">Bravium</strong> (PCs/Coletores/Paleteira) e <strong className="text-slate-200">Shopmult</strong> (Kit itinerante).
+                      </p>
+                      <div className="mt-2.5 pt-2 border-t border-slate-800 text-[10px] text-amber-400 font-medium">
+                        🎯 Ação: Alinhar com TI/Almoxarifado priorização de compras.
+                      </div>
+                    </div>
+
+                    {/* Segurança do Trabalho / SST */}
+                    <div className="p-4 rounded-xl bg-slate-900/80 border border-rose-500/30 relative overflow-hidden">
+                      <div className="flex items-center justify-between text-xs mb-2">
+                        <span className="font-bold text-white flex items-center gap-1.5">
+                          🦺 Segurança (SST)
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                          1 Bloqueio Crítico
+                        </span>
+                      </div>
+                      <p className="text-xs text-rose-300 font-semibold">
+                        Falta de documentação mandatória (PGR e PCMSO).
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                        Afeta: <strong className="text-slate-200">Grupo Boticário</strong> (2 PAs em Cajamar e Paraná). Sem liberação para equipe entrar.
+                      </p>
+                      <div className="mt-2.5 pt-2 border-t border-slate-800 text-[10px] text-rose-400 font-medium">
+                        🎯 Ação: Cobrar time de Segurança envio/validação dos laudos.
+                      </div>
+                    </div>
+
+                    {/* RH / Gente & Gestão */}
+                    <div className="p-4 rounded-xl bg-slate-900/80 border border-amber-500/30 relative overflow-hidden">
+                      <div className="flex items-center justify-between text-xs mb-2">
+                        <span className="font-bold text-white flex items-center gap-1.5">
+                          👥 RH & Contratação
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          1 Demanda Aberta
+                        </span>
+                      </div>
+                      <p className="text-xs text-amber-300 font-semibold">
+                        Solicitação via Lark aberta para 2 funcionários.
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                        Afeta: <strong className="text-slate-200">Bravium</strong> (alocação de equipe operacional e liberação de acessos).
+                      </p>
+                      <div className="mt-2.5 pt-2 border-t border-slate-800 text-[10px] text-amber-400 font-medium">
+                        🎯 Ação: Acompanhar recrutamento para coincidir c/ entrega de TI.
+                      </div>
+                    </div>
+
+                    {/* Operação First Mile */}
+                    <div className="p-4 rounded-xl bg-slate-900/80 border border-emerald-500/30 relative overflow-hidden">
+                      <div className="flex items-center justify-between text-xs mb-2">
+                        <span className="font-bold text-white flex items-center gap-1.5">
+                          🚚 Operação First Mile
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          100% Operacional
+                        </span>
+                      </div>
+                      <p className="text-xs text-emerald-300 font-semibold">
+                        Coletas diárias ativas e rodando pontualmente às 16:00.
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                        Atende: <strong className="text-slate-200">Olist</strong> (Marketplace com coletas diárias estáveis).
+                      </p>
+                      <div className="mt-2.5 pt-2 border-t border-slate-800 text-[10px] text-emerald-400 font-medium">
+                        🎯 Status: Operação fluindo dentro dos SLAs acordados.
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Cards dos 4 Projetos com Esteira e Diagnóstico */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {listFiltered.map((item) => {
+                      const steppers = getProjectExecutionStepper(item);
+                      const isSuspenso = item.status === "Suspenso" || item.status === "Restrição/Pendente";
+                      const isIniciado = item.status === "Iniciado" || item.status === "Concluído";
+                      const isAndamento = item.status === "Em andamento" || item.status === "Em preparação";
+
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => handleOpenDetailModal(item)}
+                          className={`p-5 rounded-2xl border transition-all cursor-pointer group shadow-xl relative overflow-hidden ${
+                            isSuspenso
+                              ? "bg-gradient-to-b from-slate-900 via-slate-900 to-rose-950/20 border-rose-500/40 hover:border-rose-400"
+                              : isIniciado
+                              ? "bg-gradient-to-b from-slate-900 via-slate-900 to-emerald-950/20 border-emerald-500/40 hover:border-emerald-400"
+                              : "bg-gradient-to-b from-slate-900 via-slate-900 to-amber-950/20 border-amber-500/40 hover:border-amber-400"
+                          }`}
+                        >
+                          {/* Card Header */}
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-mono font-bold text-slate-400 group-hover:text-white transition-colors">
+                                  {item.codigo}
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-medium">
+                                  • {item.segmento || "Posto Avançado / FM"}
+                                </span>
+                              </div>
+                              <h4 className="text-lg font-black text-white mt-1 group-hover:text-amber-300 transition-colors">
+                                {item.cliente_nome}
+                              </h4>
+                            </div>
+
+                            {/* Big Status Badge */}
+                            <div>
+                              {isSuspenso && (
+                                <div className="px-3 py-1.5 rounded-xl bg-rose-500/20 border border-rose-500/50 text-rose-300 text-xs font-black flex items-center gap-1.5 shadow-lg shadow-rose-950/50">
+                                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                                  🔴 SUSPENSO
+                                </div>
+                              )}
+                              {isIniciado && (
+                                <div className="px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 text-xs font-black flex items-center gap-1.5 shadow-lg shadow-emerald-950/50">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                                  🟢 EM OPERAÇÃO
+                                </div>
+                              )}
+                              {isAndamento && (
+                                <div className="px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/50 text-amber-300 text-xs font-black flex items-center gap-1.5 shadow-lg shadow-amber-950/50">
+                                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                                  🟡 EM ANDAMENTO
+                                </div>
+                              )}
+                              {!isSuspenso && !isIniciado && !isAndamento && (
+                                <div className="px-3 py-1.5 rounded-xl bg-blue-500/20 border border-blue-500/50 text-blue-300 text-xs font-black">
+                                  {item.status}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Metadados Operacionais em Pílulas */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 text-xs">
+                            <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80">
+                              <span className="text-[10px] text-slate-500 block">Localização</span>
+                              <span className="font-bold text-slate-200 truncate block">
+                                {item.cidade}/{item.estado}
+                              </span>
+                            </div>
+                            <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80">
+                              <span className="text-[10px] text-slate-500 block">Volume Previsto</span>
+                              <span className="font-bold text-emerald-400">
+                                {item.volume_estimado_diario ? `${item.volume_estimado_diario} pcts/dia` : "Em definição"}
+                              </span>
+                            </div>
+                            <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80">
+                              <span className="text-[10px] text-slate-500 block">Janela Operacional</span>
+                              <span className="font-bold text-slate-200">
+                                {item.horario_coleta_janela || "Flexível"}
+                              </span>
+                            </div>
+                            <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80">
+                              <span className="text-[10px] text-slate-500 block">Prazo / Go-Live</span>
+                              <span className={`font-bold ${isSuspenso ? "text-rose-400" : isIniciado ? "text-emerald-400" : "text-amber-400"}`}>
+                                {item.data_go_live_prevista || "A definir"}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Bloco Executivo "Em que pé estamos" (Gargalo Direto) */}
+                          <div className={`mt-3.5 p-3.5 rounded-xl border text-xs ${
+                            isSuspenso
+                              ? "bg-rose-950/20 border-rose-500/30 text-rose-200"
+                              : isIniciado
+                              ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-200"
+                              : "bg-amber-950/20 border-amber-500/30 text-amber-200"
+                          }`}>
+                            <div className="flex items-center gap-1.5 font-bold mb-1">
+                              {isSuspenso ? (
+                                <>
+                                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                                  <span className="text-rose-400 uppercase tracking-wide text-[11px]">Em que pé estamos / Bloqueio:</span>
+                                </>
+                              ) : isIniciado ? (
+                                <>
+                                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                                  <span className="text-emerald-400 uppercase tracking-wide text-[11px]">Em que pé estamos / Operação:</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                                  <span className="text-amber-400 uppercase tracking-wide text-[11px]">Em que pé estamos / Gargalo:</span>
+                                </>
+                              )}
+                            </div>
+                            <p className="leading-relaxed text-slate-200 font-medium">
+                              {item.parecer_operacional || item.observacoes_comercial}
+                            </p>
+
+                            {item.parecer_gestor_ressalvas && (
+                              <div className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] text-slate-300">
+                                <strong className="text-amber-400">Ressalva Estratégica: </strong>
+                                {item.parecer_gestor_ressalvas}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Linha do Tempo Visual / Stepper de 5 Etapas */}
+                          <div className="mt-4 pt-3.5 border-t border-slate-800/80">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2.5">
+                              Esteira de Implantação & Progresso
+                            </span>
+
+                            <div className="grid grid-cols-5 gap-1.5 text-center">
+                              {steppers.map((st, idx) => (
+                                <div
+                                  key={idx}
+                                  className={`p-2 rounded-lg border flex flex-col items-center justify-between min-h-[58px] ${
+                                    st.status === "done"
+                                      ? "bg-emerald-950/30 border-emerald-500/40 text-emerald-300"
+                                      : st.status === "live"
+                                      ? "bg-emerald-500 text-slate-950 font-black border-emerald-400 shadow-md shadow-emerald-500/30"
+                                      : st.status === "warning"
+                                      ? "bg-amber-950/40 border-amber-500/50 text-amber-300 font-bold"
+                                      : st.status === "danger"
+                                      ? "bg-rose-950/40 border-rose-500/50 text-rose-300 font-bold"
+                                      : "bg-slate-950/60 border-slate-800 text-slate-500"
+                                  }`}
+                                >
+                                  <div className="text-[9px] uppercase font-bold tracking-tight">
+                                    {st.name}
+                                  </div>
+                                  <div className="text-[10px] leading-tight font-medium mt-1 line-clamp-2">
+                                    {st.desc}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Card Footer */}
+                          <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-400">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-slate-500">Comercial:</span>
+                              <span className="font-semibold text-slate-300">{item.vendedor_comercial}</span>
+                            </div>
+
+                            <span className="text-emerald-400 font-semibold group-hover:underline flex items-center gap-1 text-[11px]">
+                              Ver Dossiê Completo
+                              <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

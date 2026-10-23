@@ -470,6 +470,11 @@ async function resolveSnapshotRequest(urlStr: string): Promise<Response | null> 
       const data = await fetchStaticSnapshot("implantacao_classificacoes.json");
       if (data) return jsonResponse(data);
     }
+
+    if (path === "/api/implantacao/pas-ativos") {
+      const data = await fetchStaticSnapshot("pas_ativos.json");
+      if (data) return jsonResponse(data);
+    }
   } catch {
     // ignore
   }
@@ -2735,5 +2740,32 @@ export async function fetchReconciliacaoPacotes(): Promise<any> {
     headers: getAuthHeaders(),
   });
   if (!res.ok) throw new Error("Falha ao carregar painel de reconciliação e aging de pacotes.");
+  return res.json();
+}
+
+export interface PAAtivoItem {
+  id: string;
+  nome: string;
+  titulo_completo?: string;
+  local: string;
+  cidade: string;
+  estado: string;
+  volumetria: string;
+  responsavel?: string;
+  cargo_responsavel?: string;
+  escala_operacao?: string;
+  horario_corte?: string;
+  status_operacional: "Ativo" | "Suspenso" | "Em Implantação";
+  badge_cor: "emerald" | "amber" | "rose" | "blue";
+  operadores: { nome: string; escala: string }[];
+  total_operadores: number;
+  insumos: Record<string, any>;
+  epis: Record<string, any>;
+  observacao_executiva?: string;
+}
+
+export async function fetchPAsAtivos(): Promise<PAAtivoItem[]> {
+  const res = await safeFetch(`${API_URL}/api/implantacao/pas-ativos`, { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error("Falha ao carregar PAs ativos.");
   return res.json();
 }

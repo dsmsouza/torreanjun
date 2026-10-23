@@ -1,0 +1,293 @@
+[
+  {
+    "id": "cea",
+    "nome": "C&A",
+    "titulo_completo": "Ponto de Atendimento - C&A",
+    "local": "Av. Guilherme Fongaro, 374 - Jardim Arpoador",
+    "cidade": "São Paulo",
+    "estado": "SP",
+    "volumetria": "500 a 7.000",
+    "volumetria_min": 0,
+    "volumetria_max": 0,
+    "responsavel": "Izadora Ramos Costa",
+    "cargo_responsavel": "Responsável pela Operação: ( Supervisora)",
+    "escala_operacao": "Seg á Sab das 10:00 ás 22:00  Dom: Excessão",
+    "horario_corte": "Seg a Sab ás 15:00 / 19:00 / 22:00  /  Dom: Conforme Solicitação do cliente",
+    "status_operacional": "Ativo",
+    "badge_cor": "emerald",
+    "operadores": [
+      {
+        "nome": "Iona Ribeiro de Alcantara",
+        "escala": "Seg a Sab ( Dom alternados ) / 08:00 ás 16:20"
+      },
+      {
+        "nome": "Dinalva Ferreira Campos",
+        "escala": "Seg a Sab ( Dom alternados ) / 08:00 ás 16:20"
+      },
+      {
+        "nome": "Jerônimo Silva Pinheiro",
+        "escala": "Seg a Sab ( Dom alternados ) / 11:20 ás 19:40"
+      },
+      {
+        "nome": "João Vitor Cerqueira Menezes",
+        "escala": "Seg a Sab ( Dom alternados ) / 11:20 ás 19:40"
+      }
+    ],
+    "total_operadores": 4,
+    "insumos": {
+      "Mesas": 2.0,
+      "Cadeiras": 2.0,
+      "Computadores": "3 ( Sendo um de ponto )",
+      "Teclados": 4.0,
+      "Mouses": 4.0,
+      "Impressoras": 3.0,
+      "Coletores": 3.0,
+      "PDAs": 2.0,
+      "Carrinhos de Base": 2.0,
+      "Escada": 2.0
+    },
+    "epis": {
+      "Camisetas": 3.0,
+      "Coletes": 7.0,
+      "Botas": 4.0,
+      "Capacetes": 4.0,
+      "Crachá ( Anjun )": 4.0
+    },
+    "observacao_executiva": "Operação plena com 4 operadores dedicados. Cortes regulares e infraestrutura de TI instalada."
+  },
+  {
+    "id": "grupo_somos",
+    "nome": "Grupo Somos",
+    "titulo_completo": "Ponto de Atendimento - Grupo Somos",
+    "local": "Rod. Pres. Dutra, Km 136 - Eugênio de Melo, São José dos Campos",
+    "cidade": "São José dos Campos",
+    "estado": "SP",
+    "volumetria": "500 a 3.000",
+    "volumetria_min": 0,
+    "volumetria_max": 0,
+    "responsavel": "Guilherme Miguel Santos cordeiro",
+    "cargo_responsavel": "Responsável pela Operação: ( Futuro Lider )",
+    "escala_operacao": "Seg á Sab das 08:40 ás 17:00",
+    "horario_corte": "Seg a Sab ás 16:00",
+    "status_operacional": "Ativo",
+    "badge_cor": "emerald",
+    "operadores": [
+      {
+        "nome": "Carlos Alberto de Sousa Silva",
+        "escala": "Seg a Sab / 08:40 ás 17:00"
+      },
+      {
+        "nome": "Welison dos Santos Oliveira",
+        "escala": "Seg a Sab / 08:40 ás 17:00"
+      }
+    ],
+    "total_operadores": 2,
+    "insumos": {
+      "Mesas": 4.0,
+      "Computadores": 3.0,
+      "Teclados": 4.0,
+      "Mouses": 4.0,
+      "Impressoras": 5.0,
+      "Coletores": 4.0,
+      "PDAs": 2.0
+    },
+    "epis": {
+      "Camisetas": 4.0,
+      "Coletes": 4.0,
+      "Botas": 4.0,
+      "Luvas": 4.0,
+      "Crachá ( Anjun )": 4.0
+    },
+    "observacao_executiva": "Operação plena com 2 operadores dedicados. Cortes regulares e infraestrutura de TI instalada."
+  },
+  {
+    "id": "casas_bahia",
+    "nome": "Casas Bahia",
+    "titulo_completo": "Ponto de Atendimento - Casas Bahia",
+    "local": "Rod. Anhanguera, km 52 + 350m, Ac. Centro Distribuição Casas Bahia, 710",
+    "cidade": "Jundiaí",
+    "estado": "SP",
+    "volumetria": "500 a 2000",
+    "volumetria_min": 0,
+    "volumetria_max": 0,
+    "responsavel": "Marcos José Correa Cardoso",
+    "cargo_responsavel": "Responsável pela Operação: ( Supervisor )",
+    "escala_operacao": "Seg á Sáb 09:00 ás 1800",
+    "horario_corte": "Seg á Sáb ás 18:00:00",
+    "status_operacional": "Ativo",
+    "badge_cor": "emerald",
+    "operadores": [
+      {
+        "nome": "Larissa de Souza ( Enfok - FIxa )",
+        "escala": "Seg a Sáb das 09:00 as 18:00"
+      },
+      {
+        "nome": "Karine Fernanda de Souza Araújo ( Enfok - FIxa )",
+        "escala": "Seg a Sáb das 09:00 as 18:00"
+      },
+      {
+        "nome": "Valquiria Massarenti ( Enfok - Fixa )",
+        "escala": "Seg a Sáb das 09:00 as 18:00"
+      }
+    ],
+    "total_operadores": 3,
+    "insumos": {
+      "Mesas": 3.0,
+      "Computadores": 3.0,
+      "Teclados": 3.0,
+      "Mouses": 3.0,
+      "Impressoras": 2.0,
+      "Coletores": " ( 3 - Sem fio / 2 - Com fio )",
+      "PDAs": 2.0
+    },
+    "epis": {
+      "Camisetas": 3.0,
+      "Botas": 3.0,
+      "Crachá ( Anjun )": 3.0
+    },
+    "observacao_executiva": "Operação plena com 3 operadores dedicados. Cortes regulares e infraestrutura de TI instalada."
+  },
+  {
+    "id": "glambox",
+    "nome": "Glambox",
+    "titulo_completo": "Ponto de Atendimento - Glambox",
+    "local": "Avenida Caio Cotrim, 400 - Módulo 11 - Itaqui, Itapevi - SP",
+    "cidade": "Itapevi",
+    "estado": "SP",
+    "volumetria": "500 a 5000",
+    "volumetria_min": 0,
+    "volumetria_max": 0,
+    "responsavel": "Patricia Daniela Da SIlva",
+    "cargo_responsavel": "Responsável pela Operação: ( Supervisora )",
+    "escala_operacao": "Seg a Qui das 07:30 ás 17:35 - Sex 08:00 ás 17:00",
+    "horario_corte": "16:00:00",
+    "status_operacional": "Ativo",
+    "badge_cor": "emerald",
+    "operadores": [
+      {
+        "nome": "Giovana Estefany Fonseca Dos Santos",
+        "escala": "Seg á Qui / 07:35 ás 17:35 - Sex 08:00 as 17:00 hr"
+      },
+      {
+        "nome": "João Vitor Silva De Oliveira",
+        "escala": "Seg á Qui / 07:35 ás 17:35 - Sex 08:00 as 17:00 hr"
+      },
+      {
+        "nome": "Agatha Yasmin Lopes De Paula Morais",
+        "escala": "Seg á Qui / 07:35 ás 17:35 - Sex 08:00 as 17:00 hr"
+      }
+    ],
+    "total_operadores": 3,
+    "insumos": {
+      "Computadores": 1.0,
+      "Teclados": 1.0,
+      "Mouses": 1.0,
+      "Impressoras": 1.0,
+      "Coletores": 1.0,
+      "PDAs": 2.0
+    },
+    "epis": {
+      "Colete": 4.0,
+      "Botas": 4.0,
+      "Crachá ( Anjun )": 4.0
+    },
+    "observacao_executiva": "Operação plena com 3 operadores dedicados. Cortes regulares e infraestrutura de TI instalada."
+  },
+  {
+    "id": "renner",
+    "nome": "Renner",
+    "titulo_completo": "Ponto de Atendimento - Renner",
+    "local": "Rod. Dom Gabriel Paulino Bueno Couto, 82 - Aglomeração Urbana de Jundiaí, Cabreúva",
+    "cidade": "Cabreúva",
+    "estado": "SP",
+    "volumetria": "5000 á 7000",
+    "volumetria_min": 0,
+    "volumetria_max": 0,
+    "responsavel": "Wagner Domingo Dos Santos",
+    "cargo_responsavel": "Responsável pela Operação:",
+    "escala_operacao": "Seg á Sáb 09:00 ás 1800",
+    "horario_corte": "Seg á Sáb ás 15:00:00",
+    "status_operacional": "Ativo",
+    "badge_cor": "emerald",
+    "operadores": [
+      {
+        "nome": "Kauane Fernanda Fernandes",
+        "escala": "Seg á Sab das 08h ás 16:20"
+      },
+      {
+        "nome": "Hyrla  Wesla Lourenço Da Silva",
+        "escala": "Seg á Sab das 08h ás 16:20"
+      },
+      {
+        "nome": "Kelly Cristina Santos S",
+        "escala": "Seg á Sab das 08h ás 16:20"
+      }
+    ],
+    "total_operadores": 3,
+    "insumos": {
+      "Mesas": 3.0,
+      "Computadores": 3.0,
+      "Teclados": 3.0,
+      "Mouses": 3.0,
+      "Impressoras": 3.0,
+      "Coletores": 3.0,
+      "PDAs": 2.0,
+      "Carrinhos Hidráulicos": 1.0
+    },
+    "epis": {},
+    "observacao_executiva": "Operação plena com 3 operadores dedicados. Cortes regulares e infraestrutura de TI instalada."
+  },
+  {
+    "id": "grupo_boticario",
+    "nome": "Grupo Boticário",
+    "titulo_completo": "Ponto de Atendimento - Grupo Boticário",
+    "local": "Av: Antonio Cândido Machado, 2520 Fazenda Velha , Cajamar",
+    "cidade": "Cajamar",
+    "estado": "SP",
+    "volumetria": "500 a 3000",
+    "volumetria_min": 0,
+    "volumetria_max": 0,
+    "responsavel": "Jhony Dantas",
+    "cargo_responsavel": "Responsável pela Operação:",
+    "escala_operacao": "Seg á Sáb 09:00 ás 17:20",
+    "horario_corte": "16:00h",
+    "status_operacional": "Suspenso",
+    "badge_cor": "rose",
+    "operadores": [
+      {
+        "nome": "Nayara July Dos Santos",
+        "escala": "Seg a sáb das 09:00 ás 17:20"
+      },
+      {
+        "nome": "Marcelo Henrique Fideles Barrozo",
+        "escala": "Seg a sáb das 09:00 ás 17:20"
+      }
+    ],
+    "total_operadores": 2,
+    "insumos": {},
+    "epis": {},
+    "observacao_executiva": "Mapeado com 2 operadores pré-escalados. Insumos e equipamentos zerados: suspenso aguardando aprovação de documentação de segurança (PGR/PCMSO)."
+  },
+  {
+    "id": "bravium",
+    "nome": "Bravium",
+    "titulo_completo": "Ponto de Atendimento - Grupo Bravum",
+    "local": "Rua Cristovan de Vita, 260, Jardim Elias - Vargem Grande Paulista, SP (CEP 06734-452)",
+    "cidade": "Vargem Grande Paulista",
+    "estado": "SP",
+    "volumetria": "~1.500 (Estimada)",
+    "volumetria_min": 0,
+    "volumetria_max": 0,
+    "responsavel": null,
+    "cargo_responsavel": "Responsável pela Operação:",
+    "escala_operacao": null,
+    "horario_corte": null,
+    "status_operacional": "Em Implantação",
+    "badge_cor": "amber",
+    "operadores": [],
+    "total_operadores": 0,
+    "insumos": {},
+    "epis": {},
+    "observacao_executiva": "Local mapeado (CLR Raposo Tavares). Lark aberta para contratação de 2 funcionários operacionais; equipamentos com prazo de até 45 dias úteis pelo T.I."
+  }
+]

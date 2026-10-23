@@ -139,6 +139,18 @@ def get_stats(db: Session = Depends(get_db)):
     }
 
 
+
+@router.get("/pas-ativos")
+def get_pas_ativos():
+    """Retorna o mapeamento operacional consolidado de todos os P.As da ANJUN."""
+    import os
+    json_path = os.path.join("frontend", "public", "snapshot", "pas_ativos.json")
+    if os.path.exists(json_path):
+        with open(json_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+
 @router.get("/solicitacoes")
 def list_solicitacoes(
     status: Optional[str] = None,
