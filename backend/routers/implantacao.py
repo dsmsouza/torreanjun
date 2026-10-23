@@ -119,10 +119,11 @@ def get_stats(db: Session = Depends(get_db)):
     total = db.query(SolicitacaoImplantacao).count()
     em_analise = db.query(SolicitacaoImplantacao).filter(SolicitacaoImplantacao.status == "Em análise").count()
     visita_tecnica = db.query(SolicitacaoImplantacao).filter(SolicitacaoImplantacao.status == "Visita técnica").count()
-    em_preparacao = db.query(SolicitacaoImplantacao).filter(SolicitacaoImplantacao.status == "Em preparação").count()
+    em_preparacao = db.query(SolicitacaoImplantacao).filter(SolicitacaoImplantacao.status.in_(["Em preparação", "Em andamento"])).count()
     golive_definido = db.query(SolicitacaoImplantacao).filter(SolicitacaoImplantacao.status == "Go-Live definido").count()
-    concluidos = db.query(SolicitacaoImplantacao).filter(SolicitacaoImplantacao.status == "Concluído").count()
-    restricao = db.query(SolicitacaoImplantacao).filter(SolicitacaoImplantacao.status == "Restrição/Pendente").count()
+    concluidos = db.query(SolicitacaoImplantacao).filter(SolicitacaoImplantacao.status.in_(["Concluído", "Iniciado"])).count()
+    suspensos = db.query(SolicitacaoImplantacao).filter(SolicitacaoImplantacao.status == "Suspenso").count()
+    restricao = db.query(SolicitacaoImplantacao).filter(SolicitacaoImplantacao.status == "Restrição/Pendente").count() + suspensos
     
     return {
         "total": total,
@@ -132,6 +133,7 @@ def get_stats(db: Session = Depends(get_db)):
         "golive_definido": golive_definido,
         "concluidos": concluidos,
         "restricao_pendente": restricao,
+        "suspensos": suspensos,
         "focal_projetos": "@Diego de Souza Mandarino",
         "focal_operacao": "@Thatiane Silva Santos"
     }
@@ -1758,11 +1760,23 @@ def get_relatorio_quarta(db: Session = Depends(get_db)):
         "Em preparação": [],
         "Go-Live definido": [],
         "Concluído": [],
+        "Suspenso": [],
         "Restrição/Pendente": []
     }
     
     for item in solicitacoes:
-        st_name = item.status if item.status in status_grupos else "Restrição/Pendente"
+        st = item.status
+        if st in ("Em andamento", "Em preparação"):
+            st_name = "Em preparação"
+        elif st in ("Iniciado", "Concluído"):
+            st_name = "Concluído"
+        elif st == "Suspenso":
+            st_name = "Suspenso"
+        elif st in status_grupos:
+            st_name = st
+        else:
+            st_name = "Restrição/Pendente"
+            
         status_grupos[st_name].append({
             "id": item.id,
             "codigo": item.codigo,
@@ -1778,9 +1792,10 @@ def get_relatorio_quarta(db: Session = Depends(get_db)):
     descs = {
         "Em análise": "Solicitação recebida e em avaliação de viabilidade",
         "Visita técnica": "Visita ao cliente em andamento/agendada",
-        "Em preparação": "Recursos e estrutura sendo preparados",
+        "Em preparação": "Recursos e estrutura sendo preparados / Em andamento",
         "Go-Live definido": "Data de início validada pela Operação",
-        "Concluído": "Operação implantada com sucesso",
+        "Concluído": "Operação implantada / iniciada com sucesso",
+        "Suspenso": "Operação suspensa temporariamente por impedimento técnico ou documental",
         "Restrição/Pendente": "Implantação aguardando resolução de pendência"
     }
     

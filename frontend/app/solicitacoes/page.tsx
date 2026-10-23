@@ -78,11 +78,75 @@ import ViabilidadeModal from "@/components/ViabilidadeModal";
 const STAGES = [
   { id: "Em análise", title: "1. Em Análise", color: "border-blue-500/40 bg-blue-500/5 text-blue-400", badge: "bg-blue-500/20 text-blue-300" },
   { id: "Visita técnica", title: "2. Visita Técnica", color: "border-purple-500/40 bg-purple-500/5 text-purple-400", badge: "bg-purple-500/20 text-purple-300" },
-  { id: "Em preparação", title: "3. Em Preparação", color: "border-amber-500/40 bg-amber-500/5 text-amber-400", badge: "bg-amber-500/20 text-amber-300" },
+  { id: "Em preparação", title: "3. Em Andamento / Prep.", color: "border-amber-500/40 bg-amber-500/5 text-amber-400", badge: "bg-amber-500/20 text-amber-300" },
   { id: "Go-Live definido", title: "4. Go-Live Definido", color: "border-emerald-500/40 bg-emerald-500/5 text-emerald-400", badge: "bg-emerald-500/20 text-emerald-300" },
-  { id: "Concluído", title: "5. Concluído", color: "border-teal-500/40 bg-teal-500/5 text-teal-400", badge: "bg-teal-500/20 text-teal-300" },
-  { id: "Restrição/Pendente", title: "6. Restrição/Pendente", color: "border-rose-500/40 bg-rose-500/5 text-rose-400", badge: "bg-rose-500/20 text-rose-300" },
+  { id: "Concluído", title: "5. Concluído / Iniciado", color: "border-teal-500/40 bg-teal-500/5 text-teal-400", badge: "bg-teal-500/20 text-teal-300" },
+  { id: "Suspenso", title: "6. Suspenso", color: "border-rose-500/40 bg-rose-500/5 text-rose-400", badge: "bg-rose-500/20 text-rose-300" },
+  { id: "Restrição/Pendente", title: "7. Restrição / Pendente", color: "border-orange-500/40 bg-orange-500/5 text-orange-400", badge: "bg-orange-500/20 text-orange-300" },
 ];
+
+const getStageInfo = (status: string) => {
+  if (status === "Iniciado") return STAGES.find(s => s.id === "Concluído");
+  if (status === "Em andamento") return STAGES.find(s => s.id === "Em preparação");
+  return STAGES.find(s => s.id === status) || { id: status, title: status, color: "border-slate-700 bg-slate-800 text-slate-300", badge: "bg-slate-700 text-slate-300" };
+};
+
+
+interface StepperPhase {
+  step: string;
+  name: string;
+  status: "done" | "warning" | "danger" | "paused" | "live";
+  desc: string;
+}
+
+function getProjectExecutionStepper(item: SolicitacaoImplantacaoItem): StepperPhase[] {
+  const nome = item.cliente_nome.toLowerCase();
+
+  if (nome.includes("olist")) {
+    return [
+      { step: "1", name: "Comercial", status: "done", desc: "Contrato Fechado" },
+      { step: "2", name: "Viabilidade", status: "done", desc: "Aprovada (Imediata)" },
+      { step: "3", name: "Visita / Rota", status: "done", desc: "Alinhada e Aprovada" },
+      { step: "4", name: "Equip. & Frota", status: "done", desc: "Coletores e Veículo OK" },
+      { step: "5", name: "Go-Live", status: "live", desc: "EM OPERAÇÃO (16h)" },
+    ];
+  }
+  if (nome.includes("bravium")) {
+    return [
+      { step: "1", name: "Comercial", status: "done", desc: "Acordo Formalizado" },
+      { step: "2", name: "Viabilidade", status: "done", desc: "Aprovada c/ Prazo" },
+      { step: "3", name: "Visita Técnica", status: "done", desc: "Checklist CLR Raposo" },
+      { step: "4", name: "TI & RH (Gargalo)", status: "warning", desc: "Lark 2 func | TI até 45 d.ú." },
+      { step: "5", name: "Go-Live", status: "paused", desc: "Reprogramado p/ TI" },
+    ];
+  }
+  if (nome.includes("boticário") || nome.includes("boticario")) {
+    return [
+      { step: "1", name: "Comercial", status: "done", desc: "POP ANJUN 007" },
+      { step: "2", name: "Viabilidade", status: "done", desc: "Aprovada c/ Ressalvas" },
+      { step: "3", name: "Visita Técnica", status: "done", desc: "2 PAs (Cajamar/PR)" },
+      { step: "4", name: "Segurança / SST", status: "danger", desc: "Bloqueado (Falta PGR/PCMSO)" },
+      { step: "5", name: "Go-Live", status: "paused", desc: "Sem Previsão (Suspenso)" },
+    ];
+  }
+  if (nome.includes("shopmult")) {
+    return [
+      { step: "1", name: "Comercial", status: "done", desc: "Modelo Itinerante" },
+      { step: "2", name: "Viabilidade", status: "done", desc: "Aprovada c/ Prazo" },
+      { step: "3", name: "Visita Técnica", status: "done", desc: "Validação Realizada" },
+      { step: "4", name: "TI / Kits Móveis", status: "warning", desc: "TI até 45 dias úteis" },
+      { step: "5", name: "Go-Live", status: "paused", desc: "Suspenso p/ TI" },
+    ];
+  }
+
+  return [
+    { step: "1", name: "Comercial", status: "done", desc: "Registrado" },
+    { step: "2", name: "Viabilidade", status: item.condicao_viabilidade ? "done" : "warning", desc: item.condicao_viabilidade || "Em análise" },
+    { step: "3", name: "Visita Técnica", status: item.status_visita === "Realizada" ? "done" : "warning", desc: item.status_visita || "Pendente" },
+    { step: "4", name: "Infra & TI", status: item.status === "Suspenso" ? "danger" : "warning", desc: item.status === "Suspenso" ? "Com impedimento" : "Em preparação" },
+    { step: "5", name: "Go-Live", status: item.status === "Concluído" ? "live" : "paused", desc: item.data_go_live_prevista || "A definir" },
+  ];
+}
 
 export default function ImplantacaoFMPage() {
   const [loading, setLoading] = useState(true);
@@ -100,7 +164,7 @@ export default function ImplantacaoFMPage() {
   });
 
   // Views & Filters
-  const [viewMode, setViewMode] = useState<"kanban" | "tabela" | "relatorio" | "guia">("kanban");
+  const [viewMode, setViewMode] = useState<"executivo" | "kanban" | "tabela" | "relatorio" | "guia">("executivo");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState("TODOS");
 
@@ -426,7 +490,16 @@ export default function ImplantacaoFMPage() {
         item.cidade.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.vendedor_comercial.toLowerCase().includes(searchTerm.toLowerCase());
       
-      const matchStatus = selectedStatusFilter === "TODOS" || item.status === selectedStatusFilter;
+      let matchStatus = selectedStatusFilter === "TODOS" || item.status === selectedStatusFilter;
+      if (selectedStatusFilter === "Em preparação" && (item.status === "Em andamento" || item.status === "Em preparação")) {
+        matchStatus = true;
+      }
+      if (selectedStatusFilter === "Restrição/Pendente" && (item.status === "Restrição/Pendente" || item.status === "Suspenso")) {
+        matchStatus = true;
+      }
+      if (selectedStatusFilter === "Concluído" && (item.status === "Concluído" || item.status === "Iniciado")) {
+        matchStatus = true;
+      }
 
       return matchSearch && matchStatus;
     });
@@ -579,7 +652,18 @@ export default function ImplantacaoFMPage() {
           {/* Sub Navigation Bar & Search */}
           <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 bg-slate-900/70 p-3 rounded-xl border border-slate-800">
             {/* Navigation Tabs */}
-            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800/60">
+            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800/60 overflow-x-auto">
+              <button
+                onClick={() => setViewMode("executivo")}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap ${
+                  viewMode === "executivo"
+                    ? "bg-gradient-to-r from-amber-600 to-amber-500 text-white shadow-lg shadow-amber-900/30 ring-1 ring-amber-400"
+                    : "text-amber-400 hover:text-white hover:bg-slate-900"
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                🎯 Painel Executivo (P.As)
+              </button>
               <button
                 onClick={() => setViewMode("kanban")}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === "kanban" ? "bg-emerald-600 text-white shadow" : "text-slate-400 hover:text-white"}`}
@@ -633,11 +717,359 @@ export default function ImplantacaoFMPage() {
             </div>
           </div>
 
+          {/* VIEW MODE 0: PAINEL EXECUTIVO DE POSTOS AVANÇADOS (DIRETORIA) */}
+          {viewMode === "executivo" && (
+            <div className="space-y-6">
+              {/* Executive Overview Banner */}
+              <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-slate-950 border border-amber-500/30 shadow-xl relative overflow-hidden">
+                <div className="absolute right-0 top-0 bottom-0 w-96 bg-amber-500/5 blur-3xl pointer-events-none" />
+                
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 relative z-10">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        Visão Executiva Liderança
+                      </span>
+                      <span className="text-xs text-slate-400 font-mono">
+                        Última Atualização: Hoje (23/10/2026)
+                      </span>
+                    </div>
+                    <h2 className="text-xl md:text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
+                      <Rocket className="w-6 h-6 text-amber-400" />
+                      Status e Cronograma de Postos Avançados (P.As) & Implantações
+                    </h2>
+                    <p className="text-xs text-slate-300 mt-1 max-w-3xl leading-relaxed">
+                      Painel sintetizado para acompanhamento de prazos, gargalos departamentais e viabilidade operacional da malha First Mile.
+                    </p>
+                  </div>
+
+                  {/* Summary Quick Badges */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-center min-w-[90px]">
+                      <span className="text-[10px] text-slate-400 block font-medium">Total Demandas</span>
+                      <span className="text-lg font-black text-white">{solicitacoes.length}</span>
+                    </div>
+                    <div className="px-3 py-2 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-center min-w-[90px]">
+                      <span className="text-[10px] text-emerald-400 block font-medium">Em Operação</span>
+                      <span className="text-lg font-black text-emerald-300">
+                        {solicitacoes.filter(s => s.status === "Iniciado" || s.status === "Concluído").length}
+                      </span>
+                    </div>
+                    <div className="px-3 py-2 rounded-xl bg-amber-950/40 border border-amber-500/30 text-center min-w-[90px]">
+                      <span className="text-[10px] text-amber-400 block font-medium">Em Andamento</span>
+                      <span className="text-lg font-black text-amber-300">
+                        {solicitacoes.filter(s => s.status === "Em andamento" || s.status === "Em preparação").length}
+                      </span>
+                    </div>
+                    <div className="px-3 py-2 rounded-xl bg-rose-950/40 border border-rose-500/30 text-center min-w-[90px]">
+                      <span className="text-[10px] text-rose-400 block font-medium">Suspensos</span>
+                      <span className="text-lg font-black text-rose-300">
+                        {solicitacoes.filter(s => s.status === "Suspenso" || s.status === "Restrição/Pendente").length}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Matriz Departamental de Bloqueios */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-amber-400" />
+                    Matriz de Bloqueios e Prazos por Departamento (Onde estão os gargalos?)
+                  </h3>
+                  <span className="text-[11px] text-slate-400">Diretrizes de Ação para Destravar Go-Live</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {/* TI & Equipamentos */}
+                  <div className="p-4 rounded-xl bg-slate-900/80 border border-rose-500/30 relative overflow-hidden">
+                    <div className="flex items-center justify-between text-xs mb-2">
+                      <span className="font-bold text-white flex items-center gap-1.5">
+                        💻 T.I & Equipamentos
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                        2 PAs Impactados
+                      </span>
+                    </div>
+                    <p className="text-xs text-rose-300 font-semibold">
+                      Equipamentos suspensos pelo T.I com prazo de até 45 dias úteis.
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                      Afeta: <strong className="text-slate-200">Bravium</strong> (PCs/Coletores/Paleteira) e <strong className="text-slate-200">Shopmult</strong> (Kit itinerante).
+                    </p>
+                    <div className="mt-2.5 pt-2 border-t border-slate-800 text-[10px] text-amber-400 font-medium">
+                      🎯 Ação: Alinhar com TI/Almoxarifado priorização de compras.
+                    </div>
+                  </div>
+
+                  {/* Segurança do Trabalho / SST */}
+                  <div className="p-4 rounded-xl bg-slate-900/80 border border-rose-500/30 relative overflow-hidden">
+                    <div className="flex items-center justify-between text-xs mb-2">
+                      <span className="font-bold text-white flex items-center gap-1.5">
+                        🦺 Segurança (SST)
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                        1 Bloqueio Crítico
+                      </span>
+                    </div>
+                    <p className="text-xs text-rose-300 font-semibold">
+                      Falta de documentação mandatória (PGR e PCMSO).
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                      Afeta: <strong className="text-slate-200">Grupo Boticário</strong> (2 PAs em Cajamar e Paraná). Sem liberação para equipe entrar.
+                    </p>
+                    <div className="mt-2.5 pt-2 border-t border-slate-800 text-[10px] text-rose-400 font-medium">
+                      🎯 Ação: Cobrar time de Segurança envio/validação dos laudos.
+                    </div>
+                  </div>
+
+                  {/* RH / Gente & Gestão */}
+                  <div className="p-4 rounded-xl bg-slate-900/80 border border-amber-500/30 relative overflow-hidden">
+                    <div className="flex items-center justify-between text-xs mb-2">
+                      <span className="font-bold text-white flex items-center gap-1.5">
+                        👥 RH & Contratação
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        1 Demanda Aberta
+                      </span>
+                    </div>
+                    <p className="text-xs text-amber-300 font-semibold">
+                      Solicitação via Lark aberta para 2 funcionários.
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                      Afeta: <strong className="text-slate-200">Bravium</strong> (alocação de equipe operacional e liberação de acessos).
+                    </p>
+                    <div className="mt-2.5 pt-2 border-t border-slate-800 text-[10px] text-amber-400 font-medium">
+                      🎯 Ação: Acompanhar recrutamento para coincidir c/ entrega de TI.
+                    </div>
+                  </div>
+
+                  {/* Operação First Mile */}
+                  <div className="p-4 rounded-xl bg-slate-900/80 border border-emerald-500/30 relative overflow-hidden">
+                    <div className="flex items-center justify-between text-xs mb-2">
+                      <span className="font-bold text-white flex items-center gap-1.5">
+                        🚚 Operação First Mile
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        100% Operacional
+                      </span>
+                    </div>
+                    <p className="text-xs text-emerald-300 font-semibold">
+                      Coletas diárias ativas e rodando pontualmente às 16:00.
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                      Atende: <strong className="text-slate-200">Olist</strong> (Marketplace com coletas diárias estáveis).
+                    </p>
+                    <div className="mt-2.5 pt-2 border-t border-slate-800 text-[10px] text-emerald-400 font-medium">
+                      🎯 Status: Operação fluindo dentro dos SLAs acordados.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Cards Executivos Individuais de Cada P.A / Projeto */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                    <Store className="w-4 h-4 text-emerald-400" />
+                    Detalhamento Executivo por Posto Avançado / Projeto ({listFiltered.length})
+                  </h3>
+                  <span className="text-[11px] text-slate-400">Clique no card para abrir o dossiê com formulários</span>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {listFiltered.map((item) => {
+                    const steppers = getProjectExecutionStepper(item);
+                    const isSuspenso = item.status === "Suspenso" || item.status === "Restrição/Pendente";
+                    const isIniciado = item.status === "Iniciado" || item.status === "Concluído";
+                    const isAndamento = item.status === "Em andamento" || item.status === "Em preparação";
+
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => handleOpenDetailModal(item)}
+                        className={`p-5 rounded-2xl border transition-all cursor-pointer group shadow-xl relative overflow-hidden ${
+                          isSuspenso
+                            ? "bg-gradient-to-b from-slate-900 via-slate-900 to-rose-950/20 border-rose-500/40 hover:border-rose-400"
+                            : isIniciado
+                            ? "bg-gradient-to-b from-slate-900 via-slate-900 to-emerald-950/20 border-emerald-500/40 hover:border-emerald-400"
+                            : "bg-gradient-to-b from-slate-900 via-slate-900 to-amber-950/20 border-amber-500/40 hover:border-amber-400"
+                        }`}
+                      >
+                        {/* Card Header */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-mono font-bold text-slate-400 group-hover:text-white transition-colors">
+                                {item.codigo}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-medium">
+                                • {item.segmento || "Posto Avançado / FM"}
+                              </span>
+                            </div>
+                            <h4 className="text-lg font-black text-white mt-1 group-hover:text-amber-300 transition-colors">
+                              {item.cliente_nome}
+                            </h4>
+                          </div>
+
+                          {/* Big Status Badge */}
+                          <div>
+                            {isSuspenso && (
+                              <div className="px-3 py-1.5 rounded-xl bg-rose-500/20 border border-rose-500/50 text-rose-300 text-xs font-black flex items-center gap-1.5 shadow-lg shadow-rose-950/50">
+                                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                                🔴 SUSPENSO
+                              </div>
+                            )}
+                            {isIniciado && (
+                              <div className="px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 text-xs font-black flex items-center gap-1.5 shadow-lg shadow-emerald-950/50">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                                🟢 EM OPERAÇÃO
+                              </div>
+                            )}
+                            {isAndamento && (
+                              <div className="px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/50 text-amber-300 text-xs font-black flex items-center gap-1.5 shadow-lg shadow-amber-950/50">
+                                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                                🟡 EM ANDAMENTO
+                              </div>
+                            )}
+                            {!isSuspenso && !isIniciado && !isAndamento && (
+                              <div className="px-3 py-1.5 rounded-xl bg-blue-500/20 border border-blue-500/50 text-blue-300 text-xs font-black">
+                                {item.status}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Metadados Operacionais em Pílulas */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 text-xs">
+                          <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80">
+                            <span className="text-[10px] text-slate-500 block">Localização</span>
+                            <span className="font-bold text-slate-200 truncate block">
+                              {item.cidade}/{item.estado}
+                            </span>
+                          </div>
+                          <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80">
+                            <span className="text-[10px] text-slate-500 block">Volume Previsto</span>
+                            <span className="font-bold text-emerald-400">
+                              {item.volume_estimado_diario ? `${item.volume_estimado_diario} pcts/dia` : "Em definição"}
+                            </span>
+                          </div>
+                          <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80">
+                            <span className="text-[10px] text-slate-500 block">Janela Operacional</span>
+                            <span className="font-bold text-slate-200">
+                              {item.horario_coleta_janela || "Flexível"}
+                            </span>
+                          </div>
+                          <div className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80">
+                            <span className="text-[10px] text-slate-500 block">Prazo / Go-Live</span>
+                            <span className={`font-bold ${isSuspenso ? "text-rose-400" : isIniciado ? "text-emerald-400" : "text-amber-400"}`}>
+                              {item.data_go_live_prevista || "A definir"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Bloco Executivo "Em que pé estamos" (Gargalo Direto) */}
+                        <div className={`mt-3.5 p-3.5 rounded-xl border text-xs ${
+                          isSuspenso
+                            ? "bg-rose-950/20 border-rose-500/30 text-rose-200"
+                            : isIniciado
+                            ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-200"
+                            : "bg-amber-950/20 border-amber-500/30 text-amber-200"
+                        }`}>
+                          <div className="flex items-center gap-1.5 font-bold mb-1">
+                            {isSuspenso ? (
+                              <>
+                                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                                <span className="text-rose-400 uppercase tracking-wide text-[11px]">Em que pé estamos / Bloqueio:</span>
+                              </>
+                            ) : isIniciado ? (
+                              <>
+                                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                                <span className="text-emerald-400 uppercase tracking-wide text-[11px]">Em que pé estamos / Operação:</span>
+                              </>
+                            ) : (
+                              <>
+                                <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                                <span className="text-amber-400 uppercase tracking-wide text-[11px]">Em que pé estamos / Gargalo:</span>
+                              </>
+                            )}
+                          </div>
+                          <p className="leading-relaxed text-slate-200 font-medium">
+                            {item.parecer_operacional || item.observacoes_comercial}
+                          </p>
+
+                          {item.parecer_gestor_ressalvas && (
+                            <div className="mt-2 pt-2 border-t border-slate-800/80 text-[11px] text-slate-300">
+                              <strong className="text-amber-400">Ressalva Estratégica: </strong>
+                              {item.parecer_gestor_ressalvas}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Linha do Tempo Visual / Stepper de 5 Etapas */}
+                        <div className="mt-4 pt-3.5 border-t border-slate-800/80">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2.5">
+                            Esteira de Implantação & Progresso
+                          </span>
+
+                          <div className="grid grid-cols-5 gap-1.5 text-center">
+                            {steppers.map((st, idx) => (
+                              <div
+                                key={idx}
+                                className={`p-2 rounded-lg border flex flex-col items-center justify-between min-h-[58px] ${
+                                  st.status === "done"
+                                    ? "bg-emerald-950/30 border-emerald-500/40 text-emerald-300"
+                                    : st.status === "live"
+                                    ? "bg-emerald-500 text-slate-950 font-black border-emerald-400 shadow-md shadow-emerald-500/30"
+                                    : st.status === "warning"
+                                    ? "bg-amber-950/40 border-amber-500/50 text-amber-300 font-bold"
+                                    : st.status === "danger"
+                                    ? "bg-rose-950/40 border-rose-500/50 text-rose-300 font-bold"
+                                    : "bg-slate-950/60 border-slate-800 text-slate-500"
+                                }`}
+                              >
+                                <div className="text-[9px] uppercase font-bold tracking-tight">
+                                  {st.name}
+                                </div>
+                                <div className="text-[10px] leading-tight font-medium mt-1 line-clamp-2">
+                                  {st.desc}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Card Footer */}
+                        <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-400">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-slate-500">Comercial:</span>
+                            <span className="font-semibold text-slate-300">{item.vendedor_comercial}</span>
+                          </div>
+
+                          <span className="text-emerald-400 font-semibold group-hover:underline flex items-center gap-1 text-[11px]">
+                            Ver Dossiê Completo
+                            <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* VIEW MODE 1: KANBAN BOARD */}
           {viewMode === "kanban" && (
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 overflow-x-auto pb-4">
               {STAGES.map((stage) => {
-                const stageItems = listFiltered.filter(s => s.status === stage.id);
+                const stageItems = listFiltered.filter(s => {
+                  if (stage.id === "Suspenso") return s.status === "Suspenso";
+                  if (stage.id === "Concluído") return s.status === "Concluído" || s.status === "Iniciado";
+                  if (stage.id === "Em preparação") return s.status === "Em preparação" || s.status === "Em andamento";
+                  return s.status === stage.id;
+                });
                 return (
                   <div key={stage.id} className="flex flex-col rounded-xl bg-slate-900/40 border border-slate-800/80 min-w-[260px] h-[calc(100vh-280px)]">
                     {/* Stage Header */}
@@ -753,7 +1185,7 @@ export default function ImplantacaoFMPage() {
                           </td>
 
                           <td className="px-4 py-3">
-                            <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border ${STAGES.find(s => s.id === item.status)?.color || "border-slate-700 bg-slate-800 text-slate-300"}`}>
+                            <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold border ${getStageInfo(item.status)?.color}`}>
                               {item.status}
                             </span>
                           </td>
@@ -1000,7 +1432,7 @@ export default function ImplantacaoFMPage() {
               <div className="flex items-center gap-3">
                 <div className="text-right">
                   <span className="text-[10px] text-slate-400 block">Status Atual:</span>
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${STAGES.find(s => s.id === selectedItem.status)?.color}`}>
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${getStageInfo(selectedItem.status)?.color}`}>
                     {selectedItem.status}
                   </span>
                 </div>
