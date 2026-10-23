@@ -61,6 +61,165 @@ def classificar_marketplace_grupo(nome_cliente: str) -> str:
     return "OUTROS"
 
 
+ESTADOS_NOMES = {
+    "SP": "São Paulo", "RJ": "Rio de Janeiro", "MG": "Minas Gerais", "ES": "Espírito Santo",
+    "PR": "Paraná", "SC": "Santa Catarina", "RS": "Rio Grande do Sul",
+    "GO": "Goiás", "DF": "Distrito Federal", "MT": "Mato Grosso", "MS": "Mato Grosso do Sul",
+    "BA": "Bahia", "PE": "Pernambuco", "CE": "Ceará", "RN": "Rio Grande do Norte",
+    "PB": "Paraíba", "AL": "Alagoas", "SE": "Sergipe", "MA": "Maranhão", "PI": "Piauí",
+    "AM": "Amazonas", "PA": "Pará", "RO": "Rondônia", "TO": "Tocantins",
+    "AC": "Acre", "AP": "Amapá", "RR": "Roraima",
+}
+
+MACRO_REGIOES_DEF = [
+    ("Sudeste", ["SP", "RJ", "MG", "ES"]),
+    ("Sul", ["PR", "SC", "RS"]),
+    ("Centro-Oeste", ["GO", "DF", "MT", "MS"]),
+    ("Nordeste", ["BA", "PE", "CE", "RN", "PB", "AL", "SE", "MA", "PI"]),
+    ("Norte", ["AM", "PA", "RO", "TO", "AC", "AP", "RR"]),
+]
+
+
+def aplicar_filtro_regional_sql(clauses: list, params: dict, regional: str | None):
+    """Aplica filtro de Regional/UF garantindo que pedidos associados a pontos da UF sejam capturados mesmo se a coluna estado tiver outro valor."""
+    if not regional or str(regional).strip().upper() in ["TODOS", ""]:
+        return
+    reg_clean = str(regional).strip().upper()
+    for sigla, nome in ESTADOS_NOMES.items():
+        if reg_clean == nome.upper():
+            reg_clean = sigla
+            break
+
+    clauses.append("""(
+        SUBSTR(UPPER(TRIM(ponto_colecao)), 1, 2) = :reg_uf
+        OR UPPER(TRIM(ponto_colecao)) IN (SELECT UPPER(TRIM(md_codigo)) FROM md_mapping WHERE UPPER(TRIM(estado)) = :reg_uf)
+        OR UPPER(TRIM(ponto_colecao)) IN (SELECT UPPER(TRIM(md_codigo)) FROM malha_coordenadas WHERE UPPER(TRIM(estado)) = :reg_uf)
+        OR UPPER(TRIM(estado)) = :reg_uf
+        OR LOWER(TRIM(estado)) = :reg_low
+    )""")
+    params["reg_uf"] = reg_clean
+    params["reg_low"] = str(regional).strip().lower()
+
+
+def gerar_diagnostico_estado_payload(regional: str, kpis_data: dict, macro_regioes: list, regionais_flat: list, dia: str) -> dict:
+    """Gera texto analítico estruturado e KPIs executivos para o estado filtrado."""
+    reg_clean = (regional or "").strip().upper()
+    for sigla, nome in ESTADOS_NOMES.items():
+        if reg_clean == nome.upper():
+            reg_clean = sigla
+            break
+
+    est_match = None
+    regiao_nome = ""
+    for reg in macro_regioes:
+        for e in reg.get("estados", []):
+            if e.get("uf") == reg_clean or (e.get("nome_estado") or "").upper() == reg_clean or (e.get("estado") or "").upper() == reg_clean:
+                est_match = e
+                regiao_nome = reg.get("regiao", "")
+                break
+        if est_match:
+            break
+
+    if not est_match:
+        for r in regionais_flat:
+            if r.get("uf") == reg_clean or (r.get("nome_estado") or "").upper() == reg_clean or (r.get("estado") or "").upper() == reg_clean:
+                est_match = r
+                break
+
+    nome_estado = est_match.get("nome_estado") if est_match else (ESTADOS_NOMES.get(reg_clean) or reg_clean)
+    uf = est_match.get("uf") if est_match else reg_clean
+
+    vol = int(est_match.get("volume", kpis_data.get("total_pedidos", 0)) if est_match else kpis_data.get("total_pedidos", 0))
+    tx_col = float(est_match.get("taxa_coleta", kpis_data.get("taxa_coleta_pct", 0.0)) if est_match else kpis_data.get("taxa_coleta_pct", 0.0))
+    cf = int(est_match.get("circuito_fechado", kpis_data.get("circuito_fechado", 0)) if est_match else kpis_data.get("circuito_fechado", 0))
+    cf_pct = round((cf / max(vol, 1)) * 100, 1) if vol > 0 else 0.0
+    tr = int(est_match.get("em_transito", kpis_data.get("em_transito", 0)) if est_match else kpis_data.get("em_transito", 0))
+    tr_pct = round((tr / max(vol, 1)) * 100, 1) if vol > 0 else 0.0
+    bk = int(est_match.get("backlog_coleta", kpis_data.get("backlog_coleta", 0)) if est_match else kpis_data.get("backlog_coleta", 0))
+    bk_pct = round((bk / max(vol, 1)) * 100, 1) if vol > 0 else 0.0
+    fa = int(est_match.get("foi_assinado", kpis_data.get("foi_assinado", 0)) if est_match else kpis_data.get("foi_assinado", 0))
+    fa_pct = round((fa / max(vol, 1)) * 100, 1) if vol > 0 else 0.0
+
+    dp = int(est_match.get("vol_dropoff", kpis_data.get("dropoff_volume", 0)) if est_match else kpis_data.get("dropoff_volume", 0))
+    pk = int(est_match.get("vol_pickup", kpis_data.get("pickup_volume", 0)) if est_match else kpis_data.get("pickup_volume", 0))
+    pts_dp = int(est_match.get("qtd_pontos_dropoff", 0) if est_match else kpis_data.get("total_mds", 0))
+    pts_pk = int(est_match.get("qtd_pontos_pickup", 0) if est_match else kpis_data.get("total_hubs", 0))
+    share_reg = float(est_match.get("share_regiao_pct", 0.0) if est_match else 0.0)
+    share_nac = float(est_match.get("share_nacional_pct", 0.0) if est_match else 0.0)
+
+    if vol == 0:
+        texto = f"No dia {dia}, não houve registro de movimentação ou coleta de pacotes no estado de {nome_estado} ({uf}). Todas as rotas e pontos de coleta da região permaneceram sem expedição nesta data."
+        status_tag = "Sem Expedição"
+        status_nivel = "neutro"
+    else:
+        if bk_pct > 15 or tx_col < 70:
+            status_tag = "Atenção a Backlog"
+            status_nivel = "alerta"
+        elif tx_col < 50 or bk_pct > 35:
+            status_tag = "Gargalo Crítico"
+            status_nivel = "critico"
+        else:
+            status_tag = "Alta Eficiência"
+            status_nivel = "sucesso"
+
+        frases = []
+        frase_vol = f"No dia {dia}, a operação no estado de {nome_estado} ({uf}) movimentou {vol:,} pacote{'s' if vol > 1 else ''}"
+        if share_reg > 0 and regiao_nome:
+            frase_vol += f", concentrando {share_reg}% de toda a carga da Região {regiao_nome}"
+        if share_nac >= 1.0:
+            frase_vol += f" e {share_nac}% do volume nacional"
+        frase_vol += "."
+        frases.append(frase_vol)
+
+        frase_perf = f"O índice de coleta atingiu {tx_col}%, com {cf:,} pacote{'s' if cf > 1 else ''} ({cf_pct}%) concluído{'s' if cf > 1 else ''} em Circuito Fechado"
+        if tr > 0:
+            frase_perf += f" e {tr:,} pacote{'s' if tr > 1 else ''} ({tr_pct}%) em trânsito de transferência."
+        else:
+            frase_perf += "."
+        frases.append(frase_perf)
+
+        if dp > 0 and pk > 0:
+            frases.append(f"A carga foi operada entre Dropoff ({dp:,} pacotes em {pts_dp} balcão(ões) MD) e Pickup ({pk:,} pacotes em {pts_pk} unidade(s) HUB).")
+        elif dp > 0:
+            frases.append(f"100% da movimentação foi realizada via Dropoff em {pts_dp} ponto(s) parceiro(s) (MDs).")
+        elif pk > 0:
+            frases.append(f"100% da carga foi operada na modalidade Pickup através de {pts_pk} unidade(s) HUB/Galpão de transferência.")
+
+        if bk == 0:
+            frases.append("Operação sem backlog retido: toda a carga do estado foi escoada com sucesso.")
+        else:
+            frases.append(f"Há um saldo de {bk:,} pacotes ({bk_pct}%) aguardando coleta nos pontos.")
+
+        if fa > 0:
+            frases.append(f"Foram identificados {fa:,} pacotes com status 'Foi Assinado', demandando auditoria de baixa e conciliação.")
+
+        texto = " ".join(frases)
+
+    return {
+        "uf": uf,
+        "nome_estado": nome_estado,
+        "regiao": regiao_nome,
+        "volume": vol,
+        "taxa_coleta": tx_col,
+        "circuito_fechado": cf,
+        "circuito_fechado_pct": cf_pct,
+        "em_transito": tr,
+        "em_transito_pct": tr_pct,
+        "backlog": bk,
+        "backlog_pct": bk_pct,
+        "foi_assinado": fa,
+        "vol_dropoff": dp,
+        "vol_pickup": pk,
+        "qtd_pontos_dropoff": pts_dp,
+        "qtd_pontos_pickup": pts_pk,
+        "share_regiao_pct": share_reg,
+        "share_nacional_pct": share_nac,
+        "status_tag": status_tag,
+        "status_nivel": status_nivel,
+        "texto_resumido": texto
+    }
+
+
 
 def determinar_tipo_ponto(codigo: str) -> str:
     """Classifica com precisão o tipo da unidade na malha conforme convenção operacional:
@@ -163,9 +322,7 @@ def get_resumo_coletas(
         clauses.append("LOWER(nome_cliente) = :cli")
         params["cli"] = cliente.strip().lower()
 
-    if regional and regional.strip().upper() not in ["TODOS", ""]:
-        clauses.append("LOWER(estado) = :reg")
-        params["reg"] = regional.strip().lower()
+    aplicar_filtro_regional_sql(clauses, params, regional)
 
     where_sql = "WHERE " + " AND ".join(clauses)
 
@@ -668,7 +825,14 @@ def get_resumo_coletas(
             "total_desvios_pickup": sum(d["volume"] for d in desvios_pickup_em_md),
             "desvios_pickup_em_md": desvios_pickup_em_md[:15]
         },
-        "clientes_breakdown": clientes_breakdown
+        "clientes_breakdown": clientes_breakdown,
+        "diagnostico_estado": gerar_diagnostico_estado_payload(
+            regional=regional.strip(),
+            kpis_data=kpis_data,
+            macro_regioes=macro_regioes,
+            regionais_flat=regionais_flat,
+            dia=dia
+        ) if regional and regional.strip().upper() not in ["TODOS", ""] else None
     }
 
 
@@ -699,9 +863,7 @@ def get_coletas_mds(
         clauses.append("LOWER(nome_cliente) = :cli")
         params["cli"] = cliente.strip().lower()
 
-    if regional and regional.strip().upper() not in ["TODOS", ""]:
-        clauses.append("LOWER(estado) = :reg")
-        params["reg"] = regional.strip().lower()
+    aplicar_filtro_regional_sql(clauses, params, regional)
 
     if search and search.strip():
         clauses.append("(LOWER(ponto_colecao) LIKE :q OR LOWER(cidade) LIKE :q OR LOWER(estado) LIKE :q)")
@@ -1315,9 +1477,7 @@ def get_coletas_sellers(
         clauses.append("LOWER(nome_cliente) = :cli")
         params["cli"] = cliente.strip().lower()
 
-    if regional and regional.strip().upper() not in ["TODOS", ""]:
-        clauses.append("LOWER(estado) = :reg")
-        params["reg"] = regional.strip().lower()
+    aplicar_filtro_regional_sql(clauses, params, regional)
 
     if search and search.strip():
         clauses.append("(LOWER(merchant_nome) LIKE :q OR LOWER(cidade) LIKE :q OR LOWER(bairro) LIKE :q OR LOWER(ponto_colecao) LIKE :q)")

@@ -31,7 +31,10 @@ import {
   Info,
   Zap,
   UploadCloud,
-  Loader2
+  Loader2,
+  FileText,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import IngestaoLogPanel from "@/components/IngestaoLogPanel";
 import {
@@ -51,6 +54,127 @@ import {
 
 type TabType = "visao_geral" | "mds" | "sellers" | "horarios" | "eventos" | "reconciliacao";
 
+
+const ESTADOS_NOMES_MAP: Record<string, string> = {
+  SP: "São Paulo", RJ: "Rio de Janeiro", MG: "Minas Gerais", ES: "Espírito Santo",
+  PR: "Paraná", SC: "Santa Catarina", RS: "Rio Grande do Sul",
+  GO: "Goiás", DF: "Distrito Federal", MT: "Mato Grosso", MS: "Mato Grosso do Sul",
+  BA: "Bahia", PE: "Pernambuco", CE: "Ceará", RN: "Rio Grande do Norte",
+  PB: "Paraíba", AL: "Alagoas", SE: "Sergipe", MA: "Maranhão", PI: "Piauí",
+  AM: "Amazonas", PA: "Pará", RO: "Rondônia", TO: "Tocantins",
+  AC: "Acre", AP: "Amapá", RR: "Roraima",
+};
+
+function gerarTextoDiagnosticoEstado(est: any, regiaoNome: string, dia: string) {
+  const vol = Number(est.volume || 0);
+  const nome = est.nome_estado || ESTADOS_NOMES_MAP[est.uf] || est.uf;
+  const uf = est.uf;
+
+  if (vol === 0) {
+    return {
+      titulo: `Operação Sem Movimentação — ${nome} (${uf})`,
+      resumoNarrativo: `No dia ${dia}, não houve registro de coleta ou movimentação de pacotes no estado de ${nome} (${uf}). A rede de pontos e rotas da região permaneceu sem expedição nesta data.`,
+      statusBadge: {
+        label: "Sem Expedição",
+        cor: "text-slate-400",
+        bg: "bg-slate-800/80",
+        border: "border-slate-700",
+      },
+    };
+  }
+
+  const txCol = Number(est.taxa_coleta || 0);
+  const cf = Number(est.circuito_fechado || 0);
+  const cfPct = Number(est.taxa_finalizacao_pct || (vol > 0 ? Math.round((cf / vol) * 1000) / 10 : 0));
+  const tr = Number(est.em_transito || 0);
+  const trPct = vol > 0 ? Math.round((tr / vol) * 1000) / 10 : 0;
+  const bk = Number(est.backlog_coleta || est.backlog || 0);
+  const bkPct = vol > 0 ? Math.round((bk / vol) * 1000) / 10 : 0;
+  const fa = Number(est.foi_assinado || 0);
+  const dp = Number(est.vol_dropoff || 0);
+  const pk = Number(est.vol_pickup || 0);
+  const ptsDp = Number(est.qtd_pontos_dropoff || 0);
+  const ptsPk = Number(est.qtd_pontos_pickup || 0);
+  const shareReg = Number(est.share_regiao_pct || 0);
+  const shareNac = Number(est.share_nacional_pct || 0);
+
+  let statusBadge = {
+    label: "Alta Eficiência",
+    cor: "text-emerald-300",
+    bg: "bg-emerald-500/20",
+    border: "border-emerald-500/40",
+  };
+  if (bkPct > 15 || txCol < 70) {
+    statusBadge = {
+      label: "Atenção a Backlog",
+      cor: "text-amber-300",
+      bg: "bg-amber-500/20",
+      border: "border-amber-500/40",
+    };
+  } else if (txCol < 50 || bkPct > 35) {
+    statusBadge = {
+      label: "Gargalo Crítico",
+      cor: "text-rose-300",
+      bg: "bg-rose-500/20",
+      border: "border-rose-500/40",
+    };
+  }
+
+  const partes: string[] = [];
+
+  let fraseVol = `No dia ${dia}, a operação no estado de ${nome} (${uf}) movimentou ${vol.toLocaleString("pt-BR")} pacote${vol > 1 ? "s" : ""}`;
+  if (shareReg > 0 && regiaoNome) {
+    fraseVol += `, concentrando ${shareReg}% de toda a carga da Região ${regiaoNome}`;
+  }
+  if (shareNac >= 1.0) {
+    fraseVol += ` e ${shareNac}% do volume nacional`;
+  }
+  fraseVol += ".";
+  partes.push(fraseVol);
+
+  let frasePerf = `O índice de coleta atingiu ${txCol}%, com ${cf.toLocaleString("pt-BR")} pacote${cf > 1 ? "s" : ""} (${cfPct}%) totalmente concluído${cf > 1 ? "s" : ""} em Circuito Fechado`;
+  if (tr > 0) {
+    frasePerf += ` e ${tr.toLocaleString("pt-BR")} pacote${tr > 1 ? "s" : ""} (${trPct}%) em trânsito de transferência operacional.`;
+  } else {
+    frasePerf += ".";
+  }
+  partes.push(frasePerf);
+
+  if (dp > 0 && pk > 0) {
+    partes.push(
+      `A carga foi operada entre Dropoff (${dp.toLocaleString("pt-BR")} pacotes em ${ptsDp} balcão(ões) MD) e Pickup (${pk.toLocaleString("pt-BR")} pacotes em ${ptsPk} HUB(s) de transferência).`
+    );
+  } else if (dp > 0) {
+    partes.push(
+      `100% da carga foi operada na modalidade Dropoff através de ${ptsDp} ponto(s) parceiro(s) (MDs).`
+    );
+  } else if (pk > 0) {
+    partes.push(
+      `100% da carga foi operada na modalidade Pickup através de ${ptsPk} unidade(s) HUB/Galpão de transferência.`
+    );
+  }
+
+  if (bk === 0) {
+    partes.push("Não há registro de backlog retido: toda a carga do estado foi escoada com sucesso.");
+  } else {
+    partes.push(
+      `Há um saldo de ${bk.toLocaleString("pt-BR")} pacote${bk > 1 ? "s" : ""} (${bkPct}%) retido${bk > 1 ? "s" : ""} nos pontos de coleta aguardando escoamento.`
+    );
+  }
+
+  if (fa > 0) {
+    partes.push(
+      `Foram contabilizados ${fa.toLocaleString("pt-BR")} pacote${fa > 1 ? "s" : ""} com status 'Foi Assinado', demandando auditoria de baixa e conciliação.`
+    );
+  }
+
+  return {
+    titulo: `Diagnóstico Operacional — ${nome} (${uf})`,
+    resumoNarrativo: partes.join(" "),
+    statusBadge,
+  };
+}
+
 export default function CentralColetasPage() {
   const [loading, setLoading] = useState(true);
   const [dias, setDias] = useState<string[]>([]);
@@ -59,6 +183,7 @@ export default function CentralColetasPage() {
   const [selectedDia, setSelectedDia] = useState<string>("");
   const [selectedCliente, setSelectedCliente] = useState<string>("");
   const [selectedRegional, setSelectedRegional] = useState<string>("");
+  const [expandedRegioes, setExpandedRegioes] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<TabType>("visao_geral");
 
   // Dados do Resumo
@@ -173,6 +298,83 @@ export default function CentralColetasPage() {
   }, []);
 
   // 2. Carrega Resumo Executivo quando muda data/cliente/regional
+  // Diagnóstico Operacional Dinâmico do Estado Selecionado
+  const estadoSelecionadoData = useMemo(() => {
+    if (!selectedRegional || !resumo) return null;
+    const regUp = selectedRegional.trim().toUpperCase();
+
+    // 1. Prioriza o diagnóstico vindo diretamente do Backend se disponível
+    if (resumo.diagnostico_estado && (resumo.diagnostico_estado.uf === regUp || resumo.diagnostico_estado.estado === regUp)) {
+      return {
+        ...resumo.diagnostico_estado,
+        regiao_nome: resumo.diagnostico_estado.regiao || "",
+      };
+    }
+
+    // 2. Procura em macro_regioes
+    if (Array.isArray(resumo.macro_regioes)) {
+      for (const mr of resumo.macro_regioes) {
+        const match = (mr.estados || []).find(
+          (e: any) =>
+            e.uf?.toUpperCase() === regUp ||
+            e.estado?.toUpperCase() === regUp ||
+            e.nome_estado?.toUpperCase() === regUp
+        );
+        if (match) {
+          return {
+            ...match,
+            regiao_nome: mr.regiao,
+            nome_estado: match.nome_estado || ESTADOS_NOMES_MAP[match.uf] || match.uf,
+          };
+        }
+      }
+    }
+
+    // 3. Procura em regionais flat
+    if (Array.isArray(resumo.regionais)) {
+      const match = resumo.regionais.find(
+        (r: any) =>
+          r.uf?.toUpperCase() === regUp ||
+          r.estado?.toUpperCase() === regUp ||
+          r.nome_estado?.toUpperCase() === regUp
+      );
+      if (match) {
+        return {
+          ...match,
+          regiao_nome: match.regiao || "",
+          nome_estado: match.nome_estado || ESTADOS_NOMES_MAP[match.uf] || match.uf,
+        };
+      }
+    }
+
+    // 4. Fallback com dados do KPI filtrado
+    const nome = ESTADOS_NOMES_MAP[regUp] || regUp;
+    return {
+      uf: regUp,
+      estado: regUp,
+      nome_estado: nome,
+      regiao_nome: "",
+      volume: resumo.kpis?.total_pedidos || 0,
+      taxa_coleta: resumo.kpis?.taxa_coleta_pct || 0,
+      circuito_fechado: resumo.kpis?.circuito_fechado || 0,
+      taxa_finalizacao_pct: resumo.kpis?.circuito_fechado_pct || 0,
+      em_transito: resumo.kpis?.em_transito || 0,
+      backlog_coleta: resumo.kpis?.backlog_coleta || resumo.kpis?.backlog || 0,
+      foi_assinado: resumo.kpis?.foi_assinado || 0,
+      vol_dropoff: resumo.kpis?.dropoff_volume || 0,
+      vol_pickup: resumo.kpis?.pickup_volume || 0,
+      qtd_pontos_dropoff: resumo.kpis?.total_mds || 0,
+      qtd_pontos_pickup: resumo.kpis?.total_hubs || 0,
+      share_regiao_pct: 0,
+      share_nacional_pct: 0,
+    };
+  }, [selectedRegional, resumo]);
+
+  const textoDiagnosticoEstado = useMemo(() => {
+    if (!estadoSelecionadoData) return null;
+    return gerarTextoDiagnosticoEstado(estadoSelecionadoData, estadoSelecionadoData.regiao_nome, selectedDia);
+  }, [estadoSelecionadoData, selectedDia]);
+
   const carregarResumo = async () => {
     if (!selectedDia) return;
     setLoading(true);
@@ -636,15 +838,46 @@ export default function CentralColetasPage() {
               <select
                 value={selectedRegional}
                 onChange={(e) => setSelectedRegional(e.target.value)}
-                className="bg-transparent text-white font-medium focus:outline-none cursor-pointer"
+                className="bg-transparent text-white font-medium focus:outline-none cursor-pointer max-w-[190px] truncate"
               >
-                <option value="" className="bg-slate-900 text-white">Todas as Regionais</option>
-                <option value="GRANDE SP" className="bg-slate-900 text-white">Grande SP</option>
-                <option value="INTERIOR SP" className="bg-slate-900 text-white">Interior SP</option>
-                <option value="RIO DE JANEIRO" className="bg-slate-900 text-white">Rio de Janeiro</option>
-                <option value="MINAS GERAIS" className="bg-slate-900 text-white">Minas Gerais</option>
-                <option value="SUL" className="bg-slate-900 text-white">Sul</option>
-                <option value="NORDESTE" className="bg-slate-900 text-white">Nordeste</option>
+                <option value="" className="bg-slate-900 text-white font-bold">Brasil (Todas as UFs)</option>
+                <optgroup label="Sudeste" className="bg-slate-900 text-cyan-400 font-bold">
+                  <option value="SP" className="bg-slate-900 text-white font-normal">São Paulo (SP)</option>
+                  <option value="RJ" className="bg-slate-900 text-white font-normal">Rio de Janeiro (RJ)</option>
+                  <option value="MG" className="bg-slate-900 text-white font-normal">Minas Gerais (MG)</option>
+                  <option value="ES" className="bg-slate-900 text-white font-normal">Espírito Santo (ES)</option>
+                </optgroup>
+                <optgroup label="Sul" className="bg-slate-900 text-cyan-400 font-bold">
+                  <option value="PR" className="bg-slate-900 text-white font-normal">Paraná (PR)</option>
+                  <option value="SC" className="bg-slate-900 text-white font-normal">Santa Catarina (SC)</option>
+                  <option value="RS" className="bg-slate-900 text-white font-normal">Rio Grande do Sul (RS)</option>
+                </optgroup>
+                <optgroup label="Nordeste" className="bg-slate-900 text-cyan-400 font-bold">
+                  <option value="MA" className="bg-slate-900 text-white font-normal">Maranhão (MA)</option>
+                  <option value="BA" className="bg-slate-900 text-white font-normal">Bahia (BA)</option>
+                  <option value="PE" className="bg-slate-900 text-white font-normal">Pernambuco (PE)</option>
+                  <option value="CE" className="bg-slate-900 text-white font-normal">Ceará (CE)</option>
+                  <option value="RN" className="bg-slate-900 text-white font-normal">Rio Grande do Norte (RN)</option>
+                  <option value="PB" className="bg-slate-900 text-white font-normal">Paraíba (PB)</option>
+                  <option value="AL" className="bg-slate-900 text-white font-normal">Alagoas (AL)</option>
+                  <option value="SE" className="bg-slate-900 text-white font-normal">Sergipe (SE)</option>
+                  <option value="PI" className="bg-slate-900 text-white font-normal">Piauí (PI)</option>
+                </optgroup>
+                <optgroup label="Centro-Oeste" className="bg-slate-900 text-cyan-400 font-bold">
+                  <option value="GO" className="bg-slate-900 text-white font-normal">Goiás (GO)</option>
+                  <option value="DF" className="bg-slate-900 text-white font-normal">Distrito Federal (DF)</option>
+                  <option value="MT" className="bg-slate-900 text-white font-normal">Mato Grosso (MT)</option>
+                  <option value="MS" className="bg-slate-900 text-white font-normal">Mato Grosso do Sul (MS)</option>
+                </optgroup>
+                <optgroup label="Norte" className="bg-slate-900 text-cyan-400 font-bold">
+                  <option value="AM" className="bg-slate-900 text-white font-normal">Amazonas (AM)</option>
+                  <option value="PA" className="bg-slate-900 text-white font-normal">Pará (PA)</option>
+                  <option value="RO" className="bg-slate-900 text-white font-normal">Rondônia (RO)</option>
+                  <option value="TO" className="bg-slate-900 text-white font-normal">Tocantins (TO)</option>
+                  <option value="AC" className="bg-slate-900 text-white font-normal">Acre (AC)</option>
+                  <option value="AP" className="bg-slate-900 text-white font-normal">Amapá (AP)</option>
+                  <option value="RR" className="bg-slate-900 text-white font-normal">Roraima (RR)</option>
+                </optgroup>
               </select>
             </div>
 
@@ -772,6 +1005,132 @@ export default function CentralColetasPage() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* BANNER DE DIAGNÓSTICO OPERACIONAL DO ESTADO */}
+        {estadoSelecionadoData && textoDiagnosticoEstado && (
+          <div className="mx-6 mt-4 p-5 rounded-2xl bg-gradient-to-r from-[#111927] via-[#0E1A2D] to-[#0A1322] border-2 border-cyan-500/50 shadow-2xl shadow-cyan-950/40 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-cyan-500/20 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 flex items-center justify-center font-mono font-black text-sm shrink-0">
+                  {estadoSelecionadoData.uf}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-sm md:text-base font-extrabold text-white flex items-center gap-2">
+                      <span>{estadoSelecionadoData.nome_estado}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700 font-mono font-bold">
+                        UF: {estadoSelecionadoData.uf}
+                      </span>
+                    </h3>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${textoDiagnosticoEstado.statusBadge.bg} ${textoDiagnosticoEstado.statusBadge.cor} ${textoDiagnosticoEstado.statusBadge.border}`}
+                    >
+                      ● {textoDiagnosticoEstado.statusBadge.label}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Diagnóstico Operacional em Tempo Real • Data:{" "}
+                    <strong className="text-white">{selectedDia}</strong>
+                    {estadoSelecionadoData.regiao_nome && (
+                      <> • Região <strong>{estadoSelecionadoData.regiao_nome}</strong></>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 self-start md:self-center">
+                <button
+                  type="button"
+                  onClick={() => setSelectedRegional("")}
+                  className="px-3.5 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-rose-300 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                  title="Remover filtro e voltar para visão de todo o Brasil"
+                >
+                  <X className="w-3.5 h-3.5" /> Limpar Filtro ({estadoSelecionadoData.uf})
+                </button>
+              </div>
+            </div>
+
+            {/* Caixa Narrativa Executiva */}
+            <div className="p-4 rounded-xl bg-slate-900/80 border border-cyan-500/20 text-slate-200 text-xs md:text-sm leading-relaxed shadow-inner">
+              <div className="flex items-start gap-2.5">
+                <div className="p-1 rounded bg-cyan-500/10 text-cyan-400 shrink-0 mt-0.5">
+                  <FileText className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 block mb-1">
+                    Parecer Operacional Executivo do Estado
+                  </span>
+                  <p className="font-normal text-slate-100">
+                    {textoDiagnosticoEstado.resumoNarrativo}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Grade de 6 Mini-Cards do Estado */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-1">
+              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">Volume Total</span>
+                <span className="text-sm md:text-base font-mono font-black text-white">
+                  {(estadoSelecionadoData.volume || 0).toLocaleString("pt-BR")}
+                </span>
+                <span className="text-[10px] text-cyan-400 block mt-0.5">
+                  Share Região: {estadoSelecionadoData.share_regiao_pct || 0}%
+                </span>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                <span className="text-[10px] text-slate-400 uppercase font-bold block">Taxa de Coleta</span>
+                <span className={`text-sm md:text-base font-mono font-black ${
+                  (estadoSelecionadoData.taxa_coleta || 0) >= 85 ? "text-emerald-400" : (estadoSelecionadoData.taxa_coleta || 0) >= 70 ? "text-amber-400" : "text-rose-400"
+                }`}>
+                  {estadoSelecionadoData.taxa_coleta || 0}%
+                </span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">
+                  {((estadoSelecionadoData.circuito_fechado || 0) + (estadoSelecionadoData.em_transito || 0)).toLocaleString("pt-BR")} pcts
+                </span>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-emerald-900/40 bg-emerald-950/20">
+                <span className="text-[10px] text-emerald-400 uppercase font-bold block">Circuito Fechado</span>
+                <span className="text-sm md:text-base font-mono font-black text-emerald-300">
+                  {(estadoSelecionadoData.circuito_fechado || 0).toLocaleString("pt-BR")}
+                </span>
+                <span className="text-[10px] text-emerald-400/80 block mt-0.5">
+                  Conclusão: {estadoSelecionadoData.taxa_finalizacao_pct || 0}%
+                </span>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-blue-900/40 bg-blue-950/20">
+                <span className="text-[10px] text-blue-400 uppercase font-bold block">Em Trânsito</span>
+                <span className="text-sm md:text-base font-mono font-black text-blue-300">
+                  {(estadoSelecionadoData.em_transito || 0).toLocaleString("pt-BR")}
+                </span>
+                <span className="text-[10px] text-blue-400/80 block mt-0.5">
+                  Carreg. / Desc.
+                </span>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-amber-900/40 bg-amber-950/20">
+                <span className="text-[10px] text-amber-400 uppercase font-bold block">Backlog no Ponto</span>
+                <span className="text-sm md:text-base font-mono font-black text-amber-300">
+                  {(estadoSelecionadoData.backlog_coleta || estadoSelecionadoData.backlog || 0).toLocaleString("pt-BR")}
+                </span>
+                <span className="text-[10px] text-amber-400/80 block mt-0.5">
+                  Retido no Balcão
+                </span>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-slate-950/60 border border-indigo-900/40 bg-indigo-950/20">
+                <span className="text-[10px] text-indigo-400 uppercase font-bold block">Modalidade</span>
+                <div className="text-[11px] font-mono text-white flex flex-col mt-0.5">
+                  <span className="text-cyan-300">🏪 Drop: {(estadoSelecionadoData.vol_dropoff || 0).toLocaleString("pt-BR")}</span>
+                  <span className="text-indigo-300">🚛 Pick: {(estadoSelecionadoData.vol_pickup || 0).toLocaleString("pt-BR")}</span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -1083,8 +1442,11 @@ export default function CentralColetasPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {resumo.macro_regioes.map((reg: any) => {
                       const hasVol = Number(reg.volume_total || 0) > 0;
+                      const isExpanded = !!expandedRegioes[reg.regiao];
                       const estadosComVolume = (reg.estados || []).filter((e: any) => Number(e.volume || 0) > 0);
-                      const estadosExibir = estadosComVolume.length > 0 ? estadosComVolume : (reg.estados || []).slice(0, 4);
+                      const estadosExibir = isExpanded
+                        ? (reg.estados || [])
+                        : (estadosComVolume.length > 0 ? estadosComVolume : (reg.estados || []).slice(0, 4));
 
                       return (
                         <div
@@ -1189,6 +1551,30 @@ export default function CentralColetasPage() {
                                 <span>Estado (UF)</span>
                                 <span>Dropoff / Pickup • Status • Total</span>
                               </div>
+                              {(reg.estados || []).length > 4 && (
+                                <div className="flex justify-end pt-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setExpandedRegioes(prev => ({
+                                        ...prev,
+                                        [reg.regiao]: !prev[reg.regiao]
+                                      }))
+                                    }
+                                    className="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                                  >
+                                    {isExpanded ? (
+                                      <>
+                                        <ChevronUp className="w-3 h-3" /> Recolher UFs
+                                      </>
+                                    ) : (
+                                      <>
+                                        <ChevronDown className="w-3 h-3" /> Ver todas as {(reg.estados || []).length} UFs
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
+                              )}
                               {estadosExibir.map((est: any) => {
                                 const isUfSelected = selectedRegional?.toUpperCase() === est.uf;
                                 return (
@@ -1197,10 +1583,10 @@ export default function CentralColetasPage() {
                                     onClick={() => setSelectedRegional(isUfSelected ? "" : est.uf)}
                                     className={`p-2 rounded-lg border text-xs cursor-pointer transition-all ${
                                       isUfSelected
-                                        ? "bg-emerald-950/40 border-emerald-500/60"
-                                        : "bg-slate-950/60 border-slate-800/80 hover:border-slate-700"
+                                        ? "bg-cyan-950/80 border-cyan-400 ring-2 ring-cyan-400 shadow-lg shadow-cyan-950/50"
+                                        : "bg-slate-950/60 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/60"
                                     }`}
-                                    title={`Clique para filtrar o painel pelo estado ${est.nome_estado} (${est.uf})`}
+                                    title={`Clique para filtrar tudo e gerar diagnóstico operacional de ${est.nome_estado} (${est.uf})`}
                                   >
                                     <div className="flex items-center justify-between gap-2">
                                       <div className="flex items-center gap-1.5">
@@ -1210,6 +1596,11 @@ export default function CentralColetasPage() {
                                         <span className="font-semibold text-slate-200 truncate">
                                           {est.nome_estado}
                                         </span>
+                                        {isUfSelected && (
+                                          <span className="px-1.5 py-0.2 rounded bg-cyan-400 text-slate-950 text-[9px] font-black uppercase tracking-wider animate-pulse">
+                                            Filtro Ativo
+                                          </span>
+                                        )}
                                       </div>
                                       <span className="font-mono font-extrabold text-white">
                                         {(est.volume || 0).toLocaleString("pt-BR")}{" "}

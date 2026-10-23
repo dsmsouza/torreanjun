@@ -65,12 +65,45 @@ async function resolveSnapshotRequest(urlStr: string): Promise<Response | null> 
             }
           }
           if (regFiltro && regFiltro.toUpperCase() !== "TODOS" && Array.isArray(copy.regionais)) {
-            const rMatch = copy.regionais.find((r: any) => r.estado?.toLowerCase() === regFiltro.toLowerCase());
+            const regLower = regFiltro.toLowerCase();
+            const rMatch = copy.regionais.find(
+              (r: any) =>
+                (r.estado || "").toLowerCase() === regLower ||
+                (r.uf || "").toLowerCase() === regLower ||
+                (r.nome_estado || "").toLowerCase() === regLower
+            );
             if (rMatch && copy.kpis) {
-              copy.kpis.total_pedidos = rMatch.volume;
-              copy.kpis.coletados = rMatch.coletados;
-              copy.kpis.backlog = rMatch.backlog;
-              copy.kpis.taxa_coleta_pct = rMatch.taxa_coleta;
+              const v = Number(rMatch.volume || 0);
+              const cf = Number(rMatch.circuito_fechado || 0);
+              const tr = Number(rMatch.em_transito || 0);
+              const bk = Number(rMatch.backlog_coleta || rMatch.backlog || 0);
+              const fa = Number(rMatch.foi_assinado || 0);
+              const dp = Number(rMatch.vol_dropoff || 0);
+              const pk = Number(rMatch.vol_pickup || 0);
+
+              copy.kpis.total_pedidos = v;
+              copy.kpis.coletados = Number(rMatch.coletados || 0);
+              copy.kpis.total_coletados = copy.kpis.coletados;
+              copy.kpis.circuito_fechado = cf;
+              copy.kpis.circuito_fechado_pct = v > 0 ? Math.round((cf / v) * 1000) / 10 : 0;
+              copy.kpis.em_transito = tr;
+              copy.kpis.em_transito_pct = v > 0 ? Math.round((tr / v) * 1000) / 10 : 0;
+              copy.kpis.backlog_coleta = bk;
+              copy.kpis.backlog_coleta_pct = v > 0 ? Math.round((bk / v) * 1000) / 10 : 0;
+              copy.kpis.backlog = bk;
+              copy.kpis.foi_assinado = fa;
+              copy.kpis.foi_assinado_pct = v > 0 ? Math.round((fa / v) * 1000) / 10 : 0;
+              copy.kpis.taxa_coleta_pct = Number(rMatch.taxa_coleta || 0);
+              copy.kpis.taxa_coleta = copy.kpis.taxa_coleta_pct;
+              copy.kpis.dropoff_volume = dp;
+              copy.kpis.vol_dropoff = dp;
+              copy.kpis.dropoff_pct = v > 0 ? Math.round((dp / v) * 1000) / 10 : 0;
+              copy.kpis.pickup_volume = pk;
+              copy.kpis.vol_pickup = pk;
+              copy.kpis.pickup_pct = v > 0 ? Math.round((pk / v) * 1000) / 10 : 0;
+              copy.kpis.total_mds = Number(rMatch.qtd_pontos_dropoff || 0);
+              copy.kpis.total_hubs = Number(rMatch.qtd_pontos_pickup || 0);
+              copy.totais = { ...copy.kpis };
             }
           }
           return jsonResponse(copy);
@@ -88,7 +121,13 @@ async function resolveSnapshotRequest(urlStr: string): Promise<Response | null> 
           const reg = (params.get("regional") || "").trim().toLowerCase();
           const search = (params.get("search") || "").trim().toLowerCase();
           if (reg && reg !== "todos") {
-            hList = hList.filter((m: any) => (m.estado || "").toLowerCase() === reg || (m.regional || "").toLowerCase() === reg);
+            const regUp = reg.toUpperCase();
+            hList = hList.filter(
+              (m: any) =>
+                (m.estado || "").toLowerCase() === reg ||
+                (m.regional || "").toLowerCase() === reg ||
+                String(m.md_codigo || "").toUpperCase().startsWith(regUp + "-")
+            );
           }
           if (search) {
             hList = hList.filter(
@@ -116,7 +155,13 @@ async function resolveSnapshotRequest(urlStr: string): Promise<Response | null> 
         const search = (params.get("search") || "").trim().toLowerCase();
 
         if (reg && reg !== "todos") {
-          list = list.filter((m: any) => (m.estado || "").toLowerCase() === reg || (m.regional || "").toLowerCase() === reg);
+          const regUp = reg.toUpperCase();
+          list = list.filter(
+            (m: any) =>
+              (m.estado || "").toLowerCase() === reg ||
+              (m.regional || "").toLowerCase() === reg ||
+              String(m.md_codigo || "").toUpperCase().startsWith(regUp + "-")
+          );
         }
         if (search) {
           list = list.filter(
@@ -336,7 +381,13 @@ async function resolveSnapshotRequest(urlStr: string): Promise<Response | null> 
           list = list.filter((s: any) => (s.nome_cliente || "").toLowerCase() === cli);
         }
         if (reg && reg !== "todos") {
-          list = list.filter((s: any) => (s.estado || "").toLowerCase() === reg);
+          const regUp = reg.toUpperCase();
+          list = list.filter(
+            (s: any) =>
+              (s.estado || "").toLowerCase() === reg ||
+              (s.regional || "").toLowerCase() === reg ||
+              String(s.ponto_colecao || "").toUpperCase().startsWith(regUp + "-")
+          );
         }
         if (search) {
           list = list.filter(
