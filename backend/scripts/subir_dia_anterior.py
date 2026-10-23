@@ -36,10 +36,10 @@ except Exception as e:
 def localizar_planilha_downloads() -> Path | None:
     """Busca a planilha operacional mais recente na pasta Downloads, planilhas_entrada ou C:\ANJUN."""
     pastas_busca = [
-        BACKEND_DIR.parent,
         Path.home() / "Downloads",
         BACKEND_DIR / "planilhas_entrada",
-        BACKEND_DIR.parent / "planilhas_entrada"
+        BACKEND_DIR.parent / "planilhas_entrada",
+        BACKEND_DIR.parent,
     ]
     
     padroes_relevantes = [

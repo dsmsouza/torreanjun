@@ -135,7 +135,7 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
 
         dias_exportar = todos_dias[:max_dias] if todos_dias else [dia_recente]
         info_dias_online = {
-            "dias": dias_exportar,
+            "dias": todos_dias,
             "meses": meses_disp,
             "dia_recente": dia_recente,
             "atualizado_em": datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S"),

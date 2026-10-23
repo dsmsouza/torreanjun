@@ -33,10 +33,10 @@ except Exception as e:
 def localizar_planilha_downloads() -> Path | None:
     """Busca a planilha operacional mais recente na pasta Downloads, planilhas_entrada ou C:\ANJUN."""
     pastas_busca = [
-        BACKEND_DIR.parent,
         Path.home() / "Downloads",
         BACKEND_DIR / "planilhas_entrada",
-        BACKEND_DIR.parent / "planilhas_entrada"
+        BACKEND_DIR.parent / "planilhas_entrada",
+        BACKEND_DIR.parent,
     ]
     
     padroes_relevantes = [
@@ -129,10 +129,18 @@ def main():
         print("💡 Dica: Você pode arrastar o arquivo .xlsx para cima do 'subir_dia_atual.bat'")
         return 1
 
-    # Por padrão na carga "No Dia", se não informado override, assume a data de hoje
-    data_final = data_override or data_hoje
-
     for idx, arquivo_alvo in enumerate(arquivos_alvo, 1):
+        # Detecção inteligente da data operacional: override manual > nome do arquivo > detecção streaming por Coluna M
+        data_detectada_nome = None
+        m_fn = re.search(r'(?:dia\s*)?(\d{2})[-_.]?(\d{2})(?:[-_.]?(\d{4}))?', arquivo_alvo.stem, re.IGNORECASE)
+        if m_fn and m_fn.group(1) and m_fn.group(2):
+            d_p, m_p = m_fn.group(1), m_fn.group(2)
+            y_p = m_fn.group(3) or str(datetime.date.today().year)
+            if 1 <= int(d_p) <= 31 and 1 <= int(m_p) <= 12:
+                data_detectada_nome = f"{int(d_p):02d}/{int(m_p):02d}/{y_p}"
+
+        data_alvo_passar = data_override or data_detectada_nome
+
         tam_mb = round(arquivo_alvo.stat().st_size / (1024 * 1024), 2)
         mtime_dt = datetime.datetime.fromtimestamp(arquivo_alvo.stat().st_mtime).strftime("%d/%m/%Y %H:%M:%S")
         
@@ -141,7 +149,10 @@ def main():
         print(f"   Nome: {arquivo_alvo.name}")
         print(f"   Tamanho: {tam_mb} MB")
         print(f"   Modificado em: {mtime_dt}")
-        print(f"📅 Data Operacional em Tempo Real: {data_final}")
+        if data_alvo_passar:
+            print(f"📅 Data Operacional Definida: {data_alvo_passar}")
+        else:
+            print(f"📅 Data Operacional: Detecção Automática Inteligente via Coluna M")
         print("\n🚀 Ingestão em Streaming (RAM Constante < 150 MB)...")
 
         t_inicio = time.time()
@@ -152,9 +163,10 @@ def main():
         try:
             resultado = processar_arquivo_streaming(
                 caminho_xlsx=str(arquivo_alvo),
-                data_operacao_override=data_final,
+                data_operacao_override=data_alvo_passar,
                 callback_progresso=cb
             )
+            data_final = resultado.get("data_operacao") or data_alvo_passar or data_hoje
             print("\r  [=========================] 100.0% | Ingestão e Agregações Finalizadas!               \n")
         except Exception as e:
             print(f"\n\n❌ Erro durante a ingestão do arquivo {arquivo_alvo.name}: {e}")
