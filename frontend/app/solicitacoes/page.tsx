@@ -3,7 +3,11 @@
 import React, { useEffect, useState, useMemo } from "react";
 import Sidebar from "@/components/Sidebar";
 import { 
-  Rocket, 
+  Rocket,
+  Workflow,
+  GitBranch,
+  ArrowRightLeft,
+  UserX, 
   Search, 
   RefreshCw, 
   Plus, 
@@ -708,8 +712,8 @@ export default function ImplantacaoFMPage() {
                 onClick={() => setViewMode("guia")}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${viewMode === "guia" ? "bg-purple-600 text-white shadow" : "text-slate-400 hover:text-white"}`}
               >
-                <HelpCircle className="w-3.5 h-3.5" />
-                Regras do Fluxo
+                <Workflow className="w-3.5 h-3.5" />
+                Governança & Regras
               </button>
             </div>
 
@@ -749,6 +753,14 @@ export default function ImplantacaoFMPage() {
                       <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
                         Visão Executiva Liderança
                       </span>
+                      <button
+                        onClick={() => setViewMode("guia")}
+                        className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-purple-500/30 transition-all flex items-center gap-1 cursor-pointer"
+                        title="Ver regras e fluxograma oficial de governança"
+                      >
+                        <Workflow className="w-3 h-3 text-purple-400" />
+                        Governança Oficial: Wagner ➔ Luzia ➔ Comercial
+                      </button>
                       <span className="text-xs text-slate-400 font-mono">
                         Base: Mapeamento dos PAs.xlsx (Atualizado 23/10/2026)
                       </span>
@@ -1425,18 +1437,362 @@ export default function ImplantacaoFMPage() {
 
           {/* VIEW MODE 4: GUIA E REGRAS DO FLUXO */}
           {viewMode === "guia" && (
-            <div className="space-y-6 max-w-4xl mx-auto">
-              <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-slate-800 shadow-xl space-y-6">
+            <div className="space-y-6 max-w-5xl mx-auto pb-10">
+              
+              {/* Banner de Cabeçalho da Governança */}
+              <div className="p-6 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950/30 border border-purple-500/30 shadow-2xl space-y-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                        Diretriz Oficial de Governança
+                      </span>
+                      <span className="text-xs text-slate-400 font-mono">
+                        Aprovado em 26/10/2026 • Operação First Mile & Projetos
+                      </span>
+                    </div>
+                    <h2 className="text-xl md:text-2xl font-black text-white flex items-center gap-2.5">
+                      <Workflow className="w-6 h-6 text-purple-400" />
+                      Governança Oficial de Entrada de Solicitações (P.A & Pickup)
+                    </h2>
+                    <p className="text-xs text-slate-300 mt-1 max-w-3xl leading-relaxed">
+                      Protocolo mandatório de triagem, viabilidade operacional com <strong>Wagner</strong>, escalonamento com <strong>Luzia</strong>, devolução fundamentada ao Comercial e matriz de focais responsáveis.
+                    </p>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-center shrink-0 min-w-[160px]">
+                    <span className="text-[10px] text-slate-400 block font-medium">Orquestrador do Fluxo</span>
+                    <span className="text-xs font-bold text-blue-400 flex items-center justify-center gap-1 mt-0.5">
+                      <UserCheck className="w-3.5 h-3.5" />
+                      @Diego Mandarino
+                    </span>
+                    <span className="text-[10px] text-slate-500">Projetos First Mile</span>
+                  </div>
+                </div>
+
+                {/* Pipeline Sequencial Visual do Fluxo */}
+                <div className="pt-4 border-t border-slate-800/80">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300 block mb-3">
+                    Fluxograma Sequencial de Tomada de Decisão:
+                  </span>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3 relative">
+                    {/* Passo 1 */}
+                    <div className="p-4 rounded-xl bg-slate-950/90 border border-blue-500/30 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between text-xs mb-2">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                            Passo 1 • Entrada
+                          </span>
+                          <span className="text-slate-500 text-[10px]">Comercial</span>
+                        </div>
+                        <h4 className="font-bold text-white text-xs">Nova Solicitação</h4>
+                        <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                          Demanda emitida pelo Comercial (independente de ser P.A ou Pickup).
+                        </p>
+                      </div>
+                      <div className="mt-3 pt-2 border-t border-slate-800/80 text-[10px] text-blue-400 font-mono">
+                        ➔ Triagem: @Diego Mandarino
+                      </div>
+                    </div>
+
+                    {/* Passo 2 */}
+                    <div className="p-4 rounded-xl bg-slate-950/90 border border-emerald-500/30 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between text-xs mb-2">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            Passo 2 • 1º Estudo
+                          </span>
+                          <span className="text-emerald-400 font-bold text-[10px]">Wagner</span>
+                        </div>
+                        <h4 className="font-bold text-white text-xs">Viabilidade FM</h4>
+                        <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                          Wagner faz o estudo técnico para verificar se a Operação FM consegue atender.
+                        </p>
+                      </div>
+                      <div className="mt-3 pt-2 border-t border-slate-800/80 text-[10px] text-slate-300 space-y-0.5">
+                        <span className="text-emerald-400 block font-semibold">🟢 Se Viável: Segue p/ Implantação</span>
+                        <span className="text-amber-400 block font-semibold">🔴 Se Negativo: Escala p/ Transporte</span>
+                      </div>
+                    </div>
+
+                    {/* Passo 3 */}
+                    <div className="p-4 rounded-xl bg-slate-950/90 border border-amber-500/30 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between text-xs mb-2">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            Passo 3 • Escalonamento
+                          </span>
+                          <span className="text-amber-400 font-bold text-[10px]">Luzia</span>
+                        </div>
+                        <h4 className="font-bold text-white text-xs">Estudo de Transporte</h4>
+                        <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                          Luzia avalia encaixe na malha rodoviária, veículos parceiros e rotas de transferência.
+                        </p>
+                      </div>
+                      <div className="mt-3 pt-2 border-t border-slate-800/80 text-[10px] text-slate-300 space-y-0.5">
+                        <span className="text-emerald-400 block font-semibold">🟢 Se Viável: Atendimento via Frota</span>
+                        <span className="text-rose-400 block font-semibold">🔴 Se Negativo: Inviabilidade Total</span>
+                      </div>
+                    </div>
+
+                    {/* Passo 4 */}
+                    <div className="p-4 rounded-xl bg-slate-950/90 border border-rose-500/30 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between text-xs mb-2">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                            Passo 4 • Conclusão
+                          </span>
+                          <span className="text-rose-400 font-bold text-[10px]">Comercial</span>
+                        </div>
+                        <h4 className="font-bold text-white text-xs">Devolução ao Comercial</h4>
+                        <p className="text-[11px] text-slate-400 mt-1 leading-snug">
+                          Caso Wagner e Luzia deem parecer negativo, Diego formaliza a devolução técnica ao Comercial.
+                        </p>
+                      </div>
+                      <div className="mt-3 pt-2 border-t border-slate-800/80 text-[10px] text-rose-400 font-mono">
+                        📝 Motivo técnico registrado no sistema
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Matriz de Critérios: PA vs. Pickup */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                
+                {/* CARD 1: POSTO DE ATENDIMENTO (P.A) */}
+                <div className="p-5 rounded-2xl bg-slate-900 border border-purple-500/30 shadow-xl space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                        Modelo de Operação Dedicado
+                      </span>
+                      <h3 className="text-lg font-black text-white mt-1 flex items-center gap-2">
+                        <Building2 className="w-5 h-5 text-purple-400" />
+                        P.A (Posto de Atendimento)
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Exige análise mandatória dos <strong>3 Pilares Estruturais</strong>:
+                      </p>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-purple-400 bg-purple-950/60 px-2 py-1 rounded border border-purple-500/30">
+                      3 Pilares
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {/* Pilar 1 */}
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-white flex items-center gap-1.5">
+                          <Laptop className="w-4 h-4 text-emerald-400" />
+                          1. ESTRUTURA (Equipamentos & Mobiliário)
+                        </span>
+                        <span className="text-[10px] text-slate-400">PDA, Desktop, Mesa, Impressora</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-snug">
+                        Verificar se a base possui computadores, coletores PDA, mesas de triagem e insumos.
+                      </p>
+                      <div className="mt-2 pt-2 border-t border-slate-800 text-[10px] text-amber-300 flex items-center gap-1">
+                        <span>⚠️ <strong>Caso NÃO tenhamos:</strong> Acionar e alinhar com</span>
+                        <span className="text-white font-bold bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">@Ryan, @Link e @Gabriel</span>
+                      </div>
+                    </div>
+
+                    {/* Pilar 2 */}
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-white flex items-center gap-1.5">
+                          <Truck className="w-4 h-4 text-blue-400" />
+                          2. FROTA (Veículo de Coleta / Transferência)
+                        </span>
+                        <span className="text-[10px] text-slate-400">VUC, Fiorino, Caminhão</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-snug">
+                        Verificar disponibilidade de veículo para coleta nas janelas acordadas e transferência ao CD.
+                      </p>
+                      <div className="mt-2 pt-2 border-t border-slate-800 text-[10px] text-blue-300 flex items-center gap-1">
+                        <span>🎯 <strong>Validação com:</strong></span>
+                        <span className="text-white font-bold bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">@Wagner</span>
+                        <span>ou</span>
+                        <span className="text-white font-bold bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">@Luzia</span>
+                      </div>
+                    </div>
+
+                    {/* Pilar 3 */}
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-white flex items-center gap-1.5">
+                          <Users className="w-4 h-4 text-purple-400" />
+                          3. MÃO DE OBRA (Pessoas / Operadores)
+                        </span>
+                        <span className="text-[10px] text-slate-400">Escala & Turnos</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-snug">
+                        Dimensionar e alocar operadores dedicados para recebimento, conferência e expedição no P.A.
+                      </p>
+                      <div className="mt-2 pt-2 border-t border-slate-800 text-[10px] text-purple-300 flex items-center gap-1">
+                        <span>🎯 <strong>Validação e alocação com:</strong></span>
+                        <span className="text-white font-bold bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">@Wallace</span>
+                        <span>(Gente & Gestão / RH)</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* CARD 2: PICKUP (COLETA EXTERNA / DROPOFF) */}
+                <div className="p-5 rounded-2xl bg-slate-900 border border-emerald-500/30 shadow-xl space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        Modelo de Coleta Externa
+                      </span>
+                      <h3 className="text-lg font-black text-white mt-1 flex items-center gap-2">
+                        <Package className="w-5 h-5 text-emerald-400" />
+                        Pickup (Coleta / Coletas Externas)
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Exige análise mandatória de <strong>2 Pilares Operacionais</strong>:
+                      </p>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-950/60 px-2 py-1 rounded border border-emerald-500/30">
+                      2 Pilares
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {/* Pilar 1 */}
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-white flex items-center gap-1.5">
+                          <Laptop className="w-4 h-4 text-emerald-400" />
+                          1. ESTRUTURA (Equipamento de Bipagem)
+                        </span>
+                        <span className="text-[10px] text-emerald-400 font-mono font-bold">PDA Obrigatório</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-snug">
+                        Validar disponibilidade de <strong>PDA (Coletor Zebra / Scanner Android)</strong> devidamente configurado com perfil de coleta e internet/chip ativo.
+                      </p>
+                      <div className="mt-2 pt-2 border-t border-slate-800 text-[10px] text-slate-400">
+                        Caso não tenhamos coletor em estoque: alinhar suprimento com <strong>Ryan, Link e Gabriel</strong>.
+                      </div>
+                    </div>
+
+                    {/* Pilar 2 */}
+                    <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-white flex items-center gap-1.5">
+                          <Truck className="w-4 h-4 text-blue-400" />
+                          2. FROTA (Veículo & Janela de Rota)
+                        </span>
+                        <span className="text-[10px] text-blue-400 font-mono font-bold">Encaixe em Malha</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-snug">
+                        Verificar se a rota do motorista comporta a janela horária solicitada pelo cliente e o volume diário estimado.
+                      </p>
+                      <div className="mt-2 pt-2 border-t border-slate-800 text-[10px] text-blue-300 flex items-center gap-1">
+                        <span>🎯 <strong>Validação com:</strong></span>
+                        <span className="text-white font-bold bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">@Wagner</span>
+                        <span>ou</span>
+                        <span className="text-white font-bold bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">@Luzia</span>
+                      </div>
+                    </div>
+
+                    {/* Box Comparativo Resumo */}
+                    <div className="p-3.5 rounded-xl bg-slate-950/60 border border-emerald-500/20 text-xs space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">
+                        Diferença Chave vs. P.A:
+                      </span>
+                      <p className="text-[11px] text-slate-300 leading-snug">
+                        Na modalidade <strong>Pickup</strong>, <em>não há necessidade de contratação de mão de obra fixa (Wallace)</em> nem montagem de posto físico (Desktop/Mesas) no galpão do cliente. O foco é estritamente <strong>PDA + Rota de Coleta</strong>.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Matriz de Focais e Papéis no Fluxo */}
+              <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <Users className="w-4 h-4 text-purple-400" />
+                    Diretório Oficial de Focais & Escopos de Responsabilidade
+                  </h3>
+                  <span className="text-[10px] text-slate-500 font-mono">Governança Anjun</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                  {/* Diego */}
+                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                    <span className="font-bold text-blue-400 block">@Diego Mandarino</span>
+                    <span className="text-[10px] text-slate-400 block">Projetos First Mile</span>
+                    <p className="text-[11px] text-slate-300 mt-1 leading-snug">
+                      Recepção comercial, triagem primária, orquestração do estudo e devolução técnica fundamentada.
+                    </p>
+                  </div>
+
+                  {/* Wagner */}
+                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                    <span className="font-bold text-emerald-400 block">@Wagner</span>
+                    <span className="text-[10px] text-slate-400 block">Operação First Mile</span>
+                    <p className="text-[11px] text-slate-300 mt-1 leading-snug">
+                      1º Estudo de viabilidade operacional e avaliação primária de frota para P.A e Pickup.
+                    </p>
+                  </div>
+
+                  {/* Luzia */}
+                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                    <span className="font-bold text-amber-400 block">@Luzia</span>
+                    <span className="text-[10px] text-slate-400 block">Transportes & Malha</span>
+                    <p className="text-[11px] text-slate-300 mt-1 leading-snug">
+                      2º Estudo de viabilidade: acionada em caso negativo do Wagner para buscar alternativas de frota e rotas.
+                    </p>
+                  </div>
+
+                  {/* Ryan, Link e Gabriel */}
+                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                    <span className="font-bold text-purple-400 block">@Ryan, @Link & @Gabriel</span>
+                    <span className="text-[10px] text-slate-400 block">T.I & Infraestrutura / Compras</span>
+                    <p className="text-[11px] text-slate-300 mt-1 leading-snug">
+                      Suprimento e disponibilização de hardware (PDAs, Desktops, PCs) e mobiliário (Mesas) para P.As.
+                    </p>
+                  </div>
+
+                  {/* Wallace */}
+                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                    <span className="font-bold text-indigo-400 block">@Wallace</span>
+                    <span className="text-[10px] text-slate-400 block">Gente & Gestão / RH Operações</span>
+                    <p className="text-[11px] text-slate-300 mt-1 leading-snug">
+                      Recrutamento, contratação, escala de trabalho e alocação de mão de obra para P.As.
+                    </p>
+                  </div>
+
+                  {/* Comercial */}
+                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                    <span className="font-bold text-rose-400 block">Time Comercial</span>
+                    <span className="text-[10px] text-slate-400 block">Vendas & Contratos</span>
+                    <p className="text-[11px] text-slate-300 mt-1 leading-snug">
+                      Origem da solicitação de demanda e receptor da aprovação final com Go-Live ou devolução técnica.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Caixa de Regra de Ouro */}
+              <div className="p-4 rounded-xl bg-purple-950/20 border border-purple-500/30 text-xs flex items-start gap-3">
+                <ShieldCheck className="w-5 h-5 text-purple-400 shrink-0 mt-0.5" />
                 <div>
-                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                    <HelpCircle className="w-6 h-6 text-purple-400" />
-                    Diretrizes do Fluxo de Implantação FM
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Garantindo alinhamento de expectativas, avaliação prévia de viabilidade, validação operacional e a opinião do gestor da área.
+                  <h4 className="font-bold text-white text-xs uppercase tracking-wider">
+                    Regra de Ouro da Governança Anjun
+                  </h4>
+                  <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
+                    Nenhuma solicitação comercial pode ser devolvida ou dada como inviável sem antes passar pela validação de transporte na pessoa da <strong>Luzia</strong>. Somente se <strong>ambos (Wagner e Luzia)</strong> confirmarem que não temos como operar é que o fluxo encerra com a devolução formal ao Comercial contendo justificativa técnica registrada no sistema.
                   </p>
                 </div>
               </div>
+
             </div>
           )}
 
@@ -1458,6 +1814,49 @@ export default function ImplantacaoFMPage() {
             </div>
 
             <form onSubmit={handleCreateSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              {/* Seletor de Modelo de Operação conforme Governança */}
+              <div className="p-3.5 rounded-xl bg-slate-950/80 border border-purple-500/30 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <Workflow className="w-4 h-4 text-purple-400" />
+                    Modelo de Operação (Governança FM)
+                  </span>
+                  <span className="text-[10px] text-purple-300 font-mono">
+                    Triagem: @Diego ➔ Wagner (FM) ➔ Luzia (Transp.)
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setFormNovo({...formNovo, segmento: "PA"})}
+                    className={`p-2.5 rounded-lg border text-left transition-all ${
+                      formNovo.segmento === "PA"
+                        ? "bg-purple-950/40 border-purple-500 text-white font-bold"
+                        : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <span className="block font-black text-xs text-purple-300">🏢 P.A (Posto de Atendimento)</span>
+                    <span className="text-[10px] text-slate-400 mt-0.5 block leading-tight">
+                      Pilares: Estrutura (Ryan/Link/Gabriel), Frota (Wagner/Luzia) e Mão de Obra (Wallace).
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormNovo({...formNovo, segmento: "Pickup"})}
+                    className={`p-2.5 rounded-lg border text-left transition-all ${
+                      formNovo.segmento === "Pickup"
+                        ? "bg-emerald-950/40 border-emerald-500 text-white font-bold"
+                        : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <span className="block font-black text-xs text-emerald-300">🚚 Pickup (Coleta)</span>
+                    <span className="text-[10px] text-slate-400 mt-0.5 block leading-tight">
+                      Pilares: Estrutura (PDA) e Frota de Coleta (Wagner/Luzia).
+                    </span>
+                  </button>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">Nome do Cliente / Merchant *</label>
@@ -1851,6 +2250,45 @@ export default function ImplantacaoFMPage() {
               {/* TAB 2: ANÁLISE DE VIABILIDADE (PROJETOS -> OPERAÇÃO) */}
               {activeTabModal === "viabilidade" && (
                 <div className="space-y-4">
+                  {/* Card Oficial de Governança */}
+                  <div className="p-4 rounded-xl bg-gradient-to-r from-purple-950/40 via-slate-900 to-slate-950 border border-purple-500/30 text-xs space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-white flex items-center gap-1.5">
+                        <Workflow className="w-4 h-4 text-purple-400" />
+                        Diretriz Oficial de Governança (FM & Transportes)
+                      </span>
+                      <span className="text-[10px] text-purple-300 font-mono">
+                        Protocolo Aprovado
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                      <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800">
+                        <span className="text-[10px] text-emerald-400 block font-bold">1º Estudo: Wagner (FM)</span>
+                        <span className="text-slate-300">Avalia viabilidade operacional e frota primária.</span>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800">
+                        <span className="text-[10px] text-amber-400 block font-bold">2º Estudo: Luzia (Transportes)</span>
+                        <span className="text-slate-300">Se Wagner for negativo, busca encaixe em malha/rotas.</span>
+                      </div>
+                      <div className="p-2.5 rounded-lg bg-slate-950/80 border border-slate-800">
+                        <span className="text-[10px] text-rose-400 block font-bold">Inviabilidade Total:</span>
+                        <span className="text-slate-300">Se ambos reprovarem, devolve com parecer ao Comercial.</span>
+                      </div>
+                    </div>
+                    
+                    {/* Alinhamento de Focais */}
+                    <div className="pt-2 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] text-slate-400">
+                      <div>
+                        <strong className="text-purple-300">Se P.A: </strong>
+                        Estrutura (se faltar, ver c/ <span className="text-slate-200 font-semibold">Ryan, Link, Gabriel</span>) • Frota (<span className="text-slate-200 font-semibold">Wagner / Luzia</span>) • Mão de Obra (<span className="text-slate-200 font-semibold">Wallace</span>).
+                      </div>
+                      <div>
+                        <strong className="text-emerald-300">Se Pickup: </strong>
+                        Estrutura (PDA) • Frota (<span className="text-slate-200 font-semibold">Wagner / Luzia</span>).
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
                     <h4 className="font-bold text-sm text-purple-400">Condição Indicada pela Operação</h4>
                     
