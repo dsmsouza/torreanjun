@@ -205,37 +205,45 @@
     "volumetria_max": 0,
     "responsavel": "Wagner Domingo Dos Santos",
     "cargo_responsavel": "Responsável pela Operação:",
-    "escala_operacao": "Seg á Sáb 09:00 ás 1800",
+    "escala_operacao": "Seg à Sáb 08:00 às 18:00 (T1/T2) + 22:00 às 06:00 (T3 Noturno Camicado)",
     "horario_corte": "Seg á Sáb ás 15:00:00",
     "status_operacional": "Ativo",
     "badge_cor": "emerald",
     "operadores": [
       {
         "nome": "Kauane Fernanda Fernandes",
-        "escala": "Seg á Sab das 08h ás 16:20"
+        "escala": "Seg à Sáb das 08h às 16:20 (T1)"
       },
       {
-        "nome": "Hyrla  Wesla Lourenço Da Silva",
-        "escala": "Seg á Sab das 08h ás 16:20"
+        "nome": "Hyrla Wesla Lourenço Da Silva",
+        "escala": "Seg à Sáb das 08h às 16:20 (T1)"
       },
       {
         "nome": "Kelly Cristina Santos S",
-        "escala": "Seg á Sab das 08h ás 16:20"
+        "escala": "Seg à Sáb das 08h às 16:20 (T1)"
+      },
+      {
+        "nome": "Cris (Turno 3 Noturno Camicado)",
+        "escala": "Seg à Sáb das 22:00 às 06:00 (T3)"
+      },
+      {
+        "nome": "Operador T3 a Confirmar (Camicado)",
+        "escala": "Seg à Sáb das 22:00 às 06:00 (T3)"
       }
     ],
-    "total_operadores": 3,
+    "total_operadores": 5,
     "insumos": {
       "Mesas": 3.0,
-      "Computadores": 3.0,
+      "Computadores": "4 (3 regulares + 1 PC T3)",
       "Teclados": 3.0,
       "Mouses": 3.0,
       "Impressoras": 3.0,
       "Coletores": 3.0,
-      "PDAs": 2.0,
+      "PDAs": "4 (2 regulares + 2 PDAs T3)",
       "Carrinhos Hidráulicos": 1.0
     },
     "epis": {},
-    "observacao_executiva": "Operação plena com 3 operadores dedicados. Cortes regulares e infraestrutura de TI instalada."
+    "observacao_executiva": "Recursos do Turno 3 (T3) confirmados: 2 PDAs, 1 PC e 2 funcionários alocados no turno das 22h às 06h, viabilizando pedidos Camicado (>1.000 pcts/dia) a partir de 28/10 e expansão de até 5.000 pac/dia."
   },
   {
     "id": "grupo_boticario",
@@ -266,7 +274,7 @@
     "total_operadores": 2,
     "insumos": {},
     "epis": {},
-    "observacao_executiva": "Mapeado com 2 operadores pré-escalados. Insumos e equipamentos zerados: suspenso aguardando aprovação de documentação de segurança (PGR/PCMSO)."
+    "observacao_executiva": "Operação suspensa para Outubro/Novembro: Inviável início em Outubro e congelado em Novembro por política de Black Week (BW) do GB. Retomada e Go-Live agendados formalmente para Dezembro/2026."
   },
   {
     "id": "bravium",

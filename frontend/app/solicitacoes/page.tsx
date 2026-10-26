@@ -129,15 +129,15 @@ function getProjectExecutionStepper(item: SolicitacaoImplantacaoItem): StepperPh
       { step: "2", name: "Viabilidade", status: "done", desc: "Aprovada c/ Ressalvas" },
       { step: "3", name: "Visita Técnica", status: "done", desc: "2 PAs (Cajamar/PR)" },
       { step: "4", name: "Segurança / SST", status: "danger", desc: "Bloqueado (Falta PGR/PCMSO)" },
-      { step: "5", name: "Go-Live", status: "paused", desc: "Sem Previsão (Suspenso)" },
+      { step: "5", name: "Go-Live", status: "paused", desc: "Dez/2026 (Black Week Freeze)" },
     ];
   }
   if (nome.includes("renner")) {
     return [
       { step: "1", name: "1. Alinhamento", status: "done", desc: "Expansão 5.000 pac/dia" },
-      { step: "2", name: "2. Turno T3 Noturno", status: "warning", desc: "Cris + 1 no T3 (22h-06h)" },
+      { step: "2", name: "2. Recursos T3", status: "done", desc: "2 PDAs + 1 PC + 2 Funcs OK" },
       { step: "3", name: "3. Camicado Big Goods", status: "warning", desc: "Layout & POP p/ 28/10" },
-      { step: "4", name: "4. Frota (21h e 06h)", status: "warning", desc: "2 Veículos Extras" },
+      { step: "4", name: "4. Frota (21h e 06h)", status: "warning", desc: "2 Veículos Extras (21h/06h)" },
       { step: "5", name: "5. TI & Reversa", status: "danger", desc: "Tracking + Destravar Reversa" },
     ];
   }
@@ -972,20 +972,20 @@ export default function ImplantacaoFMPage() {
                     <div className="p-4 rounded-xl bg-slate-900/80 border border-rose-500/30 relative overflow-hidden">
                       <div className="flex items-center justify-between text-xs mb-2">
                         <span className="font-bold text-white flex items-center gap-1.5">
-                          🦺 Segurança (SST)
+                          🦺 Segurança & Black Week (BW)
                         </span>
                         <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                          1 Bloqueio Crítico
+                          Reprogramado p/ Dezembro
                         </span>
                       </div>
                       <p className="text-xs text-rose-300 font-semibold">
-                        Falta de documentação mandatória (PGR e PCMSO).
+                        Falta de documentação (PGR/PCMSO) + Freeze de Black Week.
                       </p>
                       <p className="text-[11px] text-slate-400 mt-1 leading-snug">
-                        Afeta: <strong className="text-slate-200">Grupo Boticário</strong> (2 PAs em Cajamar e Paraná). Sem liberação para equipe entrar.
+                        Afeta: <strong className="text-slate-200">Grupo Boticário</strong>. Retorno do cliente: inviável em Outubro e GB não inicia novos parceiros em Novembro (BW); início em <strong className="text-amber-300">Dezembro/2026</strong>.
                       </p>
                       <div className="mt-2.5 pt-2 border-t border-slate-800 text-[10px] text-rose-400 font-medium">
-                        🎯 Ação: Cobrar time de Segurança envio/validação dos laudos.
+                        🎯 Ação: Sanar PGR/PCMSO com Segurança em Nov para garantir Go-Live em Dezembro.
                       </div>
                     </div>
 
