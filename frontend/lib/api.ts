@@ -43,6 +43,11 @@ async function resolveSnapshotRequest(urlStr: string): Promise<Response | null> 
     const isLatest = !diaParam || ["TODOS", "LATEST", "HOJE", ""].includes(diaParam.toUpperCase());
     const safeDia = isLatest ? "latest" : diaParam.replace(/\//g, "-").replace(/:/g, "_");
 
+    if (path === "/api/rotas/saturacao") {
+      const data = await fetchStaticSnapshot("rotas_saturacao.json");
+      if (data) return jsonResponse(data);
+    }
+
     if (path === "/api/coletas/dias") {
       const data = await fetchStaticSnapshot("dias.json");
       if (data) return jsonResponse(data);

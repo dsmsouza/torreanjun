@@ -193,3 +193,24 @@ def get_dashboard_rotas_sp(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/saturacao")
+def get_saturacao_rotas(
+    dia_planejado: Optional[str] = Query("26/10/2026", description="Data do planejamento das rotas"),
+    dia_anterior: Optional[str] = Query(None, description="Data base D-1 para cruzamento com histórico real"),
+    capacidade_vuc: int = Query(2500, description="Capacidade nominal do VUC em pacotes")
+):
+    """Endpoint de Inteligência de Saturação de Rotas com Cruzamento D-1."""
+    try:
+        from services.saturacao_rotas_service import calcular_saturacao_rotas
+        return calcular_saturacao_rotas(
+            dia_planejado=dia_planejado,
+            dia_anterior=dia_anterior,
+            capacidade_vuc=capacidade_vuc
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+

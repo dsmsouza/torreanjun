@@ -23,6 +23,7 @@ import {
   PackageSearch,
   Sparkles,
   Route,
+  Gauge,
   Rocket
 } from "lucide-react";
 
@@ -84,6 +85,7 @@ export default function Sidebar() {
         { name: "Central de Coletas", path: "/", icon: Truck, roleRequired: "Guest" },
         { name: "No Dia (Tempo Real)", path: "/no-dia", icon: Activity, roleRequired: "Guest" },
         { name: "D2D SP", path: "/d2d-sp", icon: Route, roleRequired: "Guest" },
+        { name: "Saturação de Rotas", path: "/saturacao-rotas", icon: Gauge, roleRequired: "Guest" },
       ]
     },
     {

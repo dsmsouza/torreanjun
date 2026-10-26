@@ -321,6 +321,15 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
         bytes_totais += salvar_json("reconciliacao_pacotes.json", construir_painel_atualizacoes_e_aging(db=db))
         arquivos_gerados += 6
 
+        print("🚚 [6/6] Exportando Inteligência de Saturação de Rotas & Cruzamento D-1...")
+        try:
+            from services.saturacao_rotas_service import calcular_saturacao_rotas
+            dados_sat = calcular_saturacao_rotas()
+            bytes_totais += salvar_json("rotas_saturacao.json", dados_sat)
+            arquivos_gerados += 1
+        except Exception as e_sat:
+            print(f"⚠️ Erro ao exportar rotas_saturacao: {e_sat}")
+
     finally:
         db.close()
 
