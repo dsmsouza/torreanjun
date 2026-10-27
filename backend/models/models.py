@@ -372,6 +372,7 @@ class SolicitacaoImplantacao(Base):
     
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     codigo = Column(String(50), unique=True, index=True)
+    cliente_id = Column(String(50), nullable=True, index=True) # Codigo TMS / Cliente Anjun (ex: 24355, 24596)
     
     # 1. Comercial -> Projetos
     cliente_nome = Column(String(200), index=True, nullable=False)

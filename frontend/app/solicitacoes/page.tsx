@@ -5,6 +5,8 @@ import Sidebar from "@/components/Sidebar";
 import { 
   Rocket,
   Workflow,
+  Tag,
+  Hash,
   GitBranch,
   ArrowRightLeft,
   UserX, 
@@ -957,6 +959,109 @@ export default function ImplantacaoFMPage() {
                     </div>
                   </div>
 
+                  {/* QUADRO EXECUTIVO: ACOMPANHAMENTO DE COLETAS & INTEGRAÇÃO TMS */}
+                  <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-blue-950/30 border border-blue-500/30 shadow-xl space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-500/40 flex items-center gap-1">
+                            <Tag className="w-3 h-3 text-blue-400" />
+                            Auditoria & Rastreio Operacional
+                          </span>
+                          <span className="text-xs text-slate-400 font-mono">
+                            Códigos Oficiais TMS Anjun
+                          </span>
+                        </div>
+                        <h4 className="text-sm md:text-base font-black text-white flex items-center gap-2">
+                          <Truck className="w-4 h-4 text-blue-400" />
+                          Acompanhamento do Andamento das Coletas de Projetos
+                        </h4>
+                        <p className="text-xs text-slate-400">
+                          Monitoramento em tempo real das coletas ativas e status das demandas integradas ao TMS.
+                        </p>
+                      </div>
+
+                      <a
+                        href="/coletas"
+                        className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md shadow-blue-900/30 transition-all flex items-center gap-1.5 shrink-0 self-start sm:self-center"
+                      >
+                        <Truck className="w-3.5 h-3.5" />
+                        Abrir Central de Coletas
+                      </a>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+                      {/* Card Olist */}
+                      <div className="p-4 rounded-xl bg-slate-950/90 border border-emerald-500/40 relative overflow-hidden flex flex-col justify-between space-y-3">
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-black bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1">
+                              <Tag className="w-2.5 h-2.5" />
+                              TMS #24355
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                              COLETAS ATIVAS
+                            </span>
+                          </div>
+                          <h5 className="font-black text-white text-sm">Olist (Marketplace)</h5>
+                          <p className="text-xs text-slate-300 mt-1">
+                            Coletas diárias pontuais às <strong className="text-emerald-400 font-mono">16:00</strong> rodando normalmente.
+                          </p>
+                        </div>
+                        <div className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-400 flex items-center justify-between">
+                          <span>Volume: ~1.000 pac/dia</span>
+                          <span className="text-emerald-400 font-bold">100% no Prazo</span>
+                        </div>
+                      </div>
+
+                      {/* Card ShopMulti */}
+                      <div className="p-4 rounded-xl bg-slate-950/90 border border-rose-500/40 relative overflow-hidden flex flex-col justify-between space-y-3">
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-black bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1">
+                              <Tag className="w-2.5 h-2.5" />
+                              TMS #24596
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1">
+                              🔴 COLETAS SUSPENSAS
+                            </span>
+                          </div>
+                          <h5 className="font-black text-white text-sm">ShopMulti (PA Itinerante)</h5>
+                          <p className="text-xs text-rose-300 font-semibold mt-1">
+                            Kits móveis de TI suspensos pelo T.I com prazo de até 45 dias úteis.
+                          </p>
+                        </div>
+                        <div className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-400 flex items-center justify-between">
+                          <span>Base: Itapevi/SP (SP-RR-001)</span>
+                          <span className="text-amber-400 font-medium">Aguardando TI</span>
+                        </div>
+                      </div>
+
+                      {/* Card Demais Demandas */}
+                      <div className="p-4 rounded-xl bg-slate-950/90 border border-slate-800 relative overflow-hidden flex flex-col justify-between space-y-3">
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono text-slate-400 bg-slate-900 border border-slate-800">
+                              Renner: #24503
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              EM CADASTRAMENTO
+                            </span>
+                          </div>
+                          <h5 className="font-black text-white text-sm">Bravium & Grupo Boticário</h5>
+                          <p className="text-xs text-slate-400 mt-1">
+                            Códigos TMS sendo formalizados junto ao Comercial e TI para início do rastreamento.
+                          </p>
+                        </div>
+                        <div className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-500 flex items-center justify-between">
+                          <span>Renner Cabreúva: TMS #24503</span>
+                          <span className="text-slate-400">Demais: Em breve</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Matriz Departamental de Bloqueios */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                     {/* TI & Equipamentos */}
@@ -1067,13 +1172,23 @@ export default function ImplantacaoFMPage() {
                           {/* Card Header */}
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-xs font-mono font-bold text-slate-400 group-hover:text-white transition-colors">
                                   {item.codigo}
                                 </span>
                                 <span className="text-[10px] text-slate-500 font-medium">
                                   • {item.segmento || "Posto Avançado / FM"}
                                 </span>
+                                {item.cliente_id ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/20 text-blue-300 border border-blue-500/40 flex items-center gap-1 shadow-sm" title="Código de Integração no TMS Anjun">
+                                    <Tag className="w-2.5 h-2.5 text-blue-400" />
+                                    TMS #{item.cliente_id}
+                                  </span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-500 bg-slate-950 border border-slate-800" title="Código TMS em processamento">
+                                    TMS: Pendente
+                                  </span>
+                                )}
                               </div>
                               <h4 className="text-lg font-black text-white mt-1 group-hover:text-amber-300 transition-colors">
                                 {item.cliente_nome}
@@ -2220,6 +2335,17 @@ export default function ImplantacaoFMPage() {
                     <div>
                       <span className="text-slate-500 block">Focal Operação:</span>
                       <span className="font-bold text-emerald-400">{selectedItem.focal_operacao}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Código TMS Anjun:</span>
+                      {selectedItem.cliente_id ? (
+                        <span className="font-mono font-bold text-blue-400 bg-blue-950/60 px-2 py-0.5 rounded border border-blue-500/30 inline-flex items-center gap-1 mt-0.5">
+                          <Tag className="w-3 h-3 text-blue-400" />
+                          #{selectedItem.cliente_id}
+                        </span>
+                      ) : (
+                        <span className="font-mono text-slate-500 italic">Pendente de Código</span>
+                      )}
                     </div>
                     <div>
                       <span className="text-slate-500 block">Cidade / Estado:</span>

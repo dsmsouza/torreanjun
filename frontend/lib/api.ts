@@ -1906,6 +1906,7 @@ export async function zerarBaseOperacional(): Promise<any> {
 export interface SolicitacaoImplantacaoItem {
   id: number;
   codigo: string;
+  cliente_id?: string;
   cliente_nome: string;
   vendedor_comercial: string;
   focal_projetos: string;
