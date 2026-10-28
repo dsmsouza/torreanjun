@@ -286,16 +286,25 @@
     "volumetria": "~1.500 (Estimada)",
     "volumetria_min": 0,
     "volumetria_max": 0,
-    "responsavel": null,
+    "responsavel": "Equipe em Onboarding (Início 03/11)",
     "cargo_responsavel": "Responsável pela Operação:",
-    "escala_operacao": null,
+    "escala_operacao": "Seg à Sáb 08:00 às 18:00 (Início da Equipe em 03/11/2026)",
     "horario_corte": null,
     "status_operacional": "Em Implantação",
     "badge_cor": "amber",
-    "operadores": [],
-    "total_operadores": 0,
+    "operadores": [
+      {
+        "nome": "Operador 1 Contratado (Bravium)",
+        "escala": "Início previsto em 03/11/2026"
+      },
+      {
+        "nome": "Operador 2 Contratado (Bravium)",
+        "escala": "Início previsto em 03/11/2026"
+      }
+    ],
+    "total_operadores": 2,
     "insumos": {},
     "epis": {},
-    "observacao_executiva": "Local mapeado (CLR Raposo Tavares). Lark aberta para contratação de 2 funcionários operacionais; equipamentos com prazo de até 45 dias úteis pelo T.I."
+    "observacao_executiva": "RH Concluído: 2 funcionários contratados com início previsto para 03/11/2026 no condomínio CLR Raposo Tavares. Fornecimento de equipamentos (PCs, coletores, impressoras) segue em alinhamento com T.I (prazo de até 45 dias úteis)."
   }
 ]

@@ -125,8 +125,8 @@ function getProjectExecutionStepper(item: SolicitacaoImplantacaoItem): StepperPh
       { step: "1", name: "Comercial", status: "done", desc: "Acordo Formalizado" },
       { step: "2", name: "Viabilidade", status: "done", desc: "Aprovada c/ Prazo" },
       { step: "3", name: "Visita Técnica", status: "done", desc: "Checklist CLR Raposo" },
-      { step: "4", name: "TI & RH (Gargalo)", status: "warning", desc: "Lark 2 func | TI até 45 d.ú." },
-      { step: "5", name: "Go-Live", status: "paused", desc: "Reprogramado p/ TI" },
+      { step: "4", name: "RH (Contratado)", status: "done", desc: "2 Funcs OK (Início 03/11)" },
+      { step: "5", name: "TI (Equipamentos)", status: "warning", desc: "TI até 45 d.ú. (Gargalo)" },
     ];
   }
   if (nome.includes("boticário") || nome.includes("boticario")) {
@@ -1107,23 +1107,23 @@ export default function ImplantacaoFMPage() {
                     </div>
 
                     {/* RH / Gente & Gestão */}
-                    <div className="p-4 rounded-xl bg-slate-900/80 border border-amber-500/30 relative overflow-hidden">
+                    <div className="p-4 rounded-xl bg-slate-900/80 border border-emerald-500/30 relative overflow-hidden">
                       <div className="flex items-center justify-between text-xs mb-2">
                         <span className="font-bold text-white flex items-center gap-1.5">
                           👥 RH & Contratação
                         </span>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                          1 Demanda Aberta
+                        <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          2 Contratados (Início 03/11)
                         </span>
                       </div>
-                      <p className="text-xs text-amber-300 font-semibold">
-                        Solicitação via Lark aberta para 2 funcionários.
+                      <p className="text-xs text-emerald-300 font-semibold">
+                        2 funcionários contratados! Início previsto para 03/11.
                       </p>
                       <p className="text-[11px] text-slate-400 mt-1 leading-snug">
-                        Afeta: <strong className="text-slate-200">Bravium</strong> (alocação de equipe operacional e liberação de acessos).
+                        Atende: <strong className="text-slate-200">Bravium</strong> (equipe operacional alocada e pronta para integração no CLR Raposo).
                       </p>
-                      <div className="mt-2.5 pt-2 border-t border-slate-800 text-[10px] text-amber-400 font-medium">
-                        🎯 Ação: Acompanhar recrutamento para coincidir c/ entrega de TI.
+                      <div className="mt-2.5 pt-2 border-t border-slate-800 text-[10px] text-emerald-400 font-medium">
+                        🎯 Status: RH concluído. Foco agora é suprir os equipamentos de TI com compras.
                       </div>
                     </div>
 
