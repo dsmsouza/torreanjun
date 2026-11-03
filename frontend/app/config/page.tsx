@@ -1161,7 +1161,7 @@ export default function ConfigPage() {
               <label className="block text-[10px] text-slate-500 mb-1">Código / IATA *</label>
               <input
                 type="text" value={novoMdCodigo} onChange={e => setNovoMdCodigo(e.target.value)}
-                placeholder="ex: SP-W-MD099 ou SP-Z-H005"
+                placeholder="ex: SP-W-MD099 ou SP-15 (SP-Z-H005)"
                 className="w-full px-3 py-2 bg-[#131825] border border-border rounded-lg text-sm text-slate-200 focus:outline-none focus:border-blue-500/50 font-mono"
               />
             </div>

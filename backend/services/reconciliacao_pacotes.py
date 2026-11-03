@@ -514,6 +514,7 @@ def construir_painel_atualizacoes_e_aging(db: Session) -> Dict[str, Any]:
           AND ponto_colecao IS NOT NULL
           AND TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')
           AND UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'
+          AND UPPER(ponto_colecao) NOT LIKE '%SP-10%'
           AND UPPER(ponto_colecao) NOT LIKE '%ANJUN%'
         GROUP BY dia_base
         ORDER BY SUBSTR(dia_base, 7, 4) || '-' || SUBSTR(dia_base, 4, 2) || '-' || SUBSTR(dia_base, 1, 2) DESC;
@@ -633,6 +634,7 @@ def construir_painel_atualizacoes_e_aging(db: Session) -> Dict[str, Any]:
           AND ponto_colecao IS NOT NULL
           AND TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')
           AND UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'
+          AND UPPER(ponto_colecao) NOT LIKE '%SP-10%'
           AND UPPER(ponto_colecao) NOT LIKE '%ANJUN%'
         GROUP BY UPPER(TRIM(ponto_colecao))
         HAVING total_pendente > 0

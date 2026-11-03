@@ -391,7 +391,7 @@ export default function MapaPage() {
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Buscar por IATA (ex: SC-W-H001), nome do ponto ou cidade..."
+                placeholder="Buscar por IATA (ex: SC-88, SP-12), nome do ponto ou cidade..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-all"
@@ -864,7 +864,7 @@ export default function MapaPage() {
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
-                  placeholder="Pesquisar ponto por IATA, nome ou cidade (ex: MD-HAV, SC-W-H001)..."
+                  placeholder="Pesquisar ponto por IATA, nome ou cidade (ex: MD-HAV, SC-88, SP-12)..."
                   value={gerenciarSearch}
                   onChange={(e) => setGerenciarSearch(e.target.value)}
                   className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 transition-all"

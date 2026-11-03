@@ -34,6 +34,8 @@ def eh_md(codigo: str) -> bool:
     c = str(codigo).strip().upper()
     if re.search(r"-[ZWA]-H|HUB-|-H\d{2,4}$", c) or c.startswith("HUB") or c.startswith("WR-GLP") or "GLP" in c or "GALPAO" in c:
         return False
+    if re.match(r"^[A-Z]{2}-\d{2}$", c):
+        return False
     return True
 
 
@@ -232,7 +234,7 @@ def determinar_tipo_ponto(codigo: str) -> str:
     if not codigo:
         return "MD (Ponto de Coleta)"
     c = str(codigo).strip().upper()
-    if re.search(r"-[ZWA]-H|HUB-|-H\d{2,4}$|-H0|-H1|-H2|-H3", c) or c.startswith("HUB"):
+    if re.search(r"-[ZWA]-H|HUB-|-H\d{2,4}$|-H0|-H1|-H2|-H3", c) or c.startswith("HUB") or re.match(r"^[A-Z]{2}-\d{2}$", c):
         return "HUB (Transferência)"
     if c.startswith("WR-GLP") or "GLP" in c or "GALPAO" in c or "CD" in c:
         return "Galpão / CD (Distribuição)"
@@ -314,6 +316,7 @@ def get_resumo_coletas(
         "ponto_colecao IS NOT NULL",
         "TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')",
         "UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'",
+        "UPPER(ponto_colecao) NOT LIKE '%SP-10%'",
         "UPPER(ponto_colecao) NOT LIKE '%ANJUN%'"
     ]
     params: Dict[str, Any] = {"dia": _normalizar_parametro_dia(dia)}
@@ -330,14 +333,14 @@ def get_resumo_coletas(
     tot_row = db.execute(text(f"""
         SELECT 
             COALESCE(SUM(total_pedidos), 0) as total,
-            COUNT(DISTINCT CASE WHEN NOT (UPPER(TRIM(ponto_colecao)) LIKE '%-Z-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-W-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H0%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H1%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H2%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H3%' OR UPPER(TRIM(ponto_colecao)) LIKE 'HUB%' OR UPPER(TRIM(ponto_colecao)) LIKE 'WR-GLP%' OR UPPER(TRIM(ponto_colecao)) LIKE '%GLP%') AND UPPER(TRIM(ponto_colecao)) NOT IN ('', 'NAN', 'NULL', 'NONE', '-') THEN UPPER(TRIM(ponto_colecao)) END) as total_mds,
+            COUNT(DISTINCT CASE WHEN NOT (UPPER(TRIM(ponto_colecao)) LIKE '%-Z-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-W-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H0%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H1%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H2%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H3%' OR UPPER(TRIM(ponto_colecao)) LIKE 'HUB%' OR UPPER(TRIM(ponto_colecao)) LIKE 'WR-GLP%' OR UPPER(TRIM(ponto_colecao)) LIKE '%GLP%' OR UPPER(TRIM(ponto_colecao)) IN (SELECT nome_novo FROM hub_de_para UNION SELECT nome_antigo FROM hub_de_para)) AND UPPER(TRIM(ponto_colecao)) NOT IN ('', 'NAN', 'NULL', 'NONE', '-') THEN UPPER(TRIM(ponto_colecao)) END) as total_mds,
             COUNT(DISTINCT CASE WHEN merchant_nome IS NOT NULL AND trim(merchant_nome) != '' THEN merchant_nome END) as total_sellers,
             SUM(CASE WHEN LOWER(TRIM(status_pedido)) IN ('circuito fechado', 'carregamento', 'descarregamento') THEN total_pedidos ELSE 0 END) as coletados,
             SUM(CASE WHEN LOWER(TRIM(status_pedido)) IN ('coleta', 'coletado', 'saco selado', 'não coletado', 'nao coletado', 'pendente', 'aguardando', 'no ponto', 'problema') OR status_pedido IS NULL OR TRIM(status_pedido) = '' THEN total_pedidos ELSE 0 END) as backlog_coleta,
-            SUM(CASE WHEN NOT (UPPER(TRIM(ponto_colecao)) LIKE '%-Z-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-W-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H0%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H1%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H2%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H3%' OR UPPER(TRIM(ponto_colecao)) LIKE 'HUB%' OR UPPER(TRIM(ponto_colecao)) LIKE 'WR-GLP%' OR UPPER(TRIM(ponto_colecao)) LIKE '%GLP%') THEN total_pedidos ELSE 0 END) as vol_dropoff_ponto,
-            SUM(CASE WHEN (UPPER(TRIM(ponto_colecao)) LIKE '%-Z-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-W-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H0%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H1%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H2%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H3%' OR UPPER(TRIM(ponto_colecao)) LIKE 'HUB%' OR UPPER(TRIM(ponto_colecao)) LIKE 'WR-GLP%' OR UPPER(TRIM(ponto_colecao)) LIKE '%GLP%') THEN total_pedidos ELSE 0 END) as vol_pickup_ponto,
-            SUM(CASE WHEN NOT (UPPER(TRIM(ponto_colecao)) LIKE '%-Z-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-W-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H0%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H1%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H2%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H3%' OR UPPER(TRIM(ponto_colecao)) LIKE 'HUB%' OR UPPER(TRIM(ponto_colecao)) LIKE 'WR-GLP%' OR UPPER(TRIM(ponto_colecao)) LIKE '%GLP%') AND (LOWER(TRIM(status_pedido)) IN ('coleta', 'coletado', 'saco selado', 'não coletado', 'nao coletado', 'pendente', 'aguardando', 'no ponto', 'problema') OR status_pedido IS NULL OR TRIM(status_pedido) = '') THEN total_pedidos ELSE 0 END) as backlog_estrito_md,
-            COUNT(DISTINCT CASE WHEN (UPPER(TRIM(ponto_colecao)) LIKE '%-Z-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-W-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H0%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H1%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H2%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H3%' OR UPPER(TRIM(ponto_colecao)) LIKE 'HUB%' OR UPPER(TRIM(ponto_colecao)) LIKE 'WR-GLP%' OR UPPER(TRIM(ponto_colecao)) LIKE '%GLP%') THEN UPPER(TRIM(ponto_colecao)) END) as total_hubs,
+            SUM(CASE WHEN NOT (UPPER(TRIM(ponto_colecao)) LIKE '%-Z-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-W-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H0%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H1%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H2%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H3%' OR UPPER(TRIM(ponto_colecao)) LIKE 'HUB%' OR UPPER(TRIM(ponto_colecao)) LIKE 'WR-GLP%' OR UPPER(TRIM(ponto_colecao)) LIKE '%GLP%' OR UPPER(TRIM(ponto_colecao)) IN (SELECT nome_novo FROM hub_de_para UNION SELECT nome_antigo FROM hub_de_para)) THEN total_pedidos ELSE 0 END) as vol_dropoff_ponto,
+            SUM(CASE WHEN (UPPER(TRIM(ponto_colecao)) LIKE '%-Z-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-W-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H0%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H1%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H2%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H3%' OR UPPER(TRIM(ponto_colecao)) LIKE 'HUB%' OR UPPER(TRIM(ponto_colecao)) LIKE 'WR-GLP%' OR UPPER(TRIM(ponto_colecao)) LIKE '%GLP%' OR UPPER(TRIM(ponto_colecao)) IN (SELECT nome_novo FROM hub_de_para UNION SELECT nome_antigo FROM hub_de_para)) THEN total_pedidos ELSE 0 END) as vol_pickup_ponto,
+            SUM(CASE WHEN NOT (UPPER(TRIM(ponto_colecao)) LIKE '%-Z-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-W-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H0%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H1%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H2%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H3%' OR UPPER(TRIM(ponto_colecao)) LIKE 'HUB%' OR UPPER(TRIM(ponto_colecao)) LIKE 'WR-GLP%' OR UPPER(TRIM(ponto_colecao)) LIKE '%GLP%' OR UPPER(TRIM(ponto_colecao)) IN (SELECT nome_novo FROM hub_de_para UNION SELECT nome_antigo FROM hub_de_para)) AND (LOWER(TRIM(status_pedido)) IN ('coleta', 'coletado', 'saco selado', 'não coletado', 'nao coletado', 'pendente', 'aguardando', 'no ponto', 'problema') OR status_pedido IS NULL OR TRIM(status_pedido) = '') THEN total_pedidos ELSE 0 END) as backlog_estrito_md,
+            COUNT(DISTINCT CASE WHEN (UPPER(TRIM(ponto_colecao)) LIKE '%-Z-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-W-H%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H0%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H1%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H2%' OR UPPER(TRIM(ponto_colecao)) LIKE '%-H3%' OR UPPER(TRIM(ponto_colecao)) LIKE 'HUB%' OR UPPER(TRIM(ponto_colecao)) LIKE 'WR-GLP%' OR UPPER(TRIM(ponto_colecao)) LIKE '%GLP%' OR UPPER(TRIM(ponto_colecao)) IN (SELECT nome_novo FROM hub_de_para UNION SELECT nome_antigo FROM hub_de_para)) THEN UPPER(TRIM(ponto_colecao)) END) as total_hubs,
             SUM(CASE WHEN LOWER(TRIM(status_pedido)) = 'circuito fechado' THEN total_pedidos ELSE 0 END) as circuito_fechado,
             SUM(CASE WHEN LOWER(TRIM(status_pedido)) IN ('carregamento', 'descarregamento') THEN total_pedidos ELSE 0 END) as em_transito,
             SUM(CASE WHEN LOWER(TRIM(status_pedido)) = 'foi assinado' THEN total_pedidos ELSE 0 END) as foi_assinado
@@ -406,6 +409,7 @@ def get_resumo_coletas(
           AND ponto_colecao IS NOT NULL
           AND TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')
           AND UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'
+          AND UPPER(ponto_colecao) NOT LIKE '%SP-10%'
           AND UPPER(ponto_colecao) NOT LIKE '%ANJUN%'
         GROUP BY UPPER(TRIM(ponto_colecao));
     """), {"dia": _normalizar_parametro_dia(dia)}).fetchall()
@@ -415,7 +419,7 @@ def get_resumo_coletas(
     # Identificar Pontos Não Cadastrados
     pontos_nao_cadastrados = []
     for ponto, vol in pontos_dia_dict.items():
-        if ponto not in cadastrados_set and "SP-R-TFK001" not in ponto and "ANJUN" not in ponto:
+        if ponto not in cadastrados_set and "SP-R-TFK001" not in ponto and "SP-10" not in ponto and "ANJUN" not in ponto:
             pontos_nao_cadastrados.append({
                 "md_codigo": ponto,
                 "tipo_ponto": determinar_tipo_ponto(ponto),
@@ -855,6 +859,7 @@ def get_coletas_mds(
         "ponto_colecao IS NOT NULL",
         "TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')",
         "UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'",
+        "UPPER(ponto_colecao) NOT LIKE '%SP-10%'",
         "UPPER(ponto_colecao) NOT LIKE '%ANJUN%'"
     ]
     params: Dict[str, Any] = {"dia": _normalizar_parametro_dia(dia)}
@@ -1149,6 +1154,7 @@ def get_cliente_detalhes(
         "ponto_colecao IS NOT NULL",
         "TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')",
         "UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'",
+        "UPPER(ponto_colecao) NOT LIKE '%SP-10%'",
         "UPPER(ponto_colecao) NOT LIKE '%ANJUN%'"
     ]
     params_hist: Dict[str, Any] = {"dia": _normalizar_parametro_dia(dia), "cli": cli_low}
@@ -2486,6 +2492,7 @@ def get_d2d_sp_analise(
           AND ponto_colecao IS NOT NULL
           AND TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')
           AND UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'
+          AND UPPER(ponto_colecao) NOT LIKE '%SP-10%'
           AND UPPER(ponto_colecao) NOT LIKE '%ANJUN%'
           AND UPPER(ponto_colecao) NOT LIKE '%-H%'
           AND (
@@ -2613,7 +2620,7 @@ def get_d2d_sp_analise(
         # ── STATUS DE RASTREABILIDADE OPERACIONAL D2D SP (AUDITORIA JUSTA) ──
         # Identifica se houve comprovação física de entrega em Perus, trânsito ou se não houve pacotes de SP
         r5_visita_ok = (tot_rec > 0)
-        tem_iata_perus = "SP-RR-001" in iatas_set or "PERUS" in " ".join(iatas_set).upper()
+        tem_iata_perus = "SP-RR-001" in iatas_set or "SP-12" in iatas_set or "PERUS" in " ".join(iatas_set).upper()
         foi_validado_perus = (tot_conf_perus > 0 or tem_iata_perus or tot_per > 0)
 
         if not r5_visita_ok:
@@ -2900,7 +2907,7 @@ async def post_upload_caminhoes_d2d(
                         plc, iata, end = truck_map[a]
                         if plc: placas.add(plc)
                         if iata: iatas.add(iata)
-                        if iata == 'SP-RR-001' or 'perus' in (end or "").lower():
+                        if iata in ('SP-RR-001', 'SP-12') or 'perus' in (end or "").lower():
                             foi_perus = True
                 if placas or iatas:
                     placas_txt = ", ".join(sorted(placas))[:200]
@@ -3129,7 +3136,7 @@ def _normalizar_categoria_malha_evento(codigo: str, tipo_raw: str = "") -> str:
         return "MINIDROP"
     if c.startswith("MD-") or re.match(r"^[A-Z]{2}-W-MD", c):
         return "MINIDROP"
-    if "-H" in c or c.startswith("HUB") or "GLP" in c:
+    if "-H" in c or c.startswith("HUB") or "GLP" in c or re.match(r"^[A-Z]{2}-\d{2}$", c):
         return "HUB"
     if "-PA" in c or "-RR-" in c:
         return "PONTO DE APOIO"
@@ -3198,6 +3205,7 @@ def construir_indice_eventos_malha(db: Session) -> Dict[str, Any]:
           AND ponto_colecao IS NOT NULL
           AND TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')
           AND UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'
+          AND UPPER(ponto_colecao) NOT LIKE '%SP-10%'
           AND UPPER(ponto_colecao) NOT LIKE '%ANJUN%'
         GROUP BY dia_base, UPPER(TRIM(ponto_colecao))
         HAVING SUM(total_pedidos) > 0;
@@ -3231,7 +3239,7 @@ def construir_indice_eventos_malha(db: Session) -> Dict[str, Any]:
         WHERE dia_base IS NOT NULL AND LENGTH(TRIM(dia_base)) = 10
           AND md IS NOT NULL
           AND TRIM(md) NOT IN ('', 'nan', 'None', 'null', '-')
-          AND UPPER(md) NOT LIKE '%SP-R-TFK001%'
+          AND UPPER(md) NOT LIKE '%SP-R-TFK001%' AND UPPER(md) NOT LIKE '%SP-10%'
           AND UPPER(md) NOT LIKE '%ANJUN%'
         GROUP BY dia_base, UPPER(TRIM(md))
         HAVING SUM(total) > 0;
@@ -3383,6 +3391,7 @@ def construir_indice_eventos_malha(db: Session) -> Dict[str, Any]:
           AND ponto_colecao IS NOT NULL
           AND TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')
           AND UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'
+          AND UPPER(ponto_colecao) NOT LIKE '%SP-10%'
           AND UPPER(ponto_colecao) NOT LIKE '%ANJUN%'
         GROUP BY dia_base, TRIM(nome_cliente)
         HAVING SUM(total_pedidos) > 0;
@@ -3423,6 +3432,7 @@ def construir_indice_eventos_malha(db: Session) -> Dict[str, Any]:
           AND ponto_colecao IS NOT NULL
           AND TRIM(ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')
           AND UPPER(ponto_colecao) NOT LIKE '%SP-R-TFK001%'
+          AND UPPER(ponto_colecao) NOT LIKE '%SP-10%'
           AND UPPER(ponto_colecao) NOT LIKE '%ANJUN%'
         GROUP BY dia_base, TRIM(merchant_nome)
         HAVING SUM(total_pedidos) > 0;

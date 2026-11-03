@@ -1033,7 +1033,7 @@ export default function ImplantacaoFMPage() {
                           </p>
                         </div>
                         <div className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-400 flex items-center justify-between">
-                          <span>Base: Itapevi/SP (SP-RR-001)</span>
+                          <span>Base: Itapevi/SP (SP-12 / SP-RR-001)</span>
                           <span className="text-amber-400 font-medium">Aguardando TI</span>
                         </div>
                       </div>

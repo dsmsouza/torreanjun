@@ -102,7 +102,7 @@ export default function D2dSpPage() {
 
   const getStatusRastreioItem = (p: D2dSpMdItem): string => {
     if (p.status_rastreio) return p.status_rastreio;
-    const isPerusConf = (p.qtd_confirmado_perus || 0) > 0 || (p.iatas_descarga || "").includes("SP-RR-001");
+    const isPerusConf = (p.qtd_confirmado_perus || 0) > 0 || (p.iatas_descarga || "").includes("SP-RR-001") || (p.iatas_descarga || "").includes("SP-12");
     if (!p.teve_visita && (p.qtd_recebida || 0) === 0) return "SEM_VISITA";
     if (isPerusConf) return "CONFIRMADO_PERUS";
     if ((p.qtd_destino_sp || 0) === 0 && (p.qtd_destino_outros || 0) > 0) return "INTERESTADUAL";
@@ -331,7 +331,7 @@ export default function D2dSpPage() {
 
         {/* KPIS ESTRATÉGICOS DOS PILOTOS (INCLUINDO CONFORMIDADE) */}
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-9 gap-3">
-          {/* Confirmação Perus (SP-RR-001) */}
+          {/* Confirmação Perus (SP-12 / SP-RR-001) */}
           <div className="bg-teal-950/30 border border-teal-500/40 p-3.5 rounded-xl shadow-lg shadow-teal-950/20">
             <div className="flex items-center justify-between text-teal-300 text-[11px] mb-1 font-bold">
               <span>🎯 Validado Perus</span>
@@ -395,7 +395,7 @@ export default function D2dSpPage() {
             <div className="text-[10px] text-slate-400 mt-0.5">Rota G3 / GLP</div>
           </div>
 
-          {/* ✅ Confirmado Perus (Caminhões SP-RR-001) */}
+          {/* ✅ Confirmado Perus (Caminhões SP-12 / SP-RR-001) */}
           <div className="bg-teal-950/20 border border-teal-500/40 p-3.5 rounded-xl">
             <div className="flex items-center justify-between text-teal-300 text-[11px] mb-1">
               <span>✅ Conf. Perus (Caminhão)</span>
@@ -404,7 +404,7 @@ export default function D2dSpPage() {
             <div className="text-lg font-bold text-teal-300">
               {kpis ? (kpis.qtd_confirmado_perus_total || 0).toLocaleString("pt-BR") : "..."}
             </div>
-            <div className="text-[10px] text-teal-400 mt-0.5">IATA SP-RR-001</div>
+            <div className="text-[10px] text-teal-400 mt-0.5">IATA SP-12 (antigo SP-RR-001)</div>
           </div>
 
           {/* Sorter Perus Concluído */}

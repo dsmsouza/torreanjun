@@ -2115,9 +2115,9 @@ export default function CentralColetasPage() {
                         ? "bg-indigo-500/20 text-indigo-300 font-bold border border-indigo-500/40"
                         : "text-slate-400 hover:text-white"
                     }`}
-                    title="Visualizar HUBs de Transferência (como SP-Z-H005) separadamente dos MDs"
+                    title="Visualizar HUBs de Transferência (como SP-15 / SP-Z-H005) separadamente dos MDs"
                   >
-                    🏭 HUBs (SP-Z-H005, etc.)
+                    🏭 HUBs (SP-15, etc.)
                   </button>
                 </div>
 
@@ -3760,7 +3760,7 @@ export default function CentralColetasPage() {
                       required
                       value={formCadastro.md_codigo}
                       onChange={(e) => setFormCadastro({ ...formCadastro, md_codigo: e.target.value })}
-                      placeholder="Ex: SP-Z-H005"
+                      placeholder="Ex: SP-15"
                       className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-emerald-500"
                     />
                   </div>

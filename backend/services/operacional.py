@@ -2022,7 +2022,7 @@ def processar_planilha_criacao_pedidos(
 
                     # Confirmação de Perus: status descarregamento/circuito fechado e IATA SP-RR-001 ou endereço de Perus
                     is_p = (g['status_pedido'].astype(str).str.strip().str.lower().isin(['descarregamento', 'circuito fechado'])) & (
-                        (g['rede_desc'] == 'SP-RR-001') |
+                        (g['rede_desc'] == 'SP-RR-001') | (g['rede_desc'] == 'SP-12') |
                         (g['end_desc'].str.lower().str.contains('perus', na=False))
                     )
                     q_conf = int(is_p.sum())

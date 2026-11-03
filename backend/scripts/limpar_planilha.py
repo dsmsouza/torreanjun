@@ -73,7 +73,7 @@ UF_POR_NOME = {
     "SAOPAULO": "SP", "SERGIPE": "SE", "TOCANTINS": "TO",
 }
 
-MD_EXCLUIR = "SP-R-TFK001"
+MDS_EXCLUIR = {"SP-R-TFK001", "SPR-TFK001", "SPRTFK001", "SP-10", "SP10"}
 
 
 def normalizar(texto: str) -> str:
@@ -200,7 +200,7 @@ def main():
         idx_md = melhor_cols.get("md")
         if idx_md is not None:
             md_val = linha[idx_md] if idx_md < len(linha) else None
-            if normalizar(md_val) == MD_EXCLUIR:
+            if normalizar(md_val) in MDS_EXCLUIR:
                 remov_md += 1
                 continue
 

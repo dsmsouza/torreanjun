@@ -19,6 +19,11 @@ caminho_shein = r"C:\Users\Anjun_\Downloads\Template oficial MDs SHEIN.xlsx"
 conn = sqlite3.connect(r'C:\ANJUN\Banco de Dados\torre_anjun.db')
 cur = conn.cursor()
 
+# Carregar mapa de HUBs oficiais atualizados
+cur.execute("CREATE TABLE IF NOT EXISTS hub_de_para (nome_antigo TEXT PRIMARY KEY, nome_novo TEXT, estado TEXT, cidade TEXT, atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+hub_de_para_map = dict(cur.execute("SELECT UPPER(TRIM(nome_antigo)), UPPER(TRIM(nome_novo)) FROM hub_de_para").fetchall())
+
+
 pontos = {} # iata -> dict
 
 # 1. Carregar Base SHEIN
@@ -27,6 +32,7 @@ ws_s = wb_s["Base"]
 for idx, r in enumerate(ws_s.iter_rows(values_only=True)):
     if idx == 0 or not r: continue
     iata = str(r[2] or "").strip().upper()
+    iata = hub_de_para_map.get(iata, iata)
     if not iata or iata in ("NONE", "NAN", "-"):
         iata = str(r[1] or "").strip().upper()
     if not iata or iata in ("NONE", "NAN", "-"):
@@ -45,7 +51,7 @@ for idx, r in enumerate(ws_s.iter_rows(values_only=True)):
     lng = float(r[32]) if len(r) > 32 and r[32] is not None and str(r[32]).strip() else None
 
     t_upper = tipo_raw.upper()
-    if "HUB" in t_upper or "GLP" in iata or "-H" in iata or "HUB" in iata:
+    if "HUB" in t_upper or "GLP" in iata or "-H" in iata or "HUB" in iata or iata in hub_de_para_map.values() or bool(re.match(r"^[A-Z]{2}-\d{2}$", iata)):
         tipo_final = "HUB"
     elif "APOIO" in t_upper or "-PA" in iata or "-RR-" in iata:
         tipo_final = "PONTO DE APOIO"
@@ -78,6 +84,7 @@ ws_m = wb_m["Base Atual"]
 for idx, r in enumerate(ws_m.iter_rows(values_only=True)):
     if idx == 0 or not r: continue
     iata = str(r[3] or "").strip().upper()
+    iata = hub_de_para_map.get(iata, iata)
     if not iata or iata in ("NONE", "NAN", "-"): continue
     
     uf = str(r[0] or "").strip().upper()

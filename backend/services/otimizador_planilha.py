@@ -77,7 +77,7 @@ def eh_ponto_valido(val_p: Any, modo: str = "central") -> bool:
         return False
         
     txt_upper = txt.upper()
-    if "SP-R-TFK001" in txt_upper:
+    if "SP-R-TFK001" in txt_upper or txt_upper == "SP-10" or "SP-10" in txt_upper:
         return False
     if "ANJUN" in txt_upper:
         return False

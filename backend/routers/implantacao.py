@@ -405,8 +405,15 @@ def identificar_tipo_ponto(iata_code: str, nome: str = "", overrides_dict: Optio
             "manual": False
         }
 
-    # HUB estrito: somente se contiver explicitamente -H, HUB, GLP ou CD
-    if re.search(r"-[ZWA]-H|HUB-|-H\d{2,4}$|-H0|-H1|-H2|-H3", code) or code.startswith("HUB") or "HUB" in code or "GLP" in code or "CD" in code:
+    # HUB estrito: somente se contiver explicitamente -H, HUB, GLP ou CD, ou formato novo UF-DD
+    if (
+        re.search(r"-[ZWA]-H|HUB-|-H\d{2,4}$|-H0|-H1|-H2|-H3", code)
+        or code.startswith("HUB")
+        or "HUB" in code
+        or "GLP" in code
+        or "CD" in code
+        or bool(re.match(r"^[A-Z]{2}-\d{2}$", code))
+    ):
         return {
             "tipo": "HUB",
             "tipo_label": "HUB Operacional ANJUN",
@@ -995,7 +1002,7 @@ def consultar_viabilidade_rapida(
     hubs_rows = db.execute(text("""
         SELECT iata, nome, cidade, estado, latitude, longitude
         FROM mapa_pontos
-        WHERE (UPPER(iata) LIKE '%HUB%' OR UPPER(nome) LIKE '%HUB%' OR UPPER(iata) LIKE '%-H0%' OR UPPER(iata) LIKE 'WR-%')
+        WHERE (UPPER(iata) LIKE '%HUB%' OR UPPER(nome) LIKE '%HUB%' OR UPPER(iata) LIKE '%-H0%' OR UPPER(iata) LIKE 'WR-%' OR UPPER(iata) IN (SELECT nome_novo FROM hub_de_para UNION SELECT nome_antigo FROM hub_de_para))
           AND latitude IS NOT NULL AND longitude IS NOT NULL
     """)).fetchall()
 
@@ -1391,7 +1398,7 @@ def geocodificar_endereco(
     hubs_rows = db.execute(text("""
         SELECT md_codigo, nome_ponto, cidade, estado, latitude, longitude
         FROM malha_coordenadas
-        WHERE (tipo_ponto LIKE '%HUB%' OR UPPER(md_codigo) LIKE '%HUB%' OR UPPER(md_codigo) LIKE 'WR-%')
+        WHERE (tipo_ponto LIKE '%HUB%' OR UPPER(md_codigo) LIKE '%HUB%' OR UPPER(md_codigo) LIKE 'WR-%' OR UPPER(md_codigo) IN (SELECT nome_novo FROM hub_de_para UNION SELECT nome_antigo FROM hub_de_para))
           AND latitude IS NOT NULL AND longitude IS NOT NULL
     """)).fetchall()
 
@@ -1399,7 +1406,7 @@ def geocodificar_endereco(
         hubs_rows = db.execute(text("""
             SELECT iata, nome, cidade, estado, latitude, longitude
             FROM mapa_pontos
-            WHERE (UPPER(iata) LIKE '%HUB%' OR UPPER(nome) LIKE '%HUB%' OR UPPER(iata) LIKE '%-H0%' OR UPPER(iata) LIKE 'WR-%')
+            WHERE (UPPER(iata) LIKE '%HUB%' OR UPPER(nome) LIKE '%HUB%' OR UPPER(iata) LIKE '%-H0%' OR UPPER(iata) LIKE 'WR-%' OR UPPER(iata) IN (SELECT nome_novo FROM hub_de_para UNION SELECT nome_antigo FROM hub_de_para))
               AND latitude IS NOT NULL AND longitude IS NOT NULL
         """)).fetchall()
 
@@ -1442,7 +1449,7 @@ def geocodificar_endereco(
     menor_dist_md = 9999.0
     for mr in mds_rows:
         m_code = str(mr[0]).strip().upper()
-        if "-H0" in m_code or "HUB" in m_code or "WR-" in m_code:
+        if "-H0" in m_code or "HUB" in m_code or "WR-" in m_code or re.match(r"^[A-Z]{2}-\d{2}$", m_code):
             continue
         d = calcular_distancia_haversine(lat, lng, float(mr[4]), float(mr[5]))
         if d < menor_dist_md:

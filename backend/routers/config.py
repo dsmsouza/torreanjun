@@ -895,7 +895,7 @@ def _normalizar_categoria_malha(codigo: str, tipo_raw: str = "") -> str:
         return "PONTO DE APOIO"
     if "REDE" in t or "REDE" in c or "-PR" in c:
         return "PONTO DE REDE"
-    if "HUB" in t or "GALP" in t or "TRANSFER" in t or "-H" in c or c.startswith("HUB") or "GLP" in c:
+    if "HUB" in t or "GALP" in t or "TRANSFER" in t or "-H" in c or c.startswith("HUB") or "GLP" in c or re.match(r"^[A-Z]{2}-\d{2}$", c):
         return "HUB"
     if c.startswith("MD-") or (len(c) >= 7 and c[2:7] == "-W-MD") or "MD" in t or "MINIDROP" in t:
         return "MINIDROP"
@@ -954,7 +954,7 @@ def listar_md_mapping(db: Session = Depends(get_db)):
                     COALESCE(MAX(NULLIF(TRIM(c.estado), '')), 'SP'),
                     CASE 
                         WHEN UPPER(TRIM(c.ponto_colecao)) LIKE 'MD-%' OR UPPER(TRIM(c.ponto_colecao)) LIKE '__-W-MD%' OR UPPER(TRIM(c.ponto_colecao)) LIKE '__-R-MD%' THEN 'MINIDROP'
-                        WHEN UPPER(TRIM(c.ponto_colecao)) LIKE '%-H%' OR UPPER(TRIM(c.ponto_colecao)) LIKE 'HUB%' OR UPPER(TRIM(c.ponto_colecao)) LIKE 'WR-GLP%' THEN 'HUB'
+                        WHEN UPPER(TRIM(c.ponto_colecao)) LIKE '%-H%' OR UPPER(TRIM(c.ponto_colecao)) LIKE 'HUB%' OR UPPER(TRIM(c.ponto_colecao)) LIKE 'WR-GLP%' OR UPPER(TRIM(c.ponto_colecao)) IN (SELECT nome_novo FROM hub_de_para UNION SELECT nome_antigo FROM hub_de_para) THEN 'HUB'
                         WHEN UPPER(TRIM(c.ponto_colecao)) LIKE '%-PA%' OR UPPER(TRIM(c.ponto_colecao)) LIKE '%-RR-%' THEN 'PONTO DE APOIO'
                         WHEN UPPER(TRIM(c.ponto_colecao)) LIKE '%-D%' OR UPPER(TRIM(c.ponto_colecao)) LIKE '%-FQ%' OR UPPER(TRIM(c.ponto_colecao)) LIKE '%-A%' THEN 'PONTO DE REDE'
                         ELSE 'MINIDROP'
@@ -964,6 +964,7 @@ def listar_md_mapping(db: Session = Depends(get_db)):
                 WHERE c.ponto_colecao IS NOT NULL 
                   AND TRIM(c.ponto_colecao) NOT IN ('', 'nan', 'None', 'null', '-')
                   AND UPPER(c.ponto_colecao) NOT LIKE '%SP-R-TFK001%'
+                  AND UPPER(c.ponto_colecao) NOT LIKE '%SP-10%'
                   AND UPPER(c.ponto_colecao) NOT LIKE '%ANJUN%'
                   AND UPPER(TRIM(c.ponto_colecao)) NOT IN (SELECT UPPER(TRIM(md_codigo)) FROM md_mapping WHERE md_codigo IS NOT NULL)
                 GROUP BY UPPER(TRIM(c.ponto_colecao));
