@@ -2196,6 +2196,15 @@ export default function CentralColetasPage() {
                             className="p-3.5 rounded-xl bg-slate-900/70 border border-slate-800 hover:border-emerald-500/50 hover:bg-slate-900 transition-all flex flex-col justify-between cursor-pointer group"
                           >
                             <div>
+                              <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase border bg-cyan-500/15 text-cyan-300 border-cyan-500/30 flex items-center gap-1">
+                                  <Truck className="w-2.5 h-2.5" /> Seller Pickup
+                                </span>
+                                <span className="text-[10px] font-mono text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded shrink-0">
+                                  {pctCli}%
+                                </span>
+                              </div>
+
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
                                   <span className="font-bold text-white text-xs tracking-wide block truncate group-hover:text-emerald-300 transition-colors">
