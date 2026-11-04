@@ -8,67 +8,68 @@
 
 ## 1. Dicionário Operacional dos Status de Pedidos (First-Mile ANJUN)
 
-A esteira de First-Mile (FM) da Anjun possui status com significados físicos e operacionais muito específicos:
+> **⚠️ Regra de Ouro da Classificação:**  
+> Os status da esteira **NÃO são exclusivos de MiniDrops (MDs)**.  
+> Pacotes de **PICKUP** (coletados diretamente no seller por van ou PA) também transitam por `coletado`, `saco selado`, `Carregamento` e `Descarregamento`. Portanto, a classificação de Backlog e Trânsito se aplica tanto para a malha de MDs quanto para as rotas de Pickup!
 
-| Status no Sistema | Quem Bipa / Significado Físico Real | Classificação Operacional | Ação / Alerta |
-| :--- | :--- | :--- | :--- |
-| **`coletado`** | **BIPE DO MINIDROP** (ou parceiro de balcão) | **Backlog no MD** | Pacote sob custódia física do MiniDrop parceiro aguardando retirada pela van da Anjun. |
-| **`saco selado`** | **BIPE DO MINIDROP** (ou parceiro de balcão) | **Backlog no MD (Saca Fechada)** | Pacotes consolidados em saca lacrada no MD aguardando o motorista de linha recolher. |
-| **`Carregamento`** | **BIPE DA ANJUN** (Motorista / Equipe Anjun) | **Em Trânsito** | Carga bipada pelo motorista da Anjun no veículo em deslocamento para o HUB/Cross-docking. |
-| **`Descarregamento`** | **BIPE DA ANJUN** (Doca / Triagem Anjun) | **Em Trânsito / Recepção HUB** | Carga descarregada na esteira/doca do HUB central da Anjun para triagem. |
-| **`Circuito fechado`** | **Ciclo First-Mile Concluído com Sucesso** | **Concluído FM ➔ Rumo ao LM** | Pacote percorreu todo o ciclo da First Mile e deu tudo certo; é direcionado ao Last Mile (LM) para entrega ao comprador. |
-| **`Foi assinado`** | **CRÍTICO: POSSÍVEL EXTRAVIO DO PACOTE!** | **Anomalia Grave de Saca** | **A saca lacrada chegou à etapa final de destino, MAS o pacote individual NÃO estava dentro dela!** Requer auditoria imediata. |
-| **`Cancelado`** | Pedido cancelado | Cancelamento | Cancelado pelo marketplace, seller ou comprador antes/durante a coleta. |
-| **`Não coletado`** | Pedido gerado no sistema | Aguardando Primeiro Bip | Etiqueta impressa pelo seller, mas carga ainda não apresentada ou coletada fisicamente. |
-
----
-
-## 2. Marketplaces, Sellers e Modalidades (D2D vs W2D)
-
-### ⚠️ Regra Fundamental: Não assumir premissas fixas por cliente
-* **Qualquer Marketplace (Shein, TikTok, TEMU, Kwai) ou Seller pode movimentar tanto pacotes D2D quanto W2D.**
-* **Nunca deduza a modalidade apenas pelo nome da plataforma ou cliente.**
-* O que define categoricamente a modalidade e a operação é o cruzamento de duas colunas fundamentais:
-  1. **Coluna H (`maneira de coleta`):**
-     * `entrega porta-a-porta` ➔ Seller entregando no ponto/MD.
-     * `coleta porta-a-porta` ➔ Veículo da Anjun coletando no seller.
-  2. **Coluna BH (`Tipo do pedido`):**
-     * `Pedidos D2D` ➔ Fluxo Door-to-Door / MiniDrop First-Mile.
-     * `Normal` / `W2D` ➔ Fluxo de coleta tradicional em armazém/galpão.
-     * `Cut-off` ➔ Janela de corte operacional.
-     * `Pedido de carga grande` ➔ Cargas volumosas com roteirização especial.
-
-### 🏪 Flexibilidade dos MiniDrops (MDs):
-Os MiniDrops (MDs) têm total flexibilidade operacional na malha:
-* Podem receber **ambos os pacotes (W2D e D2D)**.
-* Podem receber **ambas as modalidades** (`Entrega porta a porta` e `Coleta porta a porta`).
+| Status na Planilha | Significado Físico Real | Classificação Operacional Geral | Aplicável a MD e Pickup? | Ação da Torre / Alerta |
+| :--- | :--- | :--- | :---: | :--- |
+| **`coletado`** | Primeiro escaneamento físico na origem | **Backlog em Aberto** | **Sim (MD e Pickup)** | Se MD: retido no balcão aguardando van. Se Pickup: bipado no seller/van mas ainda não transferido para linha. |
+| **`saco selado`** | Pacotes consolidados em saca lacrada | **Backlog Ensacado** | **Sim (MD e Pickup)** | Saca lacrada na origem (MD, PA ou veículo) aguardando descarregamento na doca do HUB. |
+| **`Carregamento`** | Bipagem no veículo de transferência | **Em Trânsito** | **Sim (MD e Pickup)** | Carga embarcada no veículo em deslocamento rodoviário rumo ao HUB de triagem. |
+| **`Descarregamento`** | Bipagem na doca / triagem do HUB | **Em Trânsito / Recepção HUB** | **Sim (MD e Pickup)** | Carga recebida fisicamente no HUB central, em processo de conferência e triagem. |
+| **`Circuito fechado`** | Ciclo FM concluído com sucesso | **Concluído FM ➔ Rumo ao LM** | **Sim (MD e Pickup)** | Pacote percorreu todo o ciclo da First Mile e deu tudo certo; é direcionado ao Last Mile (LM) para entrega ao comprador. |
+| **`Foi assinado`** | **CRÍTICO: POSSÍVEL EXTRAVIO DO PACOTE!** | **Anomalia Grave de Saca** | **Sim (MD e Pickup)** | **A saca lacrada chegou à etapa final de destino, MAS o pacote individual NÃO estava dentro dela!** Requer auditoria e apuração imediata de extravio. |
+| **`Cancelado`** | Cancelado pelo seller / comprador / marketplace | **Cancelamento** | **Sim (MD e Pickup)** | Cancelado antes ou durante o processo de coleta. |
+| **`Não coletado`** | Pedido gerado no sistema | **Aguardando Primeiro Bip** | **Sim (MD e Pickup)** | Etiqueta gerada pelo seller, mas pacote ainda não apresentado ou coletado fisicamente. |
 
 ---
 
-## 3. Regra de Ouro: Diferenciação DROPOFF vs PICKUP
+## 2. DROPOFF vs PICKUP: Como Medir com Precisão Cirúrgica
 
-Para classificar com precisão se uma operação foi **DROPOFF** ou **PICKUP**:
+> **⚠️ Atenção sobre Nomenclaturas de Contrato (D2D, W2D, Cut-off, Normal):**  
+> As nomenclaturas da Coluna BH (`Tipo do pedido`) refletem o perfil do pedido no marketplace, mas **NÃO determinam sozinhas se houve Pickup ou Drop-off**.  
+> **O que realmente define se a operação foi PICKUP ou DROPOFF é o cruzamento da MANEIRA DA COLETA com o PONTO DE COLEÇÃO:**
 
 ```mermaid
 flowchart TD
-    Inicio[Pacote Bipado na Malha] --> CheckMD{Ponto de Coleção é um MiniDrop MD?}
-    CheckMD -- SIM --> Dropoff[DROPOFF Legítimo\nSeller foi ao balcão do MD]
-    CheckMD -- NÃO --> CheckHubFora{Ponto é HUB fora de SP / Estado sem MD?\nEx: Pernambuco - PE}
-    CheckHubFora -- NÃO (HUB Normal SP) --> Pickup[PICKUP Legítimo\nVan da Anjun coletou no seller]
-    CheckHubFora -- SIM (HUB opera como MD temporário) --> CheckModo{Coluna H: maneira de coleta}
-    CheckModo -- entrega porta-a-porta --> DropoffHUB[DROPOFF no HUB\nSeller levou até a doca do HUB]
-    CheckModo -- coleta porta-a-porta --> PickupHUB[PICKUP do HUB\nVan da Anjun foi ao seller]
+    Inicio[Pacote Bipado na Origem] --> CheckMD{Ponto de Coleção (Col P) é um MiniDrop MD?}
+    CheckMD -- SIM (Bipado em MD) --> Dropoff[DROPOFF Legítimo\nMesmo que etiqueta diga 'coleta porta a porta',\nfoi recebido fisicamente pelo MD parceiro]
+    CheckMD -- NÃO (Ponto é HUB / PA / Base) --> CheckManeira{Maneira da Coleta (Col H)?}
+    CheckManeira -- coleta porta-a-porta --> Pickup[PICKUP Legítimo\nVan da Anjun foi ao endereço do seller recolher]
+    CheckManeira -- entrega porta-a-porta --> DropoffHub[DROPOFF em HUB / Ponto de Apoio\nSeller deslocou-se e entregou na doca]
 ```
 
-1. **Regra do MiniDrop (DROPOFF):**  
-   * **Tudo o que for bipado por MD (não inclui HUB etc) deve ser considerado como DROPOFF.** O vendedor deslocou-se e entregou a carga no balcão parceiro.
-2. **Regra Geral de HUB / Ponto Central (PICKUP):**  
-   * **Tudo o que NÃO tiver MD no ponto de coleção é considerado uma coleta PICKUP**, quando a ANJUN vai direto no endereço do seller coletar. Nesses casos, o ponto de coleção registrado no sistema será geralmente um HUB central (ex: `WR-GLP-01`, `SP-10`, etc.).
-3. **Exceção de HUBs fora do estado / Praças sem MiniDrops (Ex: Pernambuco - PE):**  
-   * Em estados onde ainda não existe malha de MiniDrops implantada, o HUB regional da Anjun assume a função secundária de **MD (ponto de apoio temporário)**.
-   * Nesses casos, a diferenciação é dada pela **Coluna H (`maneira de coleta`)**:
-     * `entrega porta-a-porta` ➔ **DROPOFF** (o seller foi até a doca do HUB entregar).
-     * `coleta porta-a-porta` ➔ **PICKUP** (a van da Anjun foi até as instalações do seller recolher).
+### Regras Mandatórias de Decisão:
+1. **O Ponto de Coleção (Coluna P) tem precedência de recebimento:**  
+   * Coleta porta-a-porta pode ser recebida fisicamente por um MiniDrop parceiro.
+   * **Se o ponto de coleção for um MD, foi um DROPOFF** (o parceiro acolheu a mercadoria no balcão).
+2. **Quando o Ponto de Coleção NÃO for um MD (HUBs, bases ou praças sem MD como PE):**  
+   * Olha-se a **Maneira da Coleta (Coluna H)**:
+     * `coleta porta-a-porta` ➔ **PICKUP** (a van da Anjun deslocou-se até o galpão/loja do seller).
+     * `entrega porta-a-porta` ➔ **DROPOFF** (o seller levou os pacotes até o ponto de apoio/HUB).
+3. **Todo Marketplace (Shein, TikTok, TEMU, Kwai) pode operar ambos os fluxos:**  
+   * Nunca assumir que um marketplace só opera D2D ou W2D.
+
+---
+
+## 3. O Papel Vital da Atualização de Aging
+
+O **Aging (Envelhecimento do Backlog e Ciclo de Vida)** é a espinha dorsal que garante a integridade dos dados na Torre de Controle:
+
+### 🔄 Como Funciona a Dinâmica de Aging:
+1. **Atualização Temporal Contínua:**  
+   * Um pacote bipado no Dia 01 como `coletado` ou `saco selado` não permanece estático.  
+   * Nos dias seguintes (Dia 02, 03, 04...), os novos extratos e bipagens atualizam o status desse mesmo código de barras para `Carregamento`, `Descarregamento` ou `Circuito fechado`.
+2. **Garantia de Status Mais Atual:**  
+   * O motor de reconciliação rastreia o histórico pelo código de barras (`Coluna B`) e atualiza a foto do pacote, garantindo que a operação sempre enxergue o **status mais recente real**.
+3. **Monitoramento de Pacotes Parados (Faixas de Aging):**  
+   * Os pacotes que **NÃO evoluem para `Circuito fechado`** vão acumulando dias de atraso (`dias_sem_atualizacao`):
+     * 🟢 **0 a 24 horas (D0 / D1):** Fluxo operacional saudável dentro da esteira normal de coleta e transferência.
+     * 🟡 **24h a 48h (D2):** Alerta de pré-estouro de SLA.
+     * 🟠 **48h a 72h (D3):** Risco crítico.
+     * 🔴 **Acima de 72h (> 3 dias):** Estouro formal de SLA / Pacote retido indevidamente ou possível extravio.
+   * Essa métrica protege tanto pacotes esquecidos em **MiniDrops** quanto pacotes de **Pickup** coletados por motoristas mas que ainda não deram entrada no HUB!
 
 ---
 
@@ -86,34 +87,34 @@ flowchart TD
 
 ---
 
-## 5. Mapeamento Completo das 66 Colunas da Planilha Oficial (`02-11.xlsx`)
+## 5. Mapeamento das Colunas da Planilha Oficial (`02-11.xlsx`)
 
-Extraído diretamente do arquivo mestre de exportação da ANJUN:
+Extraído do arquivo mestre de 66 colunas da ANJUN:
 
 | Col | Idx | Nome Oficial da Coluna | Descrição Operacional e Significado |
 | :---: | :---: | :--- | :--- |
 | **A** | 0 | `Número do pedido de coleta` | Código identificador da ordem de coleta gerada no sistema. |
-| **B** | 1 | `Código de barras` | Código de barras do pacote (bipagem física). |
-| **C** | 2 | `Número de pedido de cliente` | Número de tracking do embarcador / marketplace (ex: ANJZX...). |
-| **D** | 3 | `No. do cliente` | **Código numérico de identificação: CONTÉM TANTO CÓDIGO DE SELLER QUANTO DE MARKETPLACE.** |
+| **B** | 1 | `Código de barras` | Código de barras do pacote (chave primária da reconciliação). |
+| **C** | 2 | `Número de pedido de cliente` | Número de tracking do embarcador / marketplace (ex: `ANJZX...`). |
+| **D** | 3 | `No. do cliente` | **Código numérico: contém tanto código de Seller quanto de Marketplace.** |
 | **E** | 4 | `número da saca` | Código da saca de consolidação onde o pacote foi agrupado. |
-| **F** | 5 | `Número de escaneamento do veículo` | Registro da viagem/rota do veículo de coleta (ex: AJV32858074). |
+| **F** | 5 | `Número de escaneamento do veículo` | Registro da viagem/rota do veículo de coleta (ex: `AJV32858074`). |
 | **G** | 6 | `No. do pacote` | Código individual do pacote / etiqueta. |
-| **H** | 7 | `maneira de coleta` | **MODALIDADE DE COLETA: `coleta porta-a-porta` vs `entrega porta-a-porta`.** |
+| **H** | 7 | `maneira de coleta` | **Modalidade de Coleta: `coleta porta-a-porta` vs `entrega porta-a-porta`.** |
 | **I** | 8 | `parcel weight` | Peso aferido do pacote (kg). |
 | **J** | 9 | `Package Affirmation Value` | Valor declarado da mercadoria para seguro e frete. |
 | **K** | 10 | `TEMPO DE CRIAÇÃO DO PEDIDO` | Timestamp de geração da etiqueta/pedido pelo seller. |
 | **L** | 11 | `Tempo previsto para a coleta` | SLA máximo contratual para coleta na origem. |
 | **M** | 12 | `Tempo real para a coleta` | Timestamp exato em que a coleta foi realizada. |
 | **N** | 13 | `Data de conclusão` | Timestamp de conclusão do ciclo operacional de first-mile. |
-| **O** | 14 | `Status do pedido` | **STATUS ATUAL: `coletado`, `saco selado`, `Carregamento`, `Descarregamento`, `Circuito fechado`, `Foi assinado`, `Cancelado`.** |
-| **P** | 15 | `ponto de coleção` | Código do ponto físico do primeiro bip (MD, Ponto de Apoio ou HUB). |
+| **O** | 14 | `Status do pedido` | **Status do pacote: `coletado`, `saco selado`, `Carregamento`, `Descarregamento`, `Circuito fechado`, `Foi assinado`, `Cancelado`.** |
+| **P** | 15 | `ponto de coleção` | Código do ponto físico do primeiro bip (MD parceiro, Ponto de Apoio ou HUB). |
 | **Q** | 16 | `Colectores` | Identificador do operador/agente responsável pela coleta. |
 | **R** | 17 | `Carregadeiras` | Matrícula/login do operador que realizou o bip de carregamento no veículo. |
 | **S** | 18 | `Tempo de carregamento` | Timestamp do bip de carregamento no veículo de transferência. |
 | **T** | 19 | `Descarregadores` | Matrícula/login do operador que bipou o descarregamento na doca/HUB. |
 | **U** | 20 | `Tempo de descarregamento` | Timestamp da entrada e conferência na doca de descarregamento. |
-| **V** | 21 | `Número do Cliente Comerciante` | **ID exclusivo do Seller (Merchant ID). Identificador primário para inteligência de sellers.** |
+| **V** | 21 | `Número do Cliente Comerciante` | **ID exclusivo do Seller (Merchant ID). Identificador primário de sellers.** |
 | **W** | 22 | `Nome do Cliente Merchant` | **Razão Social ou Nome Fantasia do Seller na plataforma.** |
 | **X** | 23 | `Número do grupo de lojas múltiplas` | Identificador para sellers com filiais ou múltiplas contas vinculadas. |
 | **Y** | 24 | `Assinado por` | Nome/login do recebedor na etapa de assinatura de saca. |
@@ -151,7 +152,7 @@ Extraído diretamente do arquivo mestre de exportação da ANJUN:
 | **BE** | 56 | `Coletando Número de Onda` | ID da Onda de Coleta (Wave Picking) para roteirização em lote. |
 | **BF** | 57 | `Tempo de criação de números de onda` | Timestamp de geração da onda de coleta no WMS. |
 | **BG** | 58 | `Código de coleção real` | Código do lote consolidado no momento da bipagem física. |
-| **BH** | 59 | `Tipo do pedido` | **TIPO DO PEDIDO: `Normal`, `Pedidos D2D`, `Cut-off`, `Pedido de carga grande`.** |
+| **BH** | 59 | `Tipo do pedido` | **Tipo do Pedido: `Normal`, `Pedidos D2D`, `Cut-off`, `Pedido de carga grande`.** |
 | **BI** | 60 | `Volume e peso da embalagem` | Peso cubado calculado da embalagem. |
 | **BJ** | 61 | `Peso de embalagem` | Peso bruto registrado em balança. |
 | **BK** | 62 | `Comprimento(cm)` | Dimensão longitudinal da embalagem (cm). |
