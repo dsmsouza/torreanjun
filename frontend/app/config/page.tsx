@@ -208,7 +208,7 @@ export default function ConfigPage() {
     try {
       const res = await safeFetch(`${API_URL}/api/config/clientes-mapping`, { headers: getAuthHeaders() });
       const data = await res.json();
-      setClienteMappings(data);
+      setClienteMappings(Array.isArray(data) ? data : []);
     } catch { setClienteMapMsg({ text: "Erro ao carregar mapeamentos.", type: "error" }); }
     finally { setClienteMapLoading(false); }
   };
@@ -220,7 +220,7 @@ export default function ConfigPage() {
     try {
       const res = await safeFetch(`${API_URL}/api/config/md-mapping`, { headers: getAuthHeaders() });
       const data = await res.json();
-      setMdMappings(data);
+      setMdMappings(Array.isArray(data) ? data : []);
     } catch { setMdMapMsg({ text: "Erro ao carregar mapeamentos de MD.", type: "error" }); }
     finally { setMdMapLoading(false); }
   };
@@ -1110,9 +1110,10 @@ export default function ConfigPage() {
               { id: "PONTO DE REDE", label: "PONTO DE REDE", color: "cyan" },
               { id: "PONTO DE APOIO", label: "PONTO DE APOIO", color: "amber" },
             ].map((tab) => {
+              const list = Array.isArray(mdMappings) ? mdMappings : [];
               const count = tab.id === "TODOS"
-                ? mdMappings.length
-                : mdMappings.filter(m => (m.tipo_ponto || "MINIDROP").toUpperCase() === tab.id).length;
+                ? list.length
+                : list.filter(m => (m.tipo_ponto || "MINIDROP").toUpperCase() === tab.id).length;
               const active = mdTipoFiltro === tab.id;
               return (
                 <button
@@ -1277,7 +1278,7 @@ export default function ConfigPage() {
               {mdMapLoading ? (
                 <tr><td colSpan={7} className="text-center py-6 text-slate-500"><Loader2 className="w-5 h-5 animate-spin inline" /></td></tr>
               ) : (() => {
-                const filtered = mdMappings.filter(m => {
+                const filtered = (Array.isArray(mdMappings) ? mdMappings : []).filter(m => {
                   const tNorm = (m.tipo_ponto || "MINIDROP").toUpperCase();
                   if (mdTipoFiltro !== "TODOS" && tNorm !== mdTipoFiltro) return false;
                   const q = mdSearchTerm.toLowerCase();
