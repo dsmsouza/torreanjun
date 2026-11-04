@@ -2078,6 +2078,8 @@ export async function fetchDiagnosticoD1Implantacao(id: number): Promise<any> {
 
 export interface CockpitD1Totais {
   total_pedidos: number;
+  total_pedidos_amostra?: number;
+  total_criacao_oficial?: number;
   total_pontos_todos: number;
   total_mds_biparam: number;
   total_hubs_biparam: number;

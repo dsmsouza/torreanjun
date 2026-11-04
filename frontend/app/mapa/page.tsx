@@ -368,7 +368,11 @@ export default function MapaPage() {
                 {totais.total_pedidos.toLocaleString("pt-BR")}
               </span>
             </div>
-            <p className="text-[10px] text-slate-400 mt-0.5">volume total na data</p>
+            <p className="text-[10px] text-slate-400 mt-0.5" title="Total oficial auditado Anjun">
+              {totais.total_pedidos_amostra && totais.total_pedidos_amostra !== totais.total_pedidos
+                ? `Mapeados: ${totais.total_pedidos_amostra.toLocaleString("pt-BR")} pcts`
+                : "volume oficial na data"}
+            </p>
           </div>
 
           <div className="bg-[#0C101B] p-3.5 rounded-xl border border-slate-800/80">

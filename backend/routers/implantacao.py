@@ -582,7 +582,22 @@ def get_cockpit_d1(dia: Optional[str] = None, db: Session = Depends(get_db)):
         {where_base}
     """), params_base).fetchone()
     
-    total_pedidos = int(tot_row[0] or 0)
+    total_pedidos_amostra = int(tot_row[0] or 0)
+    total_pedidos = total_pedidos_amostra
+    total_criacao_oficial = None
+    
+    if not is_modo_geral and dia_selecionado:
+        try:
+            d_parts = dia_selecionado.split("/")
+            if len(d_parts) == 3:
+                iso_dia = f"{d_parts[2]}-{d_parts[1]}-{d_parts[0]}"
+                row_f = db.execute(text("SELECT total_coletas_scan, total_criacao FROM fechamento_diario_oficial WHERE data_operacao = :d"), {"d": iso_dia}).fetchone()
+                if row_f and row_f[0]:
+                    total_pedidos = int(row_f[0])
+                    total_criacao_oficial = int(row_f[1]) if row_f[1] else None
+        except Exception:
+            pass
+
     total_pontos_todos = int(tot_row[1] or 0)
     total_sellers = int(tot_row[2] or 0)
     total_clientes = int(tot_row[3] or 0)
@@ -957,6 +972,8 @@ def get_cockpit_d1(dia: Optional[str] = None, db: Session = Depends(get_db)):
         "is_modo_geral": is_modo_geral,
         "totais": {
             "total_pedidos": total_pedidos,
+            "total_pedidos_amostra": total_pedidos_amostra,
+            "total_criacao_oficial": total_criacao_oficial,
             "total_pontos_todos": total_pontos_todos,
             "total_mds_biparam": total_mds_count,
             "total_hubs_biparam": total_hubs_count,
