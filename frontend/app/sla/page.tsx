@@ -34,6 +34,8 @@ export default function SLAOperacionalPage() {
   const [resumo, setResumo] = useState<any>(null);
   const [aging, setAging] = useState<any>(null);
   const [anomalias, setAnomalias] = useState<any[]>([]);
+  const [hubs, setHubs] = useState<any[]>([]);
+  const [d2dDrop, setD2dDrop] = useState<any>(null);
   const [pacotes, setPacotes] = useState<any[]>([]);
 
   // Filtros da tabela
@@ -41,7 +43,8 @@ export default function SLAOperacionalPage() {
   const [selectedRegional, setSelectedRegional] = useState("ALL");
   const [selectedStatus, setSelectedStatus] = useState("ALL");
   const [selectedMD, setSelectedMD] = useState("ALL");
-  const [abaAtiva, setAbaAtiva] = useState<"anomalias" | "pacotes">("anomalias");
+  const [abaAtiva, setAbaAtiva] = useState<"anomalias" | "hubs" | "pacotes">("anomalias");
+
 
   // 1. Carregar calendário de datas operacionais
   useEffect(() => {
@@ -74,7 +77,10 @@ export default function SLAOperacionalPage() {
         setResumo(data.resumo || null);
         setAging(data.aging || null);
         setAnomalias(data.anomalias || []);
+        setHubs(data.hubs_monitoramento || []);
+        setD2dDrop(data.d2d_drop_analise || null);
         setPacotes(data.pacotes_abertos || []);
+
       }
     } catch (e) {
       console.error("Erro ao carregar painel SLA:", e);
@@ -318,9 +324,76 @@ export default function SLAOperacionalPage() {
             </div>
           )}
 
-          {/* 3. SELETOR DE ABAS: ANOMALIAS NOS MDS vs PACIENTES/PACOTES EM ABERTO */}
-          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-            <div className="flex gap-2">
+          {/* 3. COMPORTAMENTO D2D & SHEIN DROPADOS NOS MINIDROPS */}
+          {d2dDrop && (
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-950/30 via-slate-900 to-indigo-950/30 border border-blue-900/40 shadow-lg space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2">
+                <div className="flex items-center gap-2">
+                  <Truck className="w-4 h-4 text-blue-400" />
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                    Comportamento D2D: Pedidos Dropados nos MiniDrops (MD)
+                  </h3>
+                </div>
+                <span className="text-[11px] text-blue-300 font-medium bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full">
+                  Sellers levam pedidos D2D ao balcão do MD para agilizar
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Shein D2D */}
+                <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-slate-200">Operação Shein (Amostra do Dia)</span>
+                    <span className="text-emerald-400 font-bold">{d2dDrop.shein_pct_dropado_md}% Dropado em MD</span>
+                  </div>
+                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden flex">
+                    <div 
+                      className="bg-emerald-500 h-full transition-all" 
+                      style={{ width: `${d2dDrop.shein_pct_dropado_md}%` }}
+                      title="Dropado em MiniDrop"
+                    />
+                    <div 
+                      className="bg-blue-500 h-full transition-all" 
+                      style={{ width: `${100 - d2dDrop.shein_pct_dropado_md}%` }}
+                      title="Coleta Porta a Porta"
+                    />
+                  </div>
+                  <div className="flex justify-between text-[11px] text-slate-400 pt-1">
+                    <span>🟢 Dropado no Balcão MD: <b className="text-white">{d2dDrop.shein_dropado_em_md?.toLocaleString("pt-BR")}</b></span>
+                    <span>🔵 Coleta na Porta do Seller: <b className="text-white">{d2dDrop.shein_coleta_porta?.toLocaleString("pt-BR")}</b></span>
+                  </div>
+                </div>
+
+                {/* D2D Geral */}
+                <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-slate-200">Total D2D Operacional (Amostra)</span>
+                    <span className="text-blue-400 font-bold">{d2dDrop.d2d_pct_dropado_md}% Dropado em MD</span>
+                  </div>
+                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden flex">
+                    <div 
+                      className="bg-amber-500 h-full transition-all" 
+                      style={{ width: `${d2dDrop.d2d_pct_dropado_md}%` }}
+                      title="Dropado em MiniDrop"
+                    />
+                    <div 
+                      className="bg-indigo-500 h-full transition-all" 
+                      style={{ width: `${100 - d2dDrop.d2d_pct_dropado_md}%` }}
+                      title="Coleta na Porta"
+                    />
+                  </div>
+                  <div className="flex justify-between text-[11px] text-slate-400 pt-1">
+                    <span>🟡 Dropado no Balcão MD: <b className="text-white">{d2dDrop.d2d_dropado_em_md?.toLocaleString("pt-BR")}</b></span>
+                    <span>🟣 Coletado na Porta: <b className="text-white">{d2dDrop.d2d_coleta_porta?.toLocaleString("pt-BR")}</b></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 4. SELETOR DE ABAS: ANOMALIAS EM MDS vs HUB CENTRAL GLP vs PACOTES EM ABERTO */}
+          <div className="flex flex-wrap items-center justify-between border-b border-slate-800 pb-2 gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setAbaAtiva("anomalias")}
                 className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
@@ -330,8 +403,21 @@ export default function SLAOperacionalPage() {
                 }`}
               >
                 <ShieldAlert className="w-4 h-4 text-amber-400" />
-                Anomalias Detectadas nos MDs ({anomalias.length})
+                Anomalias em MiniDrops ({anomalias.length})
               </button>
+
+              <button
+                onClick={() => setAbaAtiva("hubs")}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+                  abaAtiva === "hubs"
+                    ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <Truck className="w-4 h-4 text-purple-400" />
+                HUB Central GLP & Transferência ({hubs.length})
+              </button>
+
               <button
                 onClick={() => setAbaAtiva("pacotes")}
                 className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
@@ -356,12 +442,17 @@ export default function SLAOperacionalPage() {
             )}
           </div>
 
-          {/* ABA 1: ANOMALIAS NOS MDS */}
+          {/* ABA 1: ANOMALIAS NOS MDS (ESTRITAMENTE MINIDROPS) */}
           {abaAtiva === "anomalias" && (
             <div className="space-y-3">
+              <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 text-[11px] text-slate-400 flex items-center gap-2">
+                <span className="font-bold text-amber-300">Regra de Malha:</span>
+                Esta aba monitora exclusivamente MiniDrops legítimos (prefixos <code className="text-white">UF-W-MDxxx</code> e <code className="text-white">MD-XXX-01</code>). HUBs como o GLP Guarulhos estão na aba dedicada de HUBs.
+              </div>
+
               {anomalias.length === 0 ? (
                 <div className="p-8 text-center rounded-2xl bg-slate-900/40 border border-slate-800 text-slate-400 text-xs">
-                  ✅ Nenhuma anomalia crítica ou retenção excessiva detectada nos MDs para {selectedDia}.
+                  ✅ Nenhum MiniDrop com retenção física crítica detectado para {selectedDia}.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -393,7 +484,7 @@ export default function SLAOperacionalPage() {
                       </p>
 
                       <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-                        <span>Regional: <b className="text-slate-200">{ano.regional}</b></span>
+                        <span>Regional: <b className="text-slate-200">{ano.regional}</b> {ano.cidade ? `• ${ano.cidade}` : ""}</span>
                         <span>Expedição: <b className="text-amber-400">{ano.taxa_expedicao}</b></span>
                       </div>
                     </div>
@@ -402,6 +493,55 @@ export default function SLAOperacionalPage() {
               )}
             </div>
           )}
+
+          {/* ABA 2: HUB CENTRAL ANJUN (GLP) & TRANSFERÊNCIA */}
+          {abaAtiva === "hubs" && (
+            <div className="space-y-3">
+              <div className="p-2.5 rounded-xl bg-purple-950/30 border border-purple-800/40 text-[11px] text-purple-200 flex items-center gap-2">
+                <span className="font-bold text-white">HUBs Operacionais:</span>
+                O <b className="text-white">WR-GLP-01</b> é o HUB Central Anjun de Triagem / Cross-docking. Não faz atendimento de balcão e opera com recebimento e transferência em massa.
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {hubs.map((h, idx) => (
+                  <div 
+                    key={idx}
+                    className="p-4 rounded-xl bg-slate-900/80 border border-purple-900/30 hover:border-purple-700/50 transition space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-white text-sm flex items-center gap-1.5">
+                        <Truck className="w-4 h-4 text-purple-400" />
+                        {h.hub}
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                        {h.classificacao}
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-slate-300">
+                      Regional: <b className="text-white">{h.regional}</b> {h.cidade ? `• ${h.cidade}` : ""}
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-800/80 text-center">
+                      <div className="p-1.5 rounded-lg bg-slate-950/60">
+                        <div className="text-[10px] text-slate-400">Total</div>
+                        <div className="text-xs font-bold text-white">{h.total?.toLocaleString("pt-BR")}</div>
+                      </div>
+                      <div className="p-1.5 rounded-lg bg-slate-950/60">
+                        <div className="text-[10px] text-slate-400">Carregado</div>
+                        <div className="text-xs font-bold text-emerald-400">{h.carregamento?.toLocaleString("pt-BR")}</div>
+                      </div>
+                      <div className="p-1.5 rounded-lg bg-slate-950/60">
+                        <div className="text-[10px] text-slate-400">Backlog</div>
+                        <div className="text-xs font-bold text-amber-400">{h.backlog?.toLocaleString("pt-BR")}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
 
           {/* ABA 2: TABELA DE PACOTES EM ABERTO */}
           {abaAtiva === "pacotes" && (

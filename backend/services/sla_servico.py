@@ -26,6 +26,57 @@ CONFIG_PATH = SCRIPT_DIR / "anjun_api_config.json"
 DB_PATH = Path(r"C:\ANJUN\Banco de Dados\torre_anjun.db")
 
 
+import re
+
+def eh_minidrop(codigo: str) -> bool:
+    """
+    Define estritamente o que é um MiniDrop (MD) conforme a convenção operacional Anjun:
+    - Padrão 1: UF-W-MDxxx (ex: SP-W-MD245, RJ-W-MD199, MG-W-MD104, SP-W-MD384)
+    - Padrão 2: MD-XXX-01 / MD-XXX-02 (ex: MD-HAV-01, MD-ETT-02, MD-ATL-01)
+    - Demais pontos com prefixo MD- (exceto HUB/GLP)
+
+    NÃO É MD (são HUBs / Centros de Transferência / Triagem):
+    - GLP / WR-GLP (HUB Central Anjun GLP Guarulhos)
+    - SP-10, SP-12, SP-13, SC-88, DF-71 (HUBs / Armazéns de Transferência)
+    - Prefixos contendo -H, -Z-H, HUB-
+    """
+    if not codigo:
+        return False
+    c = str(codigo).strip().upper()
+
+    # 1. Exclusões explícitas de HUBs e Armazéns
+    if "GLP" in c or "WR-GLP" in c or c.startswith("HUB") or "-H" in c or "-Z-H" in c or "TRANSIT" in c or "TESTE" in c:
+        return False
+    if re.match(r"^[A-Z]{2}-\d{2}$", c): # ex: SP-10, SP-13, RJ-25, MG-38
+        return False
+    if "GALPAO" in c or "CROSS" in c or "CARRIER" in c:
+        return False
+
+    # 2. Padrões legítimos de MiniDrops (MDs)
+    if re.match(r"^[A-Z]{2}-[A-Z0-9]+-MD\d+", c) or re.match(r"^[A-Z]{2}-W-MD\d+", c):
+        return True
+    if re.match(r"^MD-[A-Z0-9]+-\d+", c):
+        return True
+    if c.startswith("MD-"):
+        return True
+
+    return False
+
+
+def classificar_unidade(codigo: str) -> str:
+    if not codigo:
+        return "OUTROS"
+    c = str(codigo).strip().upper()
+    if "GLP" in c or "WR-GLP" in c:
+        return "HUB Central Anjun (GLP)"
+    if re.match(r"^[A-Z]{2}-\d{2}$", c) or "-H" in c or "-Z-H" in c or c.startswith("HUB"):
+        return "HUB de Transferência"
+    if eh_minidrop(c):
+        return "MiniDrop (MD)"
+    return "Ponto de Rede"
+
+
+
 def _obter_conexao():
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
@@ -33,6 +84,7 @@ def _obter_conexao():
 
 
 def _carregar_config():
+
     if not CONFIG_PATH.exists():
         return {}
     try:
@@ -304,7 +356,7 @@ def calcular_painel_sla_completo(dia_br: str, conn: Optional[sqlite3.Connection]
             "pct_dentro_sla": round((faixa_24 / tot_amostra) * 100, 1) if tot_amostra > 0 else 92.5
         }
 
-        # 3. Anomalias nos MDs (Pontos Críticos com backlog represado ou taxa de coleta deficiente)
+        # 3. Anomalias nos MiniDrops (MDs Reais) vs Monitoramento de HUBs (GLP / Transferência)
         c.execute("""
             SELECT 
                 md, 
@@ -317,16 +369,16 @@ def calcular_painel_sla_completo(dia_br: str, conn: Optional[sqlite3.Connection]
                 taxa_coleta
             FROM detalhe_md_historico
             WHERE dia_base = ?
-            ORDER BY backlog DESC, total DESC
-            LIMIT 50;
+            ORDER BY backlog DESC, total DESC;
         """, (dia_br,))
         rows_mds = c.fetchall()
 
         anomalias_detectadas = []
         mds_criticos = []
+        hubs_monitoramento = []
 
         for r in rows_mds:
-            md_name = r["md"]
+            pt_name = r["md"]
             reg = r["regional"] or "SP"
             cid = r["cidade"] or ""
             tot = r["total"] or 0
@@ -335,49 +387,60 @@ def calcular_painel_sla_completo(dia_br: str, conn: Optional[sqlite3.Connection]
             erros = r["erros_md"] or 0
             taxa = r["taxa_coleta"] or (round((carreg / tot) * 100, 1) if tot > 0 else 100.0)
 
-            # Anomalia 1: Backlog represado alto (> 100 pacotes sem expedição)
-            if back >= 80:
-                grav = "CRITICO" if back >= 300 else "ALERTA"
+            # Se NÃO é MD (é HUB, como WR-GLP-01 ou SP-10)
+            if not eh_minidrop(pt_name):
+                hubs_monitoramento.append({
+                    "hub": pt_name,
+                    "classificacao": classificar_unidade(pt_name),
+                    "regional": reg,
+                    "cidade": cid,
+                    "total": tot,
+                    "carregamento": carreg,
+                    "backlog": back,
+                    "taxa_expedicao": f"{taxa}%"
+                })
+                continue
+
+            # A partir daqui, SÃO ESTRITAMENTE MINIDROPS (MDs legítimos)
+            if back >= 10:
+                grav = "CRITICO" if back >= 25 else "ALERTA"
                 anomalias_detectadas.append({
-                    "md": md_name,
+                    "md": pt_name,
                     "regional": reg,
                     "cidade": cid,
                     "tipo": "Backlog Represado no MD",
                     "gravidade": grav,
                     "volume_afetado": back,
                     "taxa_expedicao": f"{taxa}%",
-                    "detalhe": f"{back} pacotes permaneceram no ponto sem carregamento no caminhão."
+                    "detalhe": f"{back} pacotes permaneceram no MiniDrop sem carregamento no caminhão."
                 })
-
-            # Anomalia 2: Taxa de carregamento baixa (< 75%) com volume relevante
-            elif tot >= 50 and taxa < 75.0:
+            elif tot >= 20 and taxa < 80.0:
                 anomalias_detectadas.append({
-                    "md": md_name,
+                    "md": pt_name,
                     "regional": reg,
                     "cidade": cid,
-                    "tipo": "Baixa Taxa de Carregamento",
+                    "tipo": "Baixa Taxa de Coleta no Ponto",
                     "gravidade": "ALERTA",
                     "volume_afetado": back,
                     "taxa_expedicao": f"{taxa}%",
-                    "detalhe": f"Apenas {carreg} de {tot} pacotes foram carregados ({taxa}%)."
+                    "detalhe": f"Apenas {carreg} de {tot} pacotes foram recolhidos no MD ({taxa}%)."
                 })
 
-            # Anomalia 3: Erros ou avarias reportadas
             if erros > 0:
                 anomalias_detectadas.append({
-                    "md": md_name,
+                    "md": pt_name,
                     "regional": reg,
                     "cidade": cid,
-                    "tipo": "Ocorrência / Erro Reportado",
+                    "tipo": "Ocorrência / Divergência de Bipagem",
                     "gravidade": "CRITICO",
                     "volume_afetado": erros,
                     "taxa_expedicao": f"{taxa}%",
-                    "detalhe": f"{erros} pacotes com apontamento de divergência ou erro físico no MD."
+                    "detalhe": f"{erros} pacotes com erro reportado no MiniDrop."
                 })
 
             if back > 0 or taxa < 90.0:
                 mds_criticos.append({
-                    "md": md_name,
+                    "md": pt_name,
                     "regional": reg,
                     "cidade": cid,
                     "total": tot,
@@ -387,7 +450,49 @@ def calcular_painel_sla_completo(dia_br: str, conn: Optional[sqlite3.Connection]
                     "taxa_coleta": taxa
                 })
 
-        # 4. Pacotes em aberto com risco de estouro de SLA (amostra dos mais críticos)
+        # 4. Análise de D2D e Shein Dropados em MiniDrops (MDs)
+        # O vendedor da Shein e de outras contas D2D prefere levar no MD mais próximo em vez de esperar coleta porta a porta
+        c.execute("""
+            SELECT 
+                COUNT(*) as total_shein,
+                SUM(CASE WHEN ponto_colecao != '' AND ponto_colecao IS NOT NULL THEN 1 ELSE 0 END) as shein_drop_md,
+                SUM(CASE WHEN ponto_colecao = '' OR ponto_colecao IS NULL THEN 1 ELSE 0 END) as shein_coleta_porta
+            FROM operacional_pedidos_completo
+            WHERE dia_base = ? AND LOWER(merchant_nome) LIKE '%shein%';
+        """, (dia_br,))
+        r_sh = c.fetchone()
+        tot_sh = (r_sh["total_shein"] if r_sh else 0) or 0
+        drop_sh = (r_sh["shein_drop_md"] if r_sh else 0) or 0
+        porta_sh = (r_sh["shein_coleta_porta"] if r_sh else 0) or 0
+        pct_sh_drop = round((drop_sh / tot_sh) * 100, 1) if tot_sh > 0 else 0.0
+
+        c.execute("""
+            SELECT 
+                COUNT(*) as total_d2d,
+                SUM(CASE WHEN ponto_colecao != '' AND ponto_colecao IS NOT NULL THEN 1 ELSE 0 END) as d2d_drop_md,
+                SUM(CASE WHEN ponto_colecao = '' OR ponto_colecao IS NULL THEN 1 ELSE 0 END) as d2d_coleta_porta
+            FROM operacional_pedidos_completo
+            WHERE dia_base = ? AND (LOWER(tipo_pedido) LIKE '%d2d%' OR LOWER(maneira_coleta) LIKE '%porta%');
+        """, (dia_br,))
+        r_d2d = c.fetchone()
+        tot_d2d = (r_d2d["total_d2d"] if r_d2d else 0) or 0
+        drop_d2d = (r_d2d["d2d_drop_md"] if r_d2d else 0) or 0
+        porta_d2d = (r_d2d["d2d_coleta_porta"] if r_d2d else 0) or 0
+        pct_d2d_drop = round((drop_d2d / tot_d2d) * 100, 1) if tot_d2d > 0 else 0.0
+
+        d2d_drop_metricas = {
+            "d2d_total_amostra": tot_d2d,
+            "d2d_dropado_em_md": drop_d2d,
+            "d2d_coleta_porta": porta_d2d,
+            "d2d_pct_dropado_md": pct_d2d_drop,
+            "shein_total_amostra": tot_sh,
+            "shein_dropado_em_md": drop_sh,
+            "shein_coleta_porta": porta_sh,
+            "shein_pct_dropado_md": pct_sh_drop,
+        }
+
+        # 5. Pacotes em aberto com risco de estouro de SLA (amostra dos mais críticos)
+
         c.execute("""
             SELECT 
                 codigo_barras, 
@@ -436,10 +541,13 @@ def calcular_painel_sla_completo(dia_br: str, conn: Optional[sqlite3.Connection]
             "aging": aging_projetado,
             "anomalias": anomalias_detectadas[:30],
             "mds_criticos": mds_criticos[:25],
+            "hubs_monitoramento": hubs_monitoramento[:15],
+            "d2d_drop_analise": d2d_drop_metricas,
             "pacotes_abertos": pacotes_abertos,
             "total_anomalias": len(anomalias_detectadas),
             "atualizado_em": datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         }
+
     finally:
         if close_conn:
             conn.close()
