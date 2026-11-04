@@ -39,6 +39,7 @@ CACHE_SKIP_PREFIXES = [
     "/api/mds/salvar-formulario",
     "/api/implantacao",
     "/api/coletas/",
+    "/api/sincronizacao",
 ]
 
 class ResponseCacheMiddleware(BaseHTTPMiddleware):
@@ -155,6 +156,9 @@ app.include_router(coletas_router)
 
 from routers.copilot import router as copilot_router
 app.include_router(copilot_router)
+
+from routers.sincronizacao import router as sincronizacao_router
+app.include_router(sincronizacao_router)
 
 
 

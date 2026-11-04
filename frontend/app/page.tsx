@@ -37,6 +37,7 @@ import {
   ChevronUp
 } from "lucide-react";
 import IngestaoLogPanel from "@/components/IngestaoLogPanel";
+import BarraSincronizacaoAnjun from "@/components/BarraSincronizacaoAnjun";
 import {
   fetchDiasColetas,
   fetchResumoColetas,
@@ -898,6 +899,11 @@ export default function CentralColetasPage() {
             </button>
           </div>
         </header>
+
+        {/* SINCRONIZACAO EM TEMPO REAL ANJUN EXPRESS */}
+        <div className="px-6 pt-4">
+          <BarraSincronizacaoAnjun />
+        </div>
 
         {/* Notificação de Sucesso */}
         {sucessoMsg && (
