@@ -537,6 +537,11 @@ async function resolveSnapshotRequest(urlStr: string): Promise<Response | null> 
       if (data) return jsonResponse(data);
     }
 
+    if (path === "/api/sincronizacao/sessao-status") {
+      const data = await fetchStaticSnapshot("sessao_status.json");
+      if (data) return jsonResponse(data);
+    }
+
     if (path === "/api/sla/abertos") {
       const data = await fetchStaticSnapshot("sla_abertos.json", "sla_latest.json");
       if (data) {

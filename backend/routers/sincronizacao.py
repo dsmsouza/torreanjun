@@ -179,3 +179,41 @@ def disparar_publicacao_online(background_tasks: BackgroundTasks):
     background_tasks.add_task(tarefa_publicar)
     return {"sucesso": True, "mensagem": "Publicação online (Vercel) iniciada em segundo plano!"}
 
+
+@router.get("/sessao-status")
+def get_sessao_status():
+    """Retorna o status detalhado da sessão do portal Anjun (validade, expiração, usuário)."""
+    from services.sessao_monitor import obter_status_token
+    return obter_status_token()
+
+
+@router.post("/atualizar-token")
+def atualizar_token_sessao(dados: Dict[str, str]):
+    """
+    Recebe um novo token JWT copiado do portal Anjun, valida a expiração
+    e salva na configuração do robô de sincronização.
+    """
+    novo_token = (dados.get("token") or "").strip()
+    if not novo_token:
+        raise HTTPException(status_code=400, detail="O token informado está vazio.")
+
+    from services.sessao_monitor import decodificar_token, exportar_status_sessao_snapshot
+    payload = decodificar_token(novo_token)
+    if not payload:
+        raise HTTPException(status_code=400, detail="O token fornecido não é um JWT válido da Anjun.")
+
+    cfg = carregar_config()
+    cfg["token"] = novo_token
+    if "username" in payload:
+        cfg["usuario"] = payload["username"]
+    salvar_config(cfg)
+
+    # Atualiza o snapshot para refletir no frontend
+    st = exportar_status_sessao_snapshot()
+    return {
+        "sucesso": True,
+        "mensagem": f"Token da conta '{payload.get('username')}' atualizado com sucesso!",
+        "status_sessao": st
+    }
+
+

@@ -65,6 +65,13 @@ def executar_agendador():
     except Exception as e:
         log(f"Aviso na Criação Inicial: {e}")
 
+    from services.sessao_monitor import checar_e_notificar_se_necessario
+    try:
+        st_tok = checar_e_notificar_se_necessario()
+        log(f"Status da Sessão Anjun: {st_tok.get('mensagem')}")
+    except Exception as e_tok:
+        log(f"Aviso ao verificar sessão Anjun: {e_tok}")
+
     log("Aguardando próximos ciclos automáticos...")
 
     while True:
@@ -124,6 +131,10 @@ def executar_agendador():
             if 7 <= hora_atual <= 23:
                 if hora_atual != ultimo_horario_hora and minuto_atual >= 1:
                     log(f">>> CICLO HORÁRIO DAS {hora_atual:02d}:00 <<<")
+                    try:
+                        checar_e_notificar_se_necessario()
+                    except Exception:
+                        pass
                     
                     # Sincroniza Tempo Real (Bipagens físicas)
                     try:

@@ -330,6 +330,14 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
         except Exception as e_sat:
             print(f"⚠️ Erro ao exportar rotas_saturacao: {e_sat}")
 
+        print("🔑 [8/8] Exportando Status e Validade da Sessão Anjun...")
+        try:
+            from services.sessao_monitor import exportar_status_sessao_snapshot
+            exportar_status_sessao_snapshot()
+            arquivos_gerados += 1
+        except Exception as e_tok:
+            print(f"⚠️ Erro ao exportar status da sessão: {e_tok}")
+
         print("⏱️ [7/7] Exportando Relatórios Oficiais de SLA e Anomalias nos MDs...")
         try:
             from services.sla_servico import calcular_painel_sla_completo
