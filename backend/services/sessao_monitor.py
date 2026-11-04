@@ -18,7 +18,16 @@ BASE_DIR = Path(r"C:\ANJUN")
 BACKEND_DIR = BASE_DIR / "backend"
 CONFIG_PATH = BACKEND_DIR / "services" / "anjun_api_config.json"
 AUTH_FILE = BACKEND_DIR / "telegram_bot" / "authorized_users.json"
-BOT_TOKEN = "8750536814:AAGcPi936yeuAzR-UU7JIeu6LJn6eQhwagk"
+LOCAL_TELEGRAM_CFG = BACKEND_DIR / "telegram_config.json"
+
+# Obter token via variável de ambiente ou arquivo local protegido (ignorado no git)
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+if not BOT_TOKEN and LOCAL_TELEGRAM_CFG.exists():
+    try:
+        with open(LOCAL_TELEGRAM_CFG, "r", encoding="utf-8") as f:
+            BOT_TOKEN = json.load(f).get("bot_token", "")
+    except Exception:
+        pass
 
 # Adicionar snapshot online se existir
 SNAPSHOT_DIR = BASE_DIR / "frontend" / "public" / "snapshot"

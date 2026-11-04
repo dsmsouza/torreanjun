@@ -22,3 +22,7 @@ node-portable/
 Banco de Dados/
 scratch/
 .agents/
+telegram_config.json
+backend/telegram_config.json
+backend/telegram_bot/
+backend/services/anjun_api_config.json
