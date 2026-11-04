@@ -208,12 +208,12 @@ export default function SLAOperacionalPage() {
           {/* 1. CARDS MACRO DA OPERAÇÃO */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Total Geral de Pedidos */}
-            <div className="p-4 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950 border border-slate-800/80 shadow-lg relative overflow-hidden">
+            <div className="p-4 rounded-2xl bg-gradient-to-b from-slate-900/80 to-slate-950/90 backdrop-blur-md border border-white/[0.08] shadow-xl shadow-black/20 hover:border-blue-500/30 transition-all duration-300 relative overflow-hidden">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Total de Pedidos</span>
                 <Package className="w-5 h-5 text-blue-400" />
               </div>
-              <div className="mt-2 text-2xl font-bold text-white">
+              <div className="mt-2 text-2xl sm:text-3xl font-extrabold tracking-tight tabular-nums text-white">
                 {resumo?.total_pedidos ? resumo.total_pedidos.toLocaleString("pt-BR") : "0"}
               </div>
               <div className="mt-2 pt-2 border-t border-slate-800/60 flex justify-between text-[11px] text-slate-400">
@@ -223,12 +223,12 @@ export default function SLAOperacionalPage() {
             </div>
 
             {/* Circuito Fechado / Concluídos */}
-            <div className="p-4 rounded-2xl bg-gradient-to-b from-emerald-950/20 to-slate-950 border border-emerald-900/30 shadow-lg">
+            <div className="p-4 rounded-2xl bg-gradient-to-b from-emerald-950/30 to-slate-950/90 backdrop-blur-md border border-emerald-500/20 shadow-xl shadow-black/20 hover:border-emerald-500/40 transition-all duration-300">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-emerald-400 uppercase tracking-wider">Circuito Fechado</span>
                 <CheckCircle2 className="w-5 h-5 text-emerald-400" />
               </div>
-              <div className="mt-2 text-2xl font-bold text-white">
+              <div className="mt-2 text-2xl sm:text-3xl font-extrabold tracking-tight tabular-nums text-white">
                 {resumo?.circuito_fechado ? resumo.circuito_fechado.toLocaleString("pt-BR") : "0"}
               </div>
               <div className="mt-2 pt-2 border-t border-slate-800/60 text-[11px] text-emerald-400/80">
@@ -237,12 +237,12 @@ export default function SLAOperacionalPage() {
             </div>
 
             {/* Backlog Represado nos MDs */}
-            <div className="p-4 rounded-2xl bg-gradient-to-b from-amber-950/20 to-slate-950 border border-amber-900/30 shadow-lg">
+            <div className="p-4 rounded-2xl bg-gradient-to-b from-amber-950/30 to-slate-950/90 backdrop-blur-md border border-amber-500/20 shadow-xl shadow-black/20 hover:border-amber-500/40 transition-all duration-300">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-amber-400 uppercase tracking-wider">Backlog nos MDs</span>
                 <AlertTriangle className="w-5 h-5 text-amber-400" />
               </div>
-              <div className="mt-2 text-2xl font-bold text-white">
+              <div className="mt-2 text-2xl sm:text-3xl font-extrabold tracking-tight tabular-nums text-white">
                 {resumo?.backlog_md ? resumo.backlog_md.toLocaleString("pt-BR") : "0"}
               </div>
               <div className="mt-2 pt-2 border-t border-slate-800/60 text-[11px] text-amber-400/80">
@@ -251,12 +251,12 @@ export default function SLAOperacionalPage() {
             </div>
 
             {/* Anomalias Físicas Detectadas */}
-            <div className="p-4 rounded-2xl bg-gradient-to-b from-rose-950/20 to-slate-950 border border-rose-900/30 shadow-lg">
+            <div className="p-4 rounded-2xl bg-gradient-to-b from-rose-950/30 to-slate-950/90 backdrop-blur-md border border-rose-500/20 shadow-xl shadow-black/20 hover:border-rose-500/40 transition-all duration-300">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-rose-400 uppercase tracking-wider">Anomalias nos MDs</span>
                 <ShieldAlert className="w-5 h-5 text-rose-400" />
               </div>
-              <div className="mt-2 text-2xl font-bold text-white">
+              <div className="mt-2 text-2xl sm:text-3xl font-extrabold tracking-tight tabular-nums text-white">
                 {anomalias.length}
               </div>
               <div className="mt-2 pt-2 border-t border-slate-800/60 text-[11px] text-rose-400/80">

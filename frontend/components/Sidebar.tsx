@@ -11,7 +11,8 @@ import {
   Users, 
   Package, 
   Settings, 
-  Shield, 
+  Shield,
+  ShieldAlert, 
   Activity, 
   LogOut,
   Map,
@@ -83,6 +84,7 @@ export default function Sidebar() {
       title: "Operação & Coleta",
       items: [
         { name: "Central de Coletas", path: "/", icon: Truck, roleRequired: "Guest" },
+        { name: "SLA & Anomalias", path: "/sla", icon: ShieldAlert, roleRequired: "Guest" },
         { name: "No Dia (Tempo Real)", path: "/no-dia", icon: Activity, roleRequired: "Guest" },
         { name: "D2D SP", path: "/d2d-sp", icon: Route, roleRequired: "Guest" },
         { name: "Saturação de Rotas", path: "/saturacao-rotas", icon: Gauge, roleRequired: "Guest" },
