@@ -1,5 +1,5 @@
-import Sidebar from "@/components/Sidebar";
 "use client";
+import Sidebar from "@/components/Sidebar";
 
 import React, { useEffect, useState } from "react";
 import { 

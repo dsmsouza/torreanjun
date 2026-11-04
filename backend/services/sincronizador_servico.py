@@ -21,8 +21,8 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-BASE_DIR = Path(r"C:\ANJUN")
-BACKEND_DIR = BASE_DIR / "backend"
+BASE_DIR = Path(os.environ.get("ANJUN_BASE_DIR", Path(__file__).resolve().parent.parent.parent))
+BACKEND_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "Banco de Dados" / "torre_anjun.db"
 CONFIG_PATH = BACKEND_DIR / "services" / "anjun_api_config.json"
 

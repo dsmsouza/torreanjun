@@ -2,8 +2,13 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# Absolute database path for SQLite to prevent path resolution issues
-DB_PATH = r"C:\ANJUN\Banco de Dados\torre_anjun.db"
+from pathlib import Path
+
+# Database path resolution: dynamically resolves relative to repository or environment
+BASE_DIR = Path(os.environ.get("ANJUN_BASE_DIR", Path(__file__).resolve().parent.parent.parent))
+DEFAULT_DB_PATH = BASE_DIR / "Banco de Dados" / "torre_anjun.db"
+DEFAULT_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+DB_PATH = str(DEFAULT_DB_PATH)
 DATABASE_URL_ENV = os.getenv("DATABASE_URL")
 
 if DATABASE_URL_ENV:

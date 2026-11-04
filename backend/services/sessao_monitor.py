@@ -14,8 +14,8 @@ import requests
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-BASE_DIR = Path(r"C:\ANJUN")
-BACKEND_DIR = BASE_DIR / "backend"
+BASE_DIR = Path(os.environ.get("ANJUN_BASE_DIR", Path(__file__).resolve().parent.parent.parent))
+BACKEND_DIR = Path(__file__).resolve().parent.parent
 CONFIG_PATH = BACKEND_DIR / "services" / "anjun_api_config.json"
 AUTH_FILE = BACKEND_DIR / "telegram_bot" / "authorized_users.json"
 LOCAL_TELEGRAM_CFG = BACKEND_DIR / "telegram_config.json"
