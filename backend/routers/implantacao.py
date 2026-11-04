@@ -361,12 +361,12 @@ def identificar_tipo_ponto(iata_code: str, nome: str = "", overrides_dict: Optio
                 "operacao": "Recepção / Pickup / Transferência",
                 "manual": True
             }
-        elif custom_tipo in ("PONTO_APOIO", "PONTO DE APOIO", "PONTO DE APOIO / BASE"):
+        elif custom_tipo in ("PA", "PONTO AVANÇADO", "PONTO AVANCADO", "PONTO_AVANCADO", "PONTO_APOIO", "PONTO DE APOIO", "PONTO DE APOIO / BASE"):
             return {
-                "tipo": "PONTO_APOIO",
-                "tipo_label": "Ponto de Apoio ANJUN",
+                "tipo": "PA",
+                "tipo_label": "Ponto Avançado (PA / Ship-from-Store)",
                 "badge_color": "amber",
-                "operacao": "Base de Apoio / Consolidação",
+                "operacao": "Coleta Dedicada / Varejo Corporativo",
                 "manual": True
             }
         elif custom_tipo in ("PONTO_REDE", "PONTO DE REDE"):
@@ -386,26 +386,30 @@ def identificar_tipo_ponto(iata_code: str, nome: str = "", overrides_dict: Optio
                 "manual": True
             }
 
-    # 2. Detecção automática por nomenclatura
-    if "-PA" in code or "-RR-" in code or "APOIO" in code or "APOIO" in n:
+    # 2. PAs (Pontos Avançados de Varejo / Ship-from-Store: Renner, Camicado, Youcom, C&A, Ri Happy, etc.)
+    if (
+        "-PA" in code 
+        or code.startswith("PA-") 
+        or "SP-R-PA" in code 
+        or "CAMOD" in code 
+        or "RENNER" in code 
+        or "YOUCOM" in code 
+        or "C&A" in code 
+        or "RIHAPPY" in code 
+        or "SHOPPING" in n
+        or "APOIO" in code 
+        or "APOIO" in n
+        or "-RR-" in code
+    ):
         return {
-            "tipo": "PONTO_APOIO",
-            "tipo_label": "Ponto de Apoio ANJUN",
+            "tipo": "PA",
+            "tipo_label": "Ponto Avançado (PA / Ship-from-Store)",
             "badge_color": "amber",
-            "operacao": "Base de Apoio / Consolidação",
+            "operacao": "Coleta Dedicada / Varejo Corporativo",
             "manual": False
         }
 
-    if "-PR" in code or "REDE" in code or "REDE" in n or bool(re.search(r"-[RDFA]\d{2,4}$|-[RDFA][A-Z0-9]{2,4}$", code)):
-        return {
-            "tipo": "PONTO_REDE",
-            "tipo_label": "Ponto de Rede Parceiro",
-            "badge_color": "blue",
-            "operacao": "Ponto de Rede / Coleta",
-            "manual": False
-        }
-
-    # HUB estrito: somente se contiver explicitamente -H, HUB, GLP ou CD, ou formato novo UF-DD
+    # 3. HUB estrito: WR-GLP-01 (Guarulhos), -H, HUB-, SP-10, SP-12, MG-38, etc.
     if (
         re.search(r"-[ZWA]-H|HUB-|-H\d{2,4}$|-H0|-H1|-H2|-H3", code)
         or code.startswith("HUB")
@@ -422,7 +426,17 @@ def identificar_tipo_ponto(iata_code: str, nome: str = "", overrides_dict: Optio
             "manual": False
         }
 
-    # Todo o restante na malha de coleta é Minidrop (MD) por padrão
+    # 4. Ponto de Rede Parceiro
+    if "-PR" in code or "REDE" in code or "REDE" in n or bool(re.search(r"-[RDFA]\d{2,4}$|-[RDFA][A-Z0-9]{2,4}$", code)):
+        return {
+            "tipo": "PONTO_REDE",
+            "tipo_label": "Ponto de Rede Parceiro",
+            "badge_color": "blue",
+            "operacao": "Ponto de Rede / Coleta",
+            "manual": False
+        }
+
+    # 5. Todo o restante na malha de coleta é Minidrop (MD) por padrão
     return {
         "tipo": "MD",
         "tipo_label": "Minidrop Parceiro (MD)",
@@ -473,31 +487,57 @@ def get_cockpit_d1(dia: Optional[str] = None, db: Session = Depends(get_db)):
     where_base = "WHERE 1=1" if is_modo_geral else "WHERE dia_base = :dia"
     params_base = {} if is_modo_geral else {"dia": dia_selecionado}
         
-    # 1.1 Coletar coordenadas de pontos cadastrados (pontos_coleta, malha_coordenadas, mapa_pontos)
+    # 1.1 Coletar coordenadas de pontos cadastrados (malha_coordenadas, pontos_coleta, mapa_pontos)
     coords_dict: dict = {}
-    for table_name in ['pontos_coleta', 'malha_coordenadas', 'mapa_pontos']:
+    try:
+        q_mc = text("""
+            SELECT 
+                UPPER(TRIM(md_codigo)), 
+                nome_ponto, 
+                latitude, 
+                longitude, 
+                cidade, 
+                estado, 
+                COALESCE(funcionando, 'ATIVADO') as funcionando,
+                cep,
+                endereco
+            FROM malha_coordenadas 
+            WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        """)
+        for r in db.execute(q_mc).fetchall():
+            if r[0]:
+                coords_dict[str(r[0]).strip().upper()] = {
+                    "lat": float(r[2]),
+                    "lng": float(r[3]),
+                    "nome": r[1] or r[0],
+                    "cidade": r[4] or "",
+                    "estado": r[5] or "",
+                    "funcionando": str(r[6]).strip().upper(),
+                    "cep": r[7] or "",
+                    "endereco": r[8] or ""
+                }
+    except Exception as e:
+        print("[ERRO malha_coordenadas]", e)
+
+    for table_name in ['pontos_coleta', 'mapa_pontos']:
         try:
             if table_name == 'pontos_coleta':
                 q = text("SELECT iata, collection_point_name, latitude, longitude, cidade, estado FROM pontos_coleta WHERE latitude IS NOT NULL AND longitude IS NOT NULL")
-                for r in db.execute(q).fetchall():
-                    if r[0]:
-                        coords_dict[str(r[0]).strip().upper()] = {
-                            "lat": float(r[2]), "lng": float(r[3]), "nome": r[1] or r[0], "cidade": r[4], "estado": r[5]
-                        }
-            elif table_name == 'malha_coordenadas':
-                q = text("SELECT md_codigo, nome_ponto, latitude, longitude FROM malha_coordenadas WHERE latitude IS NOT NULL AND longitude IS NOT NULL")
-                for r in db.execute(q).fetchall():
-                    if r[0] and str(r[0]).strip().upper() not in coords_dict:
-                        coords_dict[str(r[0]).strip().upper()] = {
-                            "lat": float(r[2]), "lng": float(r[3]), "nome": r[1] or r[0], "cidade": "", "estado": ""
-                        }
-            elif table_name == 'mapa_pontos':
+            else:
                 q = text("SELECT iata, nome, latitude, longitude, cidade, estado FROM mapa_pontos WHERE latitude IS NOT NULL AND longitude IS NOT NULL")
-                for r in db.execute(q).fetchall():
-                    if r[0] and str(r[0]).strip().upper() not in coords_dict:
-                        coords_dict[str(r[0]).strip().upper()] = {
-                            "lat": float(r[2]), "lng": float(r[3]), "nome": r[1] or r[0], "cidade": r[4], "estado": r[5]
-                        }
+            for r in db.execute(q).fetchall():
+                c_up = str(r[0]).strip().upper() if r[0] else ""
+                if c_up and c_up not in coords_dict:
+                    coords_dict[c_up] = {
+                        "lat": float(r[2]),
+                        "lng": float(r[3]),
+                        "nome": r[1] or r[0],
+                        "cidade": r[4] or "",
+                        "estado": r[5] or "",
+                        "funcionando": "ATIVADO",
+                        "cep": "",
+                        "endereco": ""
+                    }
         except Exception:
             pass
 
@@ -511,11 +551,14 @@ def get_cockpit_d1(dia: Optional[str] = None, db: Session = Depends(get_db)):
     """))
     db.commit()
     overrides_dict = {}
+    ativo_mapping_dict = {}
     try:
-        rows_md_tipo = db.execute(text("SELECT UPPER(TRIM(md_codigo)), UPPER(TRIM(tipo_ponto)) FROM md_mapping WHERE md_codigo IS NOT NULL AND tipo_ponto IS NOT NULL")).fetchall()
-        for r_c, r_t in rows_md_tipo:
-            if r_c and r_t in ("HUB", "MINIDROP", "PONTO DE APOIO", "PONTO DE REDE", "PONTO_APOIO", "PONTO_REDE"):
-                overrides_dict[r_c] = r_t
+        rows_md_tipo = db.execute(text("SELECT UPPER(TRIM(md_codigo)), UPPER(TRIM(COALESCE(tipo_ponto, ''))), COALESCE(ativo, 1) FROM md_mapping WHERE md_codigo IS NOT NULL")).fetchall()
+        for r_c, r_t, r_at in rows_md_tipo:
+            if r_c:
+                ativo_mapping_dict[r_c] = int(r_at)
+                if r_t in ("HUB", "MINIDROP", "PA", "PONTO AVANÇADO", "PONTO AVANCADO", "PONTO_AVANCADO", "PONTO DE APOIO", "PONTO DE REDE", "PONTO_APOIO", "PONTO_REDE"):
+                    overrides_dict[r_c] = r_t
     except Exception:
         pass
     overrides_rows = db.execute(text("SELECT UPPER(TRIM(ponto_codigo)), UPPER(TRIM(tipo)) FROM ponto_classificacao_override")).fetchall()
@@ -633,19 +676,17 @@ def get_cockpit_d1(dia: Optional[str] = None, db: Session = Depends(get_db)):
             "taxa_coleta": round((c_coletados / max(c_vol, 1) * 100), 1)
         })
         
-    # MDs e HUBs breakdown
+    # MDs, PAs e HUBs breakdown - Agrupado exclusivamente por ponto físico para não duplicar cidades estrangeiras
     md_rows = db.execute(text(f"""
         SELECT 
             ponto_colecao,
-            COALESCE(cidade, '') as cidade,
-            COALESCE(estado, '') as estado,
             SUM(total_pedidos) as volume,
             COUNT(DISTINCT merchant_nome) as qtd_sellers,
             SUM(CASE WHEN LOWER(status_pedido) IN ('circuito fechado', 'carregamento', 'descarregamento') THEN total_pedidos ELSE 0 END) as coletados,
             SUM(CASE WHEN LOWER(status_pedido) IN ('coleta', 'coletado', 'saco selado', 'foi assinado') THEN total_pedidos ELSE 0 END) as backlog
         FROM criacao_pedidos_historico
         WHERE {'1=1' if is_modo_geral else 'dia_base = :dia'} AND ponto_colecao IS NOT NULL AND trim(ponto_colecao) != ''
-        GROUP BY ponto_colecao, cidade, estado
+        GROUP BY ponto_colecao
         ORDER BY volume DESC
     """), params_base).fetchall()
     
@@ -653,56 +694,79 @@ def get_cockpit_d1(dia: Optional[str] = None, db: Session = Depends(get_db)):
     mapa_pontos_plotaveis = []
     pontos_vistos_mapa = set()
     total_mds_count = 0
+    total_pas_count = 0
     total_hubs_count = 0
-    total_apoio_count = 0
     total_rede_count = 0
 
     for m in md_rows:
-        ponto_code = m[0].strip()
-        pontos_vistos_mapa.add(ponto_code.upper())
-        m_vol = int(m[3] or 0)
-        m_coletados = int(m[5] or 0)
-        m_backlog = int(m[6] or 0)
+        ponto_code = m[0].strip().upper()
+        pontos_vistos_mapa.add(ponto_code)
+        m_vol = int(m[1] or 0)
+        m_sellers = int(m[2] or 0)
+        m_coletados = int(m[3] or 0)
+        m_backlog = int(m[4] or 0)
         m_taxa = round((m_coletados / max(m_vol, 1) * 100), 1)
         
-        coord = coords_dict.get(ponto_code.upper())
+        coord = coords_dict.get(ponto_code)
         lat = coord["lat"] if coord else None
         lng = coord["lng"] if coord else None
         nome_display = coord["nome"] if coord and coord["nome"] else ponto_code
+        cid = coord["cidade"] if coord and coord["cidade"] else ""
+        uf = coord["estado"] if coord and coord["estado"] else ""
 
         info_tipo = identificar_tipo_ponto(ponto_code, nome=nome_display, overrides_dict=overrides_dict)
-        if info_tipo["tipo"] == "HUB":
+        t_tipo = info_tipo["tipo"]
+        if t_tipo == "HUB":
             total_hubs_count += 1
-        elif info_tipo["tipo"] == "PONTO_APOIO":
-            total_apoio_count += 1
-        elif info_tipo["tipo"] == "PONTO_REDE":
+        elif t_tipo == "PA":
+            total_pas_count += 1
+        elif t_tipo == "PONTO_REDE":
             total_rede_count += 1
         else:
             total_mds_count += 1
         
+        # Status de Cadastro (Ativo vs Inativo/Desativado)
+        is_desativado = bool(
+            (coord and coord.get("funcionando") == "DESATIVADO") or 
+            ativo_mapping_dict.get(ponto_code) == 0 or
+            overrides_dict.get(ponto_code) in ("INATIVO", "EXCLUIDO", "DESATIVADO")
+        )
+        status_cadastro = "INATIVO" if is_desativado else "ATIVO"
+        status_operacao = "COM_VOLUME" if m_vol > 0 else "SEM_VOLUME"
+
+        # Alerta de Backlog Crítico / Atenção
+        alerta_backlog = bool(m_vol > 0 and (m_backlog >= 30 or (m_taxa < 40 and m_backlog > 0)))
+        grau_backlog = "CRITICO" if m_backlog >= 100 else ("ALERTA" if m_backlog >= 30 else "NORMAL")
+
         item_md = {
             "ponto_colecao": ponto_code,
             "nome_display": nome_display,
-            "cidade": m[1] or (coord["cidade"] if coord else ""),
-            "estado": m[2] or (coord["estado"] if coord else ""),
+            "cidade": cid,
+            "estado": uf,
             "volume": m_vol,
-            "qtd_sellers": int(m[4] or 0),
+            "qtd_sellers": m_sellers,
             "coletados": m_coletados,
             "backlog": m_backlog,
             "taxa_coleta": m_taxa,
-            "tipo_ponto": info_tipo["tipo"],
+            "tipo_ponto": t_tipo,
             "tipo_label": info_tipo["tipo_label"],
             "operacao": info_tipo["operacao"],
             "manual_override": info_tipo.get("manual", False),
+            "status_cadastro": status_cadastro,
+            "status_operacao": status_operacao,
+            "alerta_backlog": alerta_backlog,
+            "grau_backlog": grau_backlog,
             "latitude": lat,
-            "longitude": lng
+            "longitude": lng,
+            "cep": coord.get("cep") if coord else "",
+            "endereco": coord.get("endereco") if coord else ""
         }
         mds_breakdown.append(item_md)
         
         if lat and lng:
             mapa_pontos_plotaveis.append(item_md)
 
-    # Incluir também unidades cadastradas com coordenadas em malha_coordenadas / md_mapping que tiveram 0 pacotes no dia
+    # Incluir também unidades cadastradas com coordenadas que tiveram 0 pacotes no dia
     for pt_upper, c_info in coords_dict.items():
         if pt_upper not in pontos_vistos_mapa and c_info.get("lat") and c_info.get("lng"):
             if "TFK" in pt_upper or "ANJUN" in pt_upper:
@@ -710,6 +774,14 @@ def get_cockpit_d1(dia: Optional[str] = None, db: Session = Depends(get_db)):
             pontos_vistos_mapa.add(pt_upper)
             nome_disp = c_info.get("nome") or pt_upper
             info_t = identificar_tipo_ponto(pt_upper, nome=nome_disp, overrides_dict=overrides_dict)
+            
+            is_desativado = bool(
+                c_info.get("funcionando") == "DESATIVADO" or 
+                ativo_mapping_dict.get(pt_upper) == 0 or
+                overrides_dict.get(pt_upper) in ("INATIVO", "EXCLUIDO", "DESATIVADO")
+            )
+            status_cad = "INATIVO" if is_desativado else "ATIVO"
+
             item_extra = {
                 "ponto_colecao": pt_upper,
                 "nome_display": nome_disp,
@@ -724,8 +796,14 @@ def get_cockpit_d1(dia: Optional[str] = None, db: Session = Depends(get_db)):
                 "tipo_label": info_t["tipo_label"],
                 "operacao": info_t["operacao"],
                 "manual_override": info_t.get("manual", False),
+                "status_cadastro": status_cad,
+                "status_operacao": "SEM_VOLUME",
+                "alerta_backlog": False,
+                "grau_backlog": "NORMAL",
                 "latitude": c_info["lat"],
-                "longitude": c_info["lng"]
+                "longitude": c_info["lng"],
+                "cep": c_info.get("cep") or "",
+                "endereco": c_info.get("endereco") or ""
             }
             mds_breakdown.append(item_extra)
             mapa_pontos_plotaveis.append(item_extra)

@@ -2132,12 +2132,18 @@ export interface CockpitD1MD {
   coletados: number;
   backlog: number;
   taxa_coleta: number;
-  tipo_ponto: "MD" | "HUB" | "PONTO_APOIO" | "PONTO_REDE";
+  tipo_ponto: "MD" | "HUB" | "PA" | "PONTO_APOIO" | "PONTO_REDE";
   tipo_label: string;
   operacao: string;
   manual_override?: boolean;
   latitude?: number | null;
   longitude?: number | null;
+  status_cadastro?: "ATIVO" | "INATIVO";
+  status_operacao?: "COM_VOLUME" | "SEM_VOLUME";
+  alerta_backlog?: boolean;
+  grau_backlog?: "CRITICO" | "ALERTA" | "NORMAL";
+  cep?: string;
+  endereco?: string;
 }
 
 export interface CockpitD1Seller {

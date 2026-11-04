@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { MapContainer, TileLayer, CircleMarker, Marker, Tooltip, Popup, Polyline, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { CockpitD1MD, CockpitD1SellerMapa, geocodificarEndereco } from "@/lib/api";
+import { CockpitD1MD, CockpitD1SellerMapa } from "@/lib/api";
 import { 
   Store, 
   Building2, 
@@ -12,14 +12,15 @@ import {
   CheckCircle2, 
   Clock, 
   MapPin, 
-  ZoomIn, 
   ShoppingBag, 
   GitFork, 
-  Search, 
   X, 
-  Loader2,
-  Navigation,
-  Compass
+  Maximize2,
+  AlertTriangle,
+  Compass,
+  Sparkles,
+  ExternalLink,
+  Ban
 } from "lucide-react";
 
 export interface SearchedLocation {
@@ -55,14 +56,13 @@ interface CockpitMapProps {
   height?: string;
   selectedPonto?: CockpitD1MD | null;
   onSelectPonto?: (p: CockpitD1MD) => void;
-  filtroTipo?: "TODOS" | "MD" | "HUB" | "PONTO_APOIO" | "PONTO_REDE";
-  onFiltroTipoChange?: (tipo: "TODOS" | "MD" | "HUB" | "PONTO_APOIO" | "PONTO_REDE") => void;
   searchedLocation?: SearchedLocation | null;
   onClearSearchedLocation?: () => void;
   onConsultarViabilidade?: (cidade: string, estado?: string) => void;
+  modoVisaoLabel?: string;
+  modoVisaoCount?: number;
 }
 
-// Custom Google Maps Red Pin Icon generator
 function createGoogleMapsPinIcon() {
   if (typeof window === "undefined") return null;
   return L.divIcon({
@@ -116,7 +116,7 @@ function MapController({
   useEffect(() => {
     if (!searchedLocation && !selectedPonto && pontosValidos.length > 0) {
       try {
-        const bounds = pontosValidos.map((p) => [p.latitude!, p.longitude!] as [number, number]);
+        const bounds = pontosValidos.slice(0, 300).map((p) => [p.latitude!, p.longitude!] as [number, number]);
         map.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
       } catch (e) {
         console.error("Erro ao ajustar bounds do mapa:", e);
@@ -130,328 +130,157 @@ function MapController({
 export default function CockpitMap({
   pontos,
   sellers = [],
-  height = "620px",
+  height = "650px",
   selectedPonto,
   onSelectPonto,
-  filtroTipo: propFiltroTipo,
-  onFiltroTipoChange,
-  searchedLocation: propSearchedLocation,
+  searchedLocation,
   onClearSearchedLocation,
   onConsultarViabilidade,
+  modoVisaoLabel = "Operação do Dia",
+  modoVisaoCount,
 }: CockpitMapProps) {
-  const [internalFiltro, setInternalFiltro] = useState<"TODOS" | "MD" | "HUB" | "PONTO_APOIO" | "PONTO_REDE">("TODOS");
-  const [mostrarSellers, setMostrarSellers] = useState<boolean>(true);
+  const [mostrarSellers, setMostrarSellers] = useState<boolean>(false);
   const [selectedSeller, setSelectedSeller] = useState<CockpitD1SellerMapa | null>(null);
+  const [mapStyle, setMapStyle] = useState<"esri_dark" | "osm" | "esri_sat">("esri_dark");
 
-  // Address & City Search State (Google Maps Pin feature)
-  const [enderecoBusca, setEnderecoBusca] = useState("");
-  const [loadingBusca, setLoadingBusca] = useState(false);
-  const [erroBusca, setErroBusca] = useState<string | null>(null);
-  const [internalSearchedLocation, setInternalSearchedLocation] = useState<SearchedLocation | null>(null);
-
-  const activeLocation = propSearchedLocation !== undefined ? propSearchedLocation : internalSearchedLocation;
   const googleMapsRedPin = useMemo(() => createGoogleMapsPinIcon(), []);
 
-  const handleClearLocation = () => {
-    setInternalSearchedLocation(null);
-    setEnderecoBusca("");
-    setErroBusca(null);
-    if (onClearSearchedLocation) onClearSearchedLocation();
-  };
+  const pontosValidos = useMemo(() => {
+    return pontos.filter(
+      (p) => p.latitude !== null && p.latitude !== undefined && p.longitude !== null && p.longitude !== undefined
+    );
+  }, [pontos]);
 
-  const handleBuscarEndereco = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!enderecoBusca.trim()) return;
-    setLoadingBusca(true);
-    setErroBusca(null);
-    try {
-      const res = await geocodificarEndereco(enderecoBusca.trim());
-      if (res.encontrado && res.latitude && res.longitude) {
-        const loc: SearchedLocation = {
-          latitude: res.latitude,
-          longitude: res.longitude,
-          display_name: res.display_name || enderecoBusca,
-          tipo: res.tipo || "endereco",
-          cidade: res.cidade,
-          estado: res.estado,
-          hub_mais_proximo: res.hub_mais_proximo,
-          md_mais_proximo: res.md_mais_proximo,
-        };
-        setInternalSearchedLocation(loc);
-      } else {
-        setErroBusca(res.mensagem || "Endereço ou município não localizado.");
-      }
-    } catch (err: any) {
-      setErroBusca(err?.message || "Erro ao consultar endereço.");
-    } finally {
-      setLoadingBusca(false);
-    }
-  };
-
-  const tipoFiltro = propFiltroTipo !== undefined ? propFiltroTipo : internalFiltro;
-
-  const setTipoFiltro = (novo: "TODOS" | "MD" | "HUB" | "PONTO_APOIO" | "PONTO_REDE") => {
-    if (onFiltroTipoChange) onFiltroTipoChange(novo);
-    setInternalFiltro(novo);
-  };
-
-  const pontosValidos = pontos.filter(
-    (p) => p.latitude !== null && p.latitude !== undefined && p.longitude !== null && p.longitude !== undefined
-  );
-
-  const sellersValidos = sellers.filter(
-    (s) => s.latitude !== null && s.latitude !== undefined && s.longitude !== null && s.longitude !== undefined
-  );
-
-  const pontosFiltrados = pontosValidos.filter((p) => {
-    if (tipoFiltro === "TODOS") return true;
-    return p.tipo_ponto === tipoFiltro;
-  });
-
-  const totalMDs = pontosValidos.filter((p) => p.tipo_ponto === "MD").length;
-  const totalHUBs = pontosValidos.filter((p) => p.tipo_ponto === "HUB").length;
-  const totalApoio = pontosValidos.filter((p) => p.tipo_ponto === "PONTO_APOIO").length;
-  const totalRede = pontosValidos.filter((p) => p.tipo_ponto === "PONTO_REDE").length;
-  const [mapStyle, setMapStyle] = useState<"osm" | "esri_dark" | "esri_sat">("osm");
+  const sellersValidos = useMemo(() => {
+    return sellers.filter(
+      (s) => s.latitude !== null && s.latitude !== undefined && s.longitude !== null && s.longitude !== undefined
+    );
+  }, [sellers]);
 
   return (
     <div 
       style={{ height }}
-      className="relative w-full rounded-2xl overflow-hidden border border-slate-800 bg-[#090D16]"
+      className="relative w-full rounded-2xl overflow-hidden border border-slate-800 bg-[#090D16] shadow-2xl"
     >
-      {/* Top Floating Controls Bar */}
-      <div className="absolute top-4 left-4 z-[1000] flex flex-col gap-2 max-w-[calc(100%-190px)]">
-        {/* Row 1: Malha Filters & Spoke-Hub */}
-        <div className="flex flex-wrap items-center gap-2 bg-slate-900/95 backdrop-blur-md p-1.5 rounded-xl border border-slate-700/80 shadow-2xl">
-          <div className="flex items-center gap-1.5 px-2 text-xs font-bold text-white border-r border-slate-700 pr-3">
-            <MapPin className="w-4 h-4 text-blue-400" />
-            <span>Malha ({pontosFiltrados.length})</span>
+      {/* Top Floating Info & Active Location (Left) */}
+      <div className="absolute top-4 left-4 z-[1000] flex flex-col gap-2 max-w-[calc(100%-240px)] pointer-events-none">
+        <div className="flex flex-wrap items-center gap-2 pointer-events-auto">
+          <div className="flex items-center gap-2 bg-slate-900/95 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/80 shadow-xl text-xs">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="font-bold text-white">{modoVisaoLabel}:</span>
+            <span className="font-mono text-emerald-400 font-bold">
+              {(modoVisaoCount !== undefined ? modoVisaoCount : pontosValidos.length).toLocaleString("pt-BR")} pontos
+            </span>
           </div>
 
-          <button
-            onClick={() => setTipoFiltro("TODOS")}
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              tipoFiltro === "TODOS"
-                ? "bg-blue-600 text-white shadow-sm"
-                : "text-slate-400 hover:text-white hover:bg-slate-800"
-            }`}
-          >
-            Todos ({pontosValidos.length})
-          </button>
-
-          <button
-            onClick={() => setTipoFiltro("MD")}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              tipoFiltro === "MD"
-                ? "bg-emerald-600 text-white shadow-sm"
-                : "text-emerald-400 hover:bg-emerald-950/40"
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            Minidrops ({totalMDs})
-          </button>
-
-          <button
-            onClick={() => setTipoFiltro("HUB")}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              tipoFiltro === "HUB"
-                ? "bg-purple-600 text-white shadow-sm"
-                : "text-purple-400 hover:bg-purple-950/40"
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-purple-400" />
-            HUBs ANJUN ({totalHUBs})
-          </button>
-
-          <button
-            onClick={() => setTipoFiltro("PONTO_APOIO")}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              tipoFiltro === "PONTO_APOIO"
-                ? "bg-amber-600 text-white shadow-sm"
-                : "text-amber-400 hover:bg-amber-950/40"
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-amber-400" />
-            Ponto de Apoio ({totalApoio})
-          </button>
-
-          <button
-            onClick={() => setTipoFiltro("PONTO_REDE")}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              tipoFiltro === "PONTO_REDE"
-                ? "bg-blue-600 text-white shadow-sm"
-                : "text-blue-400 hover:bg-blue-950/40"
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-blue-400" />
-            Ponto de Rede ({totalRede})
-          </button>
-
-          {sellersValidos.length > 0 && (
-            <button
-              onClick={() => setMostrarSellers(!mostrarSellers)}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all border cursor-pointer ${
-                mostrarSellers
-                  ? "bg-cyan-600 text-white border-cyan-400/50 shadow-md shadow-cyan-500/20"
-                  : "bg-slate-800/80 text-cyan-400 border-cyan-500/30 hover:bg-slate-800"
-              }`}
-            >
-              <GitFork className="w-3.5 h-3.5" />
-              <span>Spoke-Hub Sellers ({sellersValidos.length})</span>
-            </button>
-          )}
-        </div>
-
-        {/* Row 2: Google Maps Search Bar (Endereço, Rua, CEP ou Cidade) */}
-        <div className="flex flex-wrap items-center gap-2">
-          <form
-            onSubmit={handleBuscarEndereco}
-            className="flex items-center gap-1.5 bg-slate-900/95 backdrop-blur-md p-1.5 rounded-xl border border-slate-700/80 shadow-2xl"
-          >
-            <div className="relative flex items-center">
-              <Search className="w-3.5 h-3.5 text-rose-400 absolute left-2.5 pointer-events-none" />
-              <input
-                type="text"
-                value={enderecoBusca}
-                onChange={(e) => setEnderecoBusca(e.target.value)}
-                placeholder="Pesquisar endereço, CEP ou cidade..."
-                className="w-56 sm:w-72 bg-slate-950/80 border border-slate-700/80 text-white text-xs pl-8 pr-7 py-1.5 rounded-lg focus:outline-none focus:ring-1 focus:ring-rose-500 placeholder-slate-500 transition-all"
-              />
-              {enderecoBusca && (
+          {searchedLocation && (
+            <div className="flex items-center gap-2 bg-rose-950/95 border border-rose-500/60 text-rose-200 px-3 py-1.5 rounded-xl shadow-xl backdrop-blur-md text-xs animate-in fade-in">
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+              <span className="font-bold truncate max-w-[200px] sm:max-w-xs" title={searchedLocation.display_name}>
+                📍 {searchedLocation.display_name}
+              </span>
+              {searchedLocation.cidade && onConsultarViabilidade && (
                 <button
                   type="button"
-                  onClick={() => setEnderecoBusca("")}
-                  className="absolute right-2 text-slate-400 hover:text-white"
+                  onClick={() => onConsultarViabilidade(searchedLocation.cidade!, searchedLocation.estado)}
+                  className="px-2 py-0.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded text-[10px] flex items-center gap-1 transition-all cursor-pointer"
                 >
-                  <X className="w-3 h-3" />
+                  <Sparkles className="w-3 h-3" />
+                  <span>Viabilidade</span>
+                </button>
+              )}
+              {onClearSearchedLocation && (
+                <button
+                  type="button"
+                  onClick={onClearSearchedLocation}
+                  className="hover:text-white p-0.5 rounded cursor-pointer"
+                  title="Remover ponto de busca"
+                >
+                  <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
-
-            <button
-              type="submit"
-              disabled={loadingBusca || !enderecoBusca.trim()}
-              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 cursor-pointer shadow-sm"
-              title="Localizar endereço/cidade com Ponto Vermelho estilo Google Maps"
-            >
-              {loadingBusca ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <>
-                  <MapPin className="w-3.5 h-3.5" />
-                  <span>Localizar</span>
-                </>
-              )}
-            </button>
-          </form>
-
-          {/* Active Searched Location Red Chip */}
-          {activeLocation && (
-            <div className="flex items-center gap-2 bg-rose-950/90 border border-rose-500/50 text-rose-200 px-3 py-1.5 rounded-xl shadow-lg backdrop-blur-md text-xs animate-in fade-in">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping inline-block" />
-              <span className="font-bold text-white truncate max-w-[220px]">
-                📍 {activeLocation.display_name.split(",")[0]}
-              </span>
-              {activeLocation.hub_mais_proximo && (
-                <span className="hidden sm:inline text-[11px] text-rose-300 border-l border-rose-800 pl-2">
-                  HUB: ~{activeLocation.hub_mais_proximo.distancia_km} km
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={handleClearLocation}
-                className="text-rose-400 hover:text-white transition-colors cursor-pointer ml-1"
-                title="Remover ponto vermelho do mapa"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-
-          {erroBusca && (
-            <div className="flex items-center gap-1.5 bg-amber-950/90 border border-amber-500/50 text-amber-200 px-2.5 py-1 rounded-xl shadow-lg text-[11px] animate-in fade-in">
-              <span>{erroBusca}</span>
-              <button onClick={() => setErroBusca(null)} className="text-amber-400 hover:text-white">
-                <X className="w-3 h-3" />
-              </button>
-            </div>
           )}
         </div>
       </div>
 
-      {/* Top Right: Map Tile Layer Style Switcher */}
-      <div className="absolute top-4 right-4 z-[1000] flex items-center gap-1 bg-slate-900/95 backdrop-blur-md p-1.5 rounded-xl border border-slate-700/80 shadow-2xl">
-        <button
-          onClick={() => setMapStyle("osm")}
-          className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-            mapStyle === "osm"
-              ? "bg-emerald-600 text-white shadow"
-              : "text-slate-400 hover:text-white hover:bg-slate-800"
-          }`}
-          title="Mapa padrão com ruas e avenidas detalhadas"
-        >
-          🗺️ Ruas (OSM)
-        </button>
-        <button
-          onClick={() => setMapStyle("esri_dark")}
-          className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-            mapStyle === "esri_dark"
-              ? "bg-blue-600 text-white shadow"
-              : "text-slate-400 hover:text-white hover:bg-slate-800"
-          }`}
-          title="Tema escuro limpo (Esri Dark Gray)"
-        >
-          🌙 Dark
-        </button>
-        <button
-          onClick={() => setMapStyle("esri_sat")}
-          className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-            mapStyle === "esri_sat"
-              ? "bg-purple-600 text-white shadow"
-              : "text-slate-400 hover:text-white hover:bg-slate-800"
-          }`}
-          title="Visão aérea por satélite (Esri World Imagery)"
-        >
-          🛰️ Satélite
-        </button>
+      {/* Top Floating Controls (Right) */}
+      <div className="absolute top-4 right-4 z-[1000] flex items-center gap-2 pointer-events-auto">
+        {sellersValidos.length > 0 && (
+          <button
+            onClick={() => setMostrarSellers(!mostrarSellers)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all border backdrop-blur-md shadow-xl cursor-pointer ${
+              mostrarSellers
+                ? "bg-cyan-600 text-white border-cyan-400/60 shadow-cyan-500/20"
+                : "bg-slate-900/90 text-cyan-400 border-slate-700/80 hover:bg-slate-800"
+            }`}
+            title="Exibir conexões dos Sellers (origem) com os pontos de triagem"
+          >
+            <GitFork className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Spoke-Hub Sellers ({sellersValidos.length})</span>
+          </button>
+        )}
+
+        {/* Map Tile Switcher */}
+        <div className="flex items-center gap-1 bg-slate-900/95 backdrop-blur-md p-1 rounded-xl border border-slate-700/80 shadow-xl">
+          <button
+            onClick={() => setMapStyle("esri_dark")}
+            className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+              mapStyle === "esri_dark" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
+            }`}
+            title="Visualização Escura Operacional"
+          >
+            Escuro
+          </button>
+          <button
+            onClick={() => setMapStyle("osm")}
+            className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+              mapStyle === "osm" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
+            }`}
+            title="Mapa Padrão de Ruas"
+          >
+            Ruas
+          </button>
+          <button
+            onClick={() => setMapStyle("esri_sat")}
+            className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+              mapStyle === "esri_sat" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
+            }`}
+            title="Visão de Satélite"
+          >
+            Satélite
+          </button>
+        </div>
       </div>
 
-      {/* Legend Bottom Floating */}
-      <div className="absolute bottom-4 right-4 z-[1000] bg-slate-900/95 backdrop-blur-md p-3 rounded-xl border border-slate-700/80 shadow-2xl space-y-1.5 text-[11px] text-slate-300">
-        <div className="font-bold text-white uppercase text-[10px] tracking-wider mb-1 flex items-center gap-1">
-          <Layers className="w-3.5 h-3.5 text-blue-400" />
-          Legenda Operacional
+      {/* Bottom Floating Legend (Right) */}
+      <div className="absolute bottom-4 right-4 z-[1000] hidden md:flex flex-col gap-1.5 bg-slate-900/95 backdrop-blur-md p-3 rounded-xl border border-slate-700/80 shadow-2xl text-[11px] pointer-events-auto">
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
+          Legenda da Malha
+        </span>
+        <div className="flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500/50" />
+          <span className="text-white font-medium">MiniDrop Parceiro (Drop-off)</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-3 h-3 rounded-full bg-emerald-500 border border-white/50" />
-          <span><strong>Minidrop Parceiro (MD)</strong> — Ponto Dropoff</span>
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-sm shadow-amber-500/50" />
+          <span className="text-white font-medium">Ponto Avançado (PA / Ship-from-Store)</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-3.5 h-3.5 rounded-full bg-purple-500 border-2 border-white" />
-          <span><strong>HUB Operacional ANJUN</strong> — Recepção Pickup</span>
+          <span className="w-2.5 h-2.5 rounded-full bg-purple-500 shadow-sm shadow-purple-500/50" />
+          <span className="text-white font-medium">HUB Central ANJUN (GLP / Transferência)</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-3 h-3 rounded-full bg-amber-500 border border-white/70" />
-          <span><strong>Ponto de Apoio ANJUN</strong> — Base de Apoio</span>
+          <span className="w-2.5 h-2.5 rounded-full bg-sky-400" />
+          <span className="text-slate-300 font-medium">Ponto de Rede Conveniada</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-3 h-3 rounded-full bg-blue-500 border border-white/70" />
-          <span><strong>Ponto de Rede Parceiro</strong> — Rede Credenciada</span>
+          <span className="w-2.5 h-2.5 rounded-full border-2 border-red-500 bg-red-500/30 animate-pulse" />
+          <span className="text-red-400 font-semibold">🚨 Alerta de Backlog Retido</span>
         </div>
-        {mostrarSellers && sellersValidos.length > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 border border-white/60 shadow-sm" />
-            <span><strong>Seller Ativo (Origem)</strong> — Conectado ao Ponto</span>
-          </div>
-        )}
-        {activeLocation && (
-          <div className="flex items-center gap-2">
-            <span className="w-3.5 h-3.5 rounded-full bg-rose-600 border-2 border-white shadow-sm" />
-            <span><strong className="text-rose-400">Ponto Pesquisado (Alvo)</strong></span>
-          </div>
-        )}
-        <div className="text-[10px] text-slate-400 pt-1 border-t border-slate-800">
-          *Linhas tracejadas ligam o Seller ao MD ou HUB de bipagem
+        <div className="flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-slate-600 border border-slate-500" />
+          <span className="text-slate-400">⛔ Inativo / Desativado</span>
         </div>
       </div>
 
@@ -463,7 +292,7 @@ export default function CockpitMap({
       >
         <MapController 
           selectedPonto={selectedPonto} 
-          searchedLocation={activeLocation}
+          searchedLocation={searchedLocation}
           pontosValidos={pontosValidos} 
         />
 
@@ -489,7 +318,7 @@ export default function CockpitMap({
           />
         )}
 
-        {/* Spoke-Hub: Conexões entre Sellers e Pontos de Coleta (MD / HUB) */}
+        {/* Spoke-Hub Sellers Lines */}
         {mostrarSellers && sellersValidos.map((s, idx) => {
           if (!s.dest_latitude || !s.dest_longitude) return null;
           const isSelected = selectedSeller?.merchant_nome === s.merchant_nome;
@@ -521,9 +350,7 @@ export default function CockpitMap({
               center={[s.latitude, s.longitude]}
               radius={isSelected ? radius + 3 : radius}
               eventHandlers={{
-                click: () => {
-                  setSelectedSeller(isSelected ? null : s);
-                },
+                click: () => setSelectedSeller(isSelected ? null : s),
               }}
               pathOptions={{
                 color: isSelected ? "#ffffff" : "#22d3ee",
@@ -546,121 +373,151 @@ export default function CockpitMap({
                   </div>
                 </div>
               </Tooltip>
-
-              <Popup>
-                <div className="p-2 min-w-[210px] font-sans text-slate-800 space-y-2">
-                  <div className="border-b pb-1.5">
-                    <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold text-white bg-cyan-600 mb-1">
-                      Seller Embarcador (Spoke)
-                    </span>
-                    <h4 className="font-bold text-sm text-slate-900 leading-tight">
-                      {s.merchant_nome}
-                    </h4>
-                    <p className="text-xs text-slate-600">
-                      {s.cidade} - {s.estado} {s.cep ? `(CEP: ${s.cep})` : ""}
-                    </p>
-                    <p className="text-[11px] text-purple-700 font-semibold mt-0.5">
-                      Canal / Cliente: {s.nome_cliente}
-                    </p>
-                  </div>
-
-                  <div className="bg-slate-100 p-2 rounded text-xs space-y-1">
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Volume Embarcado:</span>
-                      <strong className="text-slate-900 font-mono">{s.volume.toLocaleString("pt-BR")} pcts</strong>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Ponto Destino:</span>
-                      <strong className="text-blue-700 font-mono">{s.dest_nome || s.ponto_colecao}</strong>
-                    </div>
-                  </div>
-                </div>
-              </Popup>
             </CircleMarker>
           );
         })}
 
-        {/* Pontos de Coleta (Minidrops e HUBs) */}
-        {pontosFiltrados.map((p, idx) => {
+        {/* Pontos de Coleta da Malha (MD, PA, HUB, Rede) */}
+        {pontosValidos.map((p, idx) => {
           const isHub = p.tipo_ponto === "HUB";
-          const isApoio = p.tipo_ponto === "PONTO_APOIO";
+          const isPa = p.tipo_ponto === "PA";
           const isRede = p.tipo_ponto === "PONTO_REDE";
+          const isMd = !isHub && !isPa && !isRede;
           const isSelected = selectedPonto?.ponto_colecao === p.ponto_colecao;
-          const radius = isHub
-            ? Math.min(24, Math.max(10, Math.log10(p.volume + 1) * 5))
-            : Math.min(20, Math.max(7, Math.log10(p.volume + 1) * 3.5));
+          const isInactive = p.status_cadastro === "INATIVO";
+          const hasBacklogAlert = Boolean(p.alerta_backlog);
 
-          const color = isSelected
-            ? "#38bdf8"
-            : isHub
-            ? "#a855f7"
-            : isApoio
-            ? "#f59e0b"
-            : isRede
-            ? "#3b82f6"
-            : "#10b981";
-          const fillColor = isSelected
-            ? "#0284c7"
-            : isHub
-            ? "#9333ea"
-            : isApoio
-            ? "#d97706"
-            : isRede
-            ? "#2563eb"
-            : "#059669";
+          // Raio proporcional ao volume (se tiver volume)
+          let baseRadius = 6;
+          if (p.volume > 0) {
+            baseRadius = isHub 
+              ? Math.min(26, Math.max(12, Math.log10(p.volume + 1) * 5.2))
+              : isPa
+              ? Math.min(22, Math.max(9, Math.log10(p.volume + 1) * 4.2))
+              : Math.min(20, Math.max(7.5, Math.log10(p.volume + 1) * 3.8));
+          } else {
+            baseRadius = isInactive ? 4.5 : 5.5;
+          }
+
+          // Cores oficiais
+          let strokeColor = "#10b981"; // MD
+          let fillColor = "#059669";
+
+          if (isInactive) {
+            strokeColor = "#94a3b8";
+            fillColor = "#475569";
+          } else if (hasBacklogAlert) {
+            strokeColor = "#ef4444";
+            fillColor = p.grau_backlog === "CRITICO" ? "#dc2626" : "#f97316";
+          } else if (isHub) {
+            strokeColor = "#c084fc";
+            fillColor = "#9333ea";
+          } else if (isPa) {
+            strokeColor = "#fbbf24";
+            fillColor = "#d97706";
+          } else if (isRede) {
+            strokeColor = "#38bdf8";
+            fillColor = "#0284c7";
+          }
+
+          if (isSelected) {
+            strokeColor = "#ffffff";
+            fillColor = "#38bdf8";
+          }
 
           return (
             <CircleMarker
-              key={idx}
+              key={`pt-${p.ponto_colecao}-${idx}`}
               center={[p.latitude!, p.longitude!]}
-              radius={isSelected ? radius + 4 : radius}
+              radius={isSelected ? baseRadius + 4 : baseRadius}
               eventHandlers={{
                 click: () => {
                   if (onSelectPonto) onSelectPonto(p);
                 },
               }}
               pathOptions={{
-                color: color,
+                color: strokeColor,
                 fillColor: fillColor,
-                fillOpacity: isSelected ? 1 : (isHub ? 0.9 : 0.75),
-                weight: isSelected ? 3.5 : (isHub ? 2.5 : 1.5),
+                fillOpacity: isSelected ? 1 : (isInactive ? 0.45 : (isHub ? 0.92 : 0.82)),
+                weight: isSelected ? 3.5 : (hasBacklogAlert ? 3 : (isHub ? 2.5 : 1.5)),
+                dashArray: isInactive ? "3, 3" : undefined,
               }}
             >
-              <Tooltip direction="top" offset={[0, -10]} opacity={0.95}>
-                <div className="text-xs font-sans">
-                  <div className="font-bold flex items-center gap-1.5">
-                    {isHub ? <Building2 className="w-3.5 h-3.5 text-purple-400" /> : <Store className="w-3.5 h-3.5 text-emerald-400" />}
+              <Tooltip direction="top" offset={[0, -10]} opacity={0.96}>
+                <div className="text-xs font-sans p-0.5">
+                  <div className="font-bold flex items-center gap-1.5 text-white">
+                    {isInactive ? (
+                      <Ban className="w-3.5 h-3.5 text-slate-400" />
+                    ) : isHub ? (
+                      <Building2 className="w-3.5 h-3.5 text-purple-400" />
+                    ) : isPa ? (
+                      <Store className="w-3.5 h-3.5 text-amber-400" />
+                    ) : (
+                      <Store className="w-3.5 h-3.5 text-emerald-400" />
+                    )}
                     <span>{p.ponto_colecao}</span>
+                    {p.cidade && <span className="text-[10px] text-slate-300 font-normal">({p.cidade})</span>}
                   </div>
-                  <div className="text-[10px] text-slate-300">{p.tipo_label}</div>
-                  <div className="text-[10px] font-mono text-emerald-400 font-bold mt-0.5">
-                    Volume: {p.volume.toLocaleString("pt-BR")} pacotes
+                  <div className="text-[10px] text-slate-300 font-medium">
+                    {isInactive ? "⛔ Ponto Inativo / Desativado" : p.tipo_label}
                   </div>
+                  
+                  {p.volume > 0 ? (
+                    <div className="text-[11px] font-mono text-emerald-400 font-bold mt-1">
+                      {p.volume.toLocaleString("pt-BR")} pcts • Taxa: {p.taxa_coleta}%
+                    </div>
+                  ) : (
+                    <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                      Sem movimento na data
+                    </div>
+                  )}
+
+                  {hasBacklogAlert && (
+                    <div className="text-[10px] font-bold text-rose-400 flex items-center gap-1 mt-0.5 animate-pulse">
+                      <AlertTriangle className="w-3 h-3" />
+                      <span>Backlog Retido: {p.backlog.toLocaleString("pt-BR")} pacotes!</span>
+                    </div>
+                  )}
                 </div>
               </Tooltip>
 
               <Popup>
-                <div className="p-2 min-w-[220px] font-sans text-slate-800 space-y-2">
+                <div className="p-2 min-w-[240px] font-sans text-slate-900 space-y-2">
                   <div className="border-b pb-2">
-                    <span
-                      className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold text-white mb-1 ${
-                        isHub ? "bg-purple-600" : "bg-emerald-600"
-                      }`}
-                    >
-                      {p.tipo_label}
-                    </span>
-                    <h3 className="font-bold text-sm text-slate-900 leading-tight">
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded text-[10px] font-black text-white ${
+                          isInactive
+                            ? "bg-slate-600"
+                            : isHub
+                            ? "bg-purple-600"
+                            : isPa
+                            ? "bg-amber-600"
+                            : isRede
+                            ? "bg-sky-600"
+                            : "bg-emerald-600"
+                        }`}
+                      >
+                        {isInactive ? "INATIVO / EXCLUÍDO" : p.tipo_label}
+                      </span>
+                      {hasBacklogAlert && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-rose-600 text-white animate-pulse">
+                          🚨 ALERTA BACKLOG
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="font-bold text-sm text-slate-900 mt-1 leading-tight">
                       {p.nome_display || p.ponto_colecao}
                     </h3>
-                    <p className="text-[11px] text-slate-500 font-mono">IATA: {p.ponto_colecao}</p>
+                    <p className="text-[11px] text-slate-500 font-mono">Código: {p.ponto_colecao}</p>
                     <p className="text-xs text-slate-600">
-                      {p.cidade || "N/A"}{p.estado ? ` - ${p.estado}` : ""}
+                      {p.cidade || "N/A"}{p.estado ? ` - ${p.estado}` : ""} {p.cep ? `(CEP ${p.cep})` : ""}
                     </p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 text-xs pt-1">
                     <div className="bg-slate-100 p-1.5 rounded">
-                      <span className="text-[10px] text-slate-500 block">Volume Total:</span>
+                      <span className="text-[10px] text-slate-500 block">Volume do Dia:</span>
                       <strong className="text-slate-900 font-mono text-sm">{p.volume.toLocaleString("pt-BR")}</strong>
                     </div>
                     <div className="bg-slate-100 p-1.5 rounded">
@@ -676,184 +533,62 @@ export default function CockpitMap({
                     </div>
                     <div className="flex justify-between items-center text-amber-700 font-semibold">
                       <span>Backlog:</span>
-                      <span className="font-mono">{p.backlog.toLocaleString("pt-BR")}</span>
+                      <span className="font-mono font-bold text-rose-600">{p.backlog.toLocaleString("pt-BR")}</span>
                     </div>
-                    <div className="flex justify-between items-center pt-1 border-t text-slate-900 font-bold">
+                    <div className="flex justify-between items-center text-slate-700">
                       <span>Taxa de Coleta:</span>
-                      <span className="font-mono text-emerald-600">{p.taxa_coleta}%</span>
+                      <span className="font-mono font-bold">{p.taxa_coleta}%</span>
                     </div>
                   </div>
 
-                  <div className="text-[10px] text-slate-500 italic pt-1 border-t">
-                    Finalidade: {p.operacao}
-                  </div>
+                  {p.latitude && p.longitude && (
+                    <div className="pt-2 border-t mt-2">
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${p.latitude},${p.longitude}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="w-full text-center py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded text-xs flex items-center justify-center gap-1 transition-all"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>Abrir no Google Maps</span>
+                      </a>
+                    </div>
+                  )}
                 </div>
               </Popup>
             </CircleMarker>
           );
         })}
 
-        {/* Marcador do Endereço / Cidade Pesquisado (Google Maps Red Pin) */}
-        {activeLocation && activeLocation.latitude && activeLocation.longitude && (
-          <>
-            {/* Radar Pulsing Rings */}
-            <CircleMarker
-              center={[activeLocation.latitude, activeLocation.longitude]}
-              radius={30}
-              pathOptions={{
-                color: "#ef4444",
-                fillColor: "#ef4444",
-                fillOpacity: 0.12,
-                weight: 1.5,
-                dashArray: "5, 5",
-              }}
-            />
-            <CircleMarker
-              center={[activeLocation.latitude, activeLocation.longitude]}
-              radius={14}
-              pathOptions={{
-                color: "#dc2626",
-                fillColor: "#dc2626",
-                fillOpacity: 0.28,
-                weight: 2,
-              }}
-            />
-
-            {/* Linha Conectora ao HUB Mais Próximo */}
-            {activeLocation.hub_mais_proximo &&
-              activeLocation.hub_mais_proximo.latitude &&
-              activeLocation.hub_mais_proximo.longitude && (
-                <Polyline
-                  positions={[
-                    [activeLocation.latitude, activeLocation.longitude],
-                    [activeLocation.hub_mais_proximo.latitude, activeLocation.hub_mais_proximo.longitude],
-                  ]}
-                  pathOptions={{
-                    color: "#c084fc",
-                    weight: 2.5,
-                    dashArray: "6, 6",
-                    opacity: 0.85,
-                  }}
-                >
-                  <Tooltip direction="center" offset={[0, 0]} opacity={0.95}>
-                    <div className="text-xs font-mono font-bold text-purple-300 bg-slate-900/90 border border-purple-500/40 px-2 py-0.5 rounded shadow">
-                      HUB {activeLocation.hub_mais_proximo.iata}: ~{activeLocation.hub_mais_proximo.distancia_km} km
-                    </div>
-                  </Tooltip>
-                </Polyline>
-              )}
-
-            {/* Linha Conectora ao Minidrop (MD) Mais Próximo */}
-            {activeLocation.md_mais_proximo &&
-              activeLocation.md_mais_proximo.latitude &&
-              activeLocation.md_mais_proximo.longitude && (
-                <Polyline
-                  positions={[
-                    [activeLocation.latitude, activeLocation.longitude],
-                    [activeLocation.md_mais_proximo.latitude, activeLocation.md_mais_proximo.longitude],
-                  ]}
-                  pathOptions={{
-                    color: "#34d399",
-                    weight: 2,
-                    dashArray: "4, 4",
-                    opacity: 0.85,
-                  }}
-                >
-                  <Tooltip direction="center" offset={[0, 0]} opacity={0.95}>
-                    <div className="text-xs font-mono font-bold text-emerald-300 bg-slate-900/90 border border-emerald-500/40 px-2 py-0.5 rounded shadow">
-                      MD {activeLocation.md_mais_proximo.codigo}: ~{activeLocation.md_mais_proximo.distancia_km} km
-                    </div>
-                  </Tooltip>
-                </Polyline>
-              )}
-
-            {/* Google Maps Pin Icon */}
-            {googleMapsRedPin ? (
-              <Marker
-                position={[activeLocation.latitude, activeLocation.longitude]}
-                icon={googleMapsRedPin}
-                zIndexOffset={1000}
-              >
-                <Tooltip direction="top" offset={[0, -48]} permanent opacity={0.95}>
-                  <div className="font-bold text-xs text-rose-600 flex items-center gap-1 bg-white px-2 py-0.5 rounded shadow">
-                    <span className="w-2 h-2 rounded-full bg-rose-600 animate-ping inline-block" />
-                    <span>{activeLocation.display_name.split(",")[0]}</span>
+        {/* Marcador do Endereço Pesquisado (Google Maps Red Pin) */}
+        {searchedLocation && googleMapsRedPin && (
+          <Marker
+            position={[searchedLocation.latitude, searchedLocation.longitude]}
+            icon={googleMapsRedPin}
+          >
+            <Popup>
+              <div className="p-2 min-w-[240px] font-sans text-slate-900 space-y-1.5">
+                <div className="flex items-center gap-1.5 text-xs font-black text-rose-600 border-b pb-1">
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>Localização Pesquisada</span>
+                </div>
+                <p className="text-xs font-bold text-slate-900 leading-snug">
+                  {searchedLocation.display_name}
+                </p>
+                {searchedLocation.cidade && (
+                  <p className="text-[11px] text-slate-600">
+                    {searchedLocation.cidade} - {searchedLocation.estado}
+                  </p>
+                )}
+                {searchedLocation.md_mais_proximo && (
+                  <div className="bg-emerald-50 border border-emerald-200 p-1.5 rounded text-[11px] mt-1">
+                    <span className="text-emerald-800 font-bold block">MiniDrop mais próximo:</span>
+                    <span className="font-semibold">{searchedLocation.md_mais_proximo.codigo}</span> ({searchedLocation.md_mais_proximo.distancia_km} km)
                   </div>
-                </Tooltip>
-
-                <Popup>
-                  <div className="p-2 min-w-[260px] font-sans text-slate-800 space-y-2">
-                    <div className="border-b pb-2">
-                      <span className="inline-block px-2 py-0.5 rounded text-[10px] font-black text-white bg-red-600 mb-1 tracking-wider uppercase">
-                        📍 Ponto Pesquisado no Mapa
-                      </span>
-                      <h4 className="font-bold text-sm text-slate-900 leading-tight">
-                        {activeLocation.display_name}
-                      </h4>
-                      {activeLocation.cidade && (
-                        <p className="text-xs text-slate-600 mt-0.5 font-medium">
-                          {activeLocation.cidade}{activeLocation.estado ? ` - ${activeLocation.estado}` : ""}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="bg-slate-100 p-2.5 rounded-lg text-xs space-y-1.5">
-                      {activeLocation.hub_mais_proximo && (
-                        <div className="flex justify-between items-center">
-                          <span className="text-purple-700 font-bold">HUB ANJUN Mais Próximo:</span>
-                          <span className="font-mono font-bold text-purple-950">
-                            ~{activeLocation.hub_mais_proximo.distancia_km} km ({activeLocation.hub_mais_proximo.iata})
-                          </span>
-                        </div>
-                      )}
-                      {activeLocation.md_mais_proximo && (
-                        <div className="flex justify-between items-center">
-                          <span className="text-emerald-700 font-bold">Minidrop (MD) Mais Próximo:</span>
-                          <span className="font-mono font-bold text-emerald-950">
-                            ~{activeLocation.md_mais_proximo.distancia_km} km ({activeLocation.md_mais_proximo.codigo})
-                          </span>
-                        </div>
-                      )}
-                      {!activeLocation.hub_mais_proximo && !activeLocation.md_mais_proximo && (
-                        <p className="text-slate-500 italic text-[11px]">Nenhum ponto ANJUN mapeado nas imediações.</p>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2 pt-1 border-t">
-                      {onConsultarViabilidade && activeLocation.cidade && (
-                        <button
-                          type="button"
-                          onClick={() => onConsultarViabilidade(activeLocation.cidade!, activeLocation.estado)}
-                          className="flex-1 py-1.5 px-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-[11px] rounded-lg transition-colors flex items-center justify-center gap-1 shadow-sm cursor-pointer"
-                        >
-                          <Clock className="w-3.5 h-3.5" />
-                          <span>Viabilidade</span>
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={handleClearLocation}
-                        className="py-1.5 px-3 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-[11px] rounded-lg transition-colors cursor-pointer"
-                      >
-                        Limpar Ponto
-                      </button>
-                    </div>
-                  </div>
-                </Popup>
-              </Marker>
-            ) : (
-              <CircleMarker
-                center={[activeLocation.latitude, activeLocation.longitude]}
-                radius={12}
-                pathOptions={{
-                  color: "#ffffff",
-                  fillColor: "#ea4335",
-                  fillOpacity: 1,
-                  weight: 3.5,
-                }}
-              />
-            )}
-          </>
+                )}
+              </div>
+            </Popup>
+          </Marker>
         )}
       </MapContainer>
     </div>
