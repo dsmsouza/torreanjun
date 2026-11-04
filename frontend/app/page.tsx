@@ -210,6 +210,8 @@ export default function CentralColetasPage() {
   const [reconciliacaoData, setReconciliacaoData] = useState<any>(null);
   const [loadingReconciliacao, setLoadingReconciliacao] = useState<boolean>(false);
   const [subAbaReconciliacao, setSubAbaReconciliacao] = useState<"dias" | "pontos" | "pacotes" | "atualizados">("dias");
+  const [segmentoCliente, setSegmentoCliente] = useState<"TODOS" | "MARKETPLACE" | "PA" | "SELLERS">("TODOS");
+  const [buscaPaClientes, setBuscaPaClientes] = useState<string>("");
   const [buscaReconciliacao, setBuscaReconciliacao] = useState<string>("");
   const [filtroFaixaAging, setFiltroFaixaAging] = useState<string>("TODOS");
 
@@ -666,15 +668,46 @@ export default function CentralColetasPage() {
   const ehClienteMarketplaceUI = (cli: any): boolean => {
     if (cli?.is_marketplace !== undefined) return Boolean(cli.is_marketplace);
     const n = String(cli?.cliente || cli?.nome_cliente || "").toLowerCase();
-    return n.includes("shein") || n.includes("temu") || n.includes("tiktok") || n.includes("kwai");
+    return n.includes("shein") || n.includes("temu") || n.includes("tiktok") || n.includes("kwai") || n.includes("szanjun");
+  };
+
+  const ehClientePAUI = (cli: any): boolean => {
+    const n = String(cli?.cliente || cli?.nome_cliente || "").toLowerCase();
+    return (
+      n.includes("renner") ||
+      n.includes("camicado") ||
+      n.includes("camod") ||
+      n.includes("youcom") ||
+      n.includes("c&a") ||
+      n.includes("cea") ||
+      n.includes("rihappy") ||
+      n.includes("ri happy") ||
+      n.includes("casasbahia") ||
+      n.includes("samsonite") ||
+      n.includes("hanesbrands") ||
+      n.includes("melman") ||
+      n.startsWith("pa-") ||
+      n.startsWith("cd-")
+    );
   };
 
   const marketplacesList = useMemo(() => {
     return clientesBreakdown.filter((c: any) => ehClienteMarketplaceUI(c));
   }, [clientesBreakdown]);
 
+  const pasList = useMemo(() => {
+    const base = clientesBreakdown.filter((c: any) => !ehClienteMarketplaceUI(c) && ehClientePAUI(c));
+    if (!buscaPaClientes.trim()) return base;
+    const q = buscaPaClientes.trim().toLowerCase();
+    return base.filter((c: any) => {
+      const nome = String(c.cliente || c.nome_cliente || "").toLowerCase();
+      const ids = Array.isArray(c.cliente_ids) ? c.cliente_ids.join(" ").toLowerCase() : "";
+      return nome.includes(q) || ids.includes(q);
+    });
+  }, [clientesBreakdown, buscaPaClientes]);
+
   const outrosClientesList = useMemo(() => {
-    const base = clientesBreakdown.filter((c: any) => !ehClienteMarketplaceUI(c));
+    const base = clientesBreakdown.filter((c: any) => !ehClienteMarketplaceUI(c) && !ehClientePAUI(c));
     return base.filter((c: any) => {
       const vol = Number(c.volume || 0);
       if (!mostrarClientesZero && !buscaOutrosClientes.trim() && vol === 0) return false;
@@ -734,7 +767,7 @@ export default function CentralColetasPage() {
 
       <main className="flex-1 overflow-y-auto pl-16 md:pl-64 flex flex-col">
         {/* Top Header */}
-        <header className="sticky top-0 z-20 bg-[#0C101B]/95 backdrop-blur-md border-b border-slate-800/80 px-6 py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <header className="sticky top-0 z-20 bg-[#0C101B]/95 backdrop-blur-md border-b border-slate-800/80 px-4 sm:px-6 py-3 sm:py-4 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-3">
           <div>
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
@@ -1142,7 +1175,7 @@ export default function CentralColetasPage() {
 
         {/* NAVEGAÇÃO DE ABAS */}
         <div className="px-6 pt-4">
-          <div className="flex items-center gap-2 border-b border-slate-800">
+          <div className="flex items-center gap-2 border-b border-slate-800 overflow-x-auto whitespace-nowrap scrollbar-none pb-1">
             <button
               onClick={() => setActiveTab("visao_geral")}
               className={`px-4 py-2.5 text-xs font-semibold flex items-center gap-2 border-b-2 transition-colors cursor-pointer ${
@@ -1657,10 +1690,67 @@ export default function CentralColetasPage() {
               )}
 
               {/* ============================================================ */}
+              {/* SELETOR DE SEGMENTAÇÃO DE CLIENTES: MARKETPLACE • PA • SELLERS */}
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-lg">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-white uppercase tracking-wider block">Segmentação da Carteira de Clientes</span>
+                    <span className="text-[11px] text-slate-400">Separação entre Plataformas, Grandes Redes (PA) e Sellers PME</span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => setSegmentoCliente("TODOS")}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      segmentoCliente === "TODOS"
+                        ? "bg-emerald-600 text-white shadow-md shadow-emerald-950/40"
+                        : "bg-slate-800/80 text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    🌟 Todos os Segmentos ({clientesBreakdown.length})
+                  </button>
+
+                  <button
+                    onClick={() => setSegmentoCliente("MARKETPLACE")}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      segmentoCliente === "MARKETPLACE"
+                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-950/40"
+                        : "bg-slate-800/80 text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    🛒 Marketplaces ({marketplacesList.length})
+                  </button>
+
+                  <button
+                    onClick={() => setSegmentoCliente("PA")}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      segmentoCliente === "PA"
+                        ? "bg-amber-600 text-white shadow-md shadow-amber-950/40"
+                        : "bg-slate-800/80 text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    🏬 PA — Varejo & Lojas ({pasList.length})
+                  </button>
+
+                  <button
+                    onClick={() => setSegmentoCliente("SELLERS")}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      segmentoCliente === "SELLERS"
+                        ? "bg-cyan-600 text-white shadow-md shadow-cyan-950/40"
+                        : "bg-slate-800/80 text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    📦 Sellers & PMEs ({outrosClientesList.length})
+                  </button>
+                </div>
+              </div>
+
               {/* SEÇÃO 1: MARKETPLACES OFICIAIS (SHEIN • TEMU • TIKTOK • KWAI) */}
-              {/* Cards separados tanto para W2D (Coleta/Pickup) quanto D2D (Dropoff/MD) */}
-              {/* ============================================================ */}
-              <div className="p-5 rounded-2xl bg-gradient-to-b from-[#131926] to-[#0E1420] border border-indigo-500/30 space-y-4 shadow-xl">
+              {(segmentoCliente === "TODOS" || segmentoCliente === "MARKETPLACE") && (
+                <div className="p-5 rounded-2xl bg-gradient-to-b from-[#131926] to-[#0E1420] border border-indigo-500/30 space-y-4 shadow-xl">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
                   <div>
                     <div className="flex items-center gap-2">
@@ -1847,11 +1937,160 @@ export default function CentralColetasPage() {
                   })}
                 </div>
               </div>
+              )}
 
               {/* ============================================================ */}
-              {/* SEÇÃO 2: DEMAIS CLIENTES / EMBARCADORES (COM DROPDOWN E BUSCA LEVE) */}
+              {/* SEÇÃO PA: PONTOS AVANÇADOS / GRANDES VAREJISTAS (RENNER, CAMICADO, C&A, ETC.) */}
               {/* ============================================================ */}
-              <div className="p-5 rounded-2xl bg-[#131926]/80 border border-slate-800 space-y-4">
+              {(segmentoCliente === "TODOS" || segmentoCliente === "PA") && (
+                <div className="p-5 rounded-2xl bg-gradient-to-b from-amber-950/20 via-slate-900 to-slate-950 border border-amber-500/30 space-y-4 shadow-xl">
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                          🏬 PAs — Pontos Avançados & Ship-from-Store
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          Grandes Redes do Varejo • Centros de Distribuição & Lojas de Shopping
+                        </span>
+                      </div>
+                      <h3 className="text-sm md:text-base font-bold text-white tracking-wide mt-1">
+                        Operações Corporativas & Varejistas (Renner, Camicado, Youcom, C&A, Ri Happy...)
+                      </h3>
+                      <p className="text-xs text-slate-400">
+                        Coleta direta em lojas de shopping e galpões de expedição própria com alta exigência de SLA e agendamento
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 absolute left-3 top-2 text-slate-400" />
+                        <input
+                          type="text"
+                          value={buscaPaClientes}
+                          onChange={(e) => setBuscaPaClientes(e.target.value)}
+                          placeholder="Buscar loja PA (ex: renner, morumbi, camod)..."
+                          className="bg-slate-900 border border-slate-700/80 rounded-xl pl-8 pr-7 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/60 w-60"
+                        />
+                        {buscaPaClientes && (
+                          <button
+                            onClick={() => setBuscaPaClientes("")}
+                            className="absolute right-2 top-2 text-slate-400 hover:text-white cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      <span className="text-xs font-mono text-amber-300 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/25">
+                        {pasList.length} Unidades PA Mapeadas
+                      </span>
+                    </div>
+                  </div>
+
+                  {pasList.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-slate-400 bg-slate-900/40 rounded-xl border border-slate-800/60">
+                      Nenhuma unidade PA localizada com o termo pesquisado.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                      {pasList.map((cli: any, idx: number) => {
+                        const nomeCli = cli.cliente || cli.nome_cliente || `PA ${idx + 1}`;
+                        const volCli = Number(cli.volume) || 0;
+                        const colCli = cli.coletados !== undefined ? Number(cli.coletados) : volCli;
+                        const bklCli = Number(cli.backlog) || 0;
+                        const taxaCli = cli.taxa_pct !== undefined ? Number(cli.taxa_pct) : 100;
+                        const pctCli = cli.pct_total !== undefined ? Number(cli.pct_total) : 0;
+                        const nLow = nomeCli.toLowerCase();
+
+                        // Identificar a marca mãe da rede
+                        let marcaMae = "Varejo PA";
+                        let badgeCor = "bg-amber-500/20 text-amber-300 border-amber-500/40";
+                        if (nLow.includes("renner")) {
+                          marcaMae = "LOJAS RENNER";
+                          badgeCor = "bg-rose-500/20 text-rose-300 border-rose-500/40";
+                        } else if (nLow.includes("camicado") || nLow.includes("camod")) {
+                          marcaMae = "CAMICADO";
+                          badgeCor = "bg-orange-500/20 text-orange-300 border-orange-500/40";
+                        } else if (nLow.includes("youcom")) {
+                          marcaMae = "YOUCOM";
+                          badgeCor = "bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/40";
+                        } else if (nLow.includes("c&a") || nLow.includes("cea")) {
+                          marcaMae = "C&A BRASIL";
+                          badgeCor = "bg-blue-500/20 text-blue-300 border-blue-500/40";
+                        } else if (nLow.includes("rihappy") || nLow.includes("ri happy")) {
+                          marcaMae = "RI HAPPY";
+                          badgeCor = "bg-yellow-500/20 text-yellow-300 border-yellow-500/40";
+                        } else if (nLow.includes("casasbahia")) {
+                          marcaMae = "CASAS BAHIA";
+                          badgeCor = "bg-cyan-500/20 text-cyan-300 border-cyan-500/40";
+                        }
+
+                        return (
+                          <div
+                            key={nomeCli + idx}
+                            onClick={() => abrirModalCliente(nomeCli, "TODOS")}
+                            className="p-3.5 rounded-xl bg-slate-900/80 border border-amber-900/30 hover:border-amber-500/60 hover:bg-slate-900 transition-all flex flex-col justify-between cursor-pointer group shadow-sm"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between gap-1.5">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase border ${badgeCor}`}>
+                                  {marcaMae}
+                                </span>
+                                <span className="text-[10px] font-mono text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded">
+                                  {pctCli}% share
+                                </span>
+                              </div>
+
+                              <div className="mt-2 min-w-0">
+                                <span className="font-bold text-white text-xs tracking-wide block truncate group-hover:text-amber-300 transition-colors" title={nomeCli}>
+                                  {nomeCli}
+                                </span>
+                                {Array.isArray(cli.cliente_ids) && cli.cliente_ids.length > 0 && (
+                                  <span className="text-[10px] font-mono text-slate-500 block">
+                                    ID: {cli.cliente_ids.join(", ")}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="my-2 space-y-1 text-xs pt-1.5 border-t border-slate-800/60">
+                                <div className="flex justify-between">
+                                  <span className="text-slate-400">Volume Coletado:</span>
+                                  <span className="font-extrabold text-white">
+                                    {volCli.toLocaleString("pt-BR")}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-emerald-400">Escoamento:</span>
+                                  <span className="font-semibold text-emerald-400">
+                                    {colCli.toLocaleString("pt-BR")} ({taxaCli}%)
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="text-amber-400">Backlog Loja:</span>
+                                  <span className="font-semibold text-amber-400">
+                                    {bklCli.toLocaleString("pt-BR")}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-amber-400 font-semibold">
+                              <span>Inspecionar PA</span>
+                              <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ============================================================ */}
+              {/* SEÇÃO 3: SELLERS & PMES INDEPENDENTES */}
+              {(segmentoCliente === "TODOS" || segmentoCliente === "SELLERS") && (
+                <div className="p-5 rounded-2xl bg-[#131926]/80 border border-slate-800 space-y-4">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
@@ -2032,6 +2271,7 @@ export default function CentralColetasPage() {
                   </>
                 )}
               </div>
+              )}
             </div>
           )}
 

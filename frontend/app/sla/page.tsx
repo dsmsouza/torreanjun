@@ -1,3 +1,4 @@
+import Sidebar from "@/components/Sidebar";
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -148,7 +149,9 @@ export default function SLAOperacionalPage() {
   };
 
   return (
-    <main className="p-4 md:p-8 space-y-6 max-w-7xl mx-auto pb-24 text-slate-100">
+    <div className="flex h-screen bg-[#090D16] text-slate-100 font-sans overflow-hidden">
+      <Sidebar />
+      <main className="flex-1 overflow-y-auto pl-16 md:pl-64 flex flex-col p-3 sm:p-6 lg:p-8 space-y-6 max-w-full pb-24">
       {/* Cabeçalho */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>
@@ -638,6 +641,7 @@ export default function SLAOperacionalPage() {
           )}
         </>
       )}
-    </main>
+      </main>
+    </div>
   );
 }
