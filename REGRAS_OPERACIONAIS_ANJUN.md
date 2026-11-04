@@ -6,26 +6,71 @@
 
 ---
 
-## 1. Dicionário Operacional dos Status de Pedidos (First-Mile ANJUN)
+## 1. Os Dois Ciclos Operacionais da First-Mile (Máquinas de Estados)
 
-> **⚠️ Regra de Ouro da Classificação:**  
-> Os status da esteira **NÃO são exclusivos de MiniDrops (MDs)**.  
-> Pacotes de **PICKUP** (coletados diretamente no seller por van ou PA) também transitam por `coletado`, `saco selado`, `Carregamento` e `Descarregamento`. Portanto, a classificação de Backlog e Trânsito se aplica tanto para a malha de MDs quanto para as rotas de Pickup!
+A esteira de First-Mile (FM) da Anjun possui dois fluxos físicos distintos, dependendo da origem da mercadoria:
 
-| Status na Planilha | Significado Físico Real | Classificação Operacional Geral | Aplicável a MD e Pickup? | Ação da Torre / Alerta |
-| :--- | :--- | :--- | :---: | :--- |
-| **`coletado`** | Primeiro escaneamento físico na origem | **Backlog em Aberto** | **Sim (MD e Pickup)** | Se MD: retido no balcão aguardando van. Se Pickup: bipado no seller/van mas ainda não transferido para linha. |
-| **`saco selado`** | Pacotes consolidados em saca lacrada | **Backlog Ensacado** | **Sim (MD e Pickup)** | Saca lacrada na origem (MD, PA ou veículo) aguardando descarregamento na doca do HUB. |
-| **`Carregamento`** | Bipagem no veículo de transferência | **Em Trânsito** | **Sim (MD e Pickup)** | Carga embarcada no veículo em deslocamento rodoviário rumo ao HUB de triagem. |
-| **`Descarregamento`** | Bipagem na doca / triagem do HUB | **Em Trânsito / Recepção HUB** | **Sim (MD e Pickup)** | Carga recebida fisicamente no HUB central, em processo de conferência e triagem. |
-| **`Circuito fechado`** | Ciclo FM concluído com sucesso | **Concluído FM ➔ Rumo ao LM** | **Sim (MD e Pickup)** | Pacote percorreu todo o ciclo da First Mile e deu tudo certo; é direcionado ao Last Mile (LM) para entrega ao comprador. |
-| **`Foi assinado`** | **CRÍTICO: POSSÍVEL EXTRAVIO DO PACOTE!** | **Anomalia Grave de Saca** | **Sim (MD e Pickup)** | **A saca lacrada chegou à etapa final de destino, MAS o pacote individual NÃO estava dentro dela!** Requer auditoria e apuração imediata de extravio. |
-| **`Cancelado`** | Cancelado pelo seller / comprador / marketplace | **Cancelamento** | **Sim (MD e Pickup)** | Cancelado antes ou durante o processo de coleta. |
-| **`Não coletado`** | Pedido gerado no sistema | **Aguardando Primeiro Bip** | **Sim (MD e Pickup)** | Etiqueta gerada pelo seller, mas pacote ainda não apresentado ou coletado fisicamente. |
+### 🏪 FLUXO 1: Pacotes Dropados no MiniDrop (MD) — Ciclo COM SACA
+No modelo de MiniDrop, os pacotes são entregues no balcão parceiro e consolidados em sacas lacradas antes de seguirem viagem:
+
+```mermaid
+flowchart LR
+    A[1. coletado\nBip no balcão MD] --> B[2. saco selado\nMD fecha saca]
+    B --> C[3. carregamento\nVan Anjun carrega saca]
+    C --> D[4. descarregamento\nDoca HUB Anjun]
+    D --> E{Conferência Individual no HUB?}
+    E -- Pacote bipado na esteira --> F[5. circuito fechado\nFM Concluído com Sucesso ➔ LM]
+    E -- Pacote NÃO estava na saca --> G[⚠️ foi assinado\nCRÍTICO: Possível extravio!]
+```
+
+* **Ciclo Correto / Happy Path (100% Sucesso):**
+  $$\text{coletado} \longrightarrow \text{saco selado} \longrightarrow \text{carregamento} \longrightarrow \text{descarregamento} \longrightarrow \text{circuito fechado}$$
+* **Quando dá Ruim (Anomalias de MD):**
+  1. **Falha de Saca (`foi assinado`):**  
+     $$\text{coletado} \longrightarrow \text{saco selado} \longrightarrow \text{carregamento} \longrightarrow \text{descarregamento} \longrightarrow \mathbf{foi\ assinado}$$
+     *A saca lacrada chegou fisicamente à etapa final, mas o pacote individual **NÃO estava dentro dela** (extravio dentro da saca ou pacote esquecido fora).*
+  2. **Estagnação / Morte na Etapa (Backlog Parado):**  
+     *O pacote morre em alguma etapa intermediária sem nunca atingir `circuito fechado` (ex: preso em `coletado`, parado em `saco selado` no MD sem coleta, ou preso em `carregamento`).*
 
 ---
 
-## 2. DROPOFF vs PICKUP: Como Medir com Precisão Cirúrgica
+### 🚚 FLUXO 2: Pacotes Pickup Direto no Seller ou PA — Ciclo SEM SACA (Pacote a Pacote)
+Quando a Anjun vai coletar diretamente no galpão/loja do seller, ou opera dentro de um Ponto Avançado (PA / Ship-from-Store), a conferência é feita **pacote a pacote**, sem saca:
+
+```mermaid
+flowchart LR
+    P1[1. coletado\nBip pacote a pacote no Seller/PA] --> P2[2. carregamento\nMotorista embarca na van]
+    P2 --> P3[3. descarregamento\nDoca do HUB Central]
+    P3 --> P4[4. circuito fechado\nTriagem FM Concluída ➔ LM]
+```
+
+* **Ciclo Correto / Happy Path:**
+  $$\text{coletado} \longrightarrow \text{carregamento} \longrightarrow \text{descarregamento} \longrightarrow \text{circuito fechado}$$
+* **⚠️ REGRA DE OURO DO PICKUP E PA:**
+  * **NÃO TEM A ETAPA `saco selado`!**  
+  * No pickup e no PA a coleta é avulsa, pacote a pacote (volumes soltos, caixas ou pallets), **não existe saca**.
+  * Se um pacote de pickup legítimo aparecer como `saco selado`, trata-se de anomalia de bipagem ou desvio operacional.
+* **Quando dá Ruim no Pickup:**
+  * O pacote é bipado como `coletado` no seller e "morre" ali (o motorista não deu `carregamento`), ou morre em `carregamento` sem dar `descarregamento` no HUB.
+
+---
+
+## 2. Dicionário Comparativo dos Status
+
+| Status na Planilha | Significado no MiniDrop (Drop-off) | Significado no Pickup / PA | Classificação Geral | Ação da Torre / Alerta |
+| :--- | :--- | :--- | :--- | :--- |
+| **`coletado`** | Pacote recebido no balcão do parceiro. | Pacote bipado individualmente no seller/PA. | **Backlog em Aberto** | Se MD: aguardando ensacamento/van. Se Pickup: bipado na fábrica mas ainda retido. |
+| **`saco selado`** | Saca lacrada pelo MD aguardando coleta. | **NÃO EXISTE EM PICKUP** (se houver, é anomalia). | **Backlog Ensacado (MD)** | Saca pronta no MD aguardando o motorista de rota. |
+| **`Carregamento`** | Saca carregada no veículo Anjun. | Pacote avulso carregado no veículo Anjun. | **Em Trânsito** | Carga rodando no veículo rumo ao HUB de triagem. |
+| **`Descarregamento`** | Saca descarregada na doca do HUB. | Pacote descarregado na doca do HUB. | **Em Trânsito / Recepção** | Carga na doca em processo de conferência e triagem. |
+| **`Circuito fechado`** | Saca aberta, pacote conferido e liberado. | Pacote conferido na triagem e liberado. | **Concluído FM ➔ Rumo ao LM** | First-Mile 100% finalizado com sucesso! Liberado para Last-Mile ao comprador. |
+| **`Foi assinado`** | Saca chegou, mas pacote não estava dentro! | Inconsistência de protocolo de entrega de lote. | **CRÍTICO: Possível Extravio** | Alerta vermelho de auditoria e acareação operacional. |
+| **`Cancelado`** | Cancelado pelo seller/comprador. | Cancelado pelo seller/comprador. | **Cancelamento** | Baixa sem trânsito adicional. |
+| **`Não coletado`** | Etiqueta emitida, sem entrada física. | Etiqueta emitida, sem entrada física. | **Aguardando Coleta** | Etiqueta pendente de primeiro bip. |
+
+---
+
+## 3. DROPOFF vs PICKUP: Como Medir com Precisão Cirúrgica
 
 > **⚠️ Atenção sobre Nomenclaturas de Contrato (D2D, W2D, Cut-off, Normal):**  
 > As nomenclaturas da Coluna BH (`Tipo do pedido`) refletem o perfil do pedido no marketplace, mas **NÃO determinam sozinhas se houve Pickup ou Drop-off**.  
@@ -53,7 +98,7 @@ flowchart TD
 
 ---
 
-## 3. O Papel Vital da Atualização de Aging
+## 4. O Papel Vital da Atualização de Aging
 
 O **Aging (Envelhecimento do Backlog e Ciclo de Vida)** é a espinha dorsal que garante a integridade dos dados na Torre de Controle:
 
@@ -73,21 +118,21 @@ O **Aging (Envelhecimento do Backlog e Ciclo de Vida)** é a espinha dorsal que 
 
 ---
 
-## 4. Tipologia de Sellers: Sellers com PA (In-House) vs Somente Pickup
+## 5. Tipologia de Sellers: Sellers com PA (In-House) vs Somente Pickup
 
 ### 🏬 A. Seller com PA (Ponto Avançado / In-House Dedicado)
 * **Como funciona:** A Anjun aloca uma **equipe operacional própria dentro das dependências do seller**.
-* **Fluxo:** O seller fabrica e embala os pedidos ➔ A equipe Anjun in-house bipa os pacotes no local ➔ Os caminhões/vans de linha encostam e fazem a coleta da carga já bipada.
+* **Fluxo:** O seller fabrica e embala os pedidos ➔ A equipe Anjun in-house bipa os pacotes no local (pacote a pacote, sem saca) ➔ Os caminhões/vans de linha encostam e fazem a coleta da carga já bipada.
 * **Perfil:** Sellers de altíssima escala, confecções massivas e grandes redes de varejo (Lojas Renner, Camicado, C&A, grandes confecções do Brás/Bom Retiro).
 
 ### 📦 B. Sellers Somente Pickup (Coleta Externa de Rota)
 * **Como funciona:** A Anjun **NÃO** mantém equipe dedicada no local.
-* **Fluxo:** O próprio seller embala, gera as etiquetas e deixa os lotes prontos ➔ A van da Anjun em rota de coleta passa no endereço, bipa e carrega os volumes.
+* **Fluxo:** O próprio seller embala, gera as etiquetas e deixa os lotes prontos ➔ A van da Anjun em rota de coleta passa no endereço, bipa individualmente (pacote a pacote) e carrega os volumes.
 * **Perfil:** Sellers independentes, PMEs, e-commerces médios e marcas regionais.
 
 ---
 
-## 5. Mapeamento das Colunas da Planilha Oficial (`02-11.xlsx`)
+## 6. Mapeamento das Colunas da Planilha Oficial (`02-11.xlsx`)
 
 Extraído do arquivo mestre de 66 colunas da ANJUN:
 
@@ -97,7 +142,7 @@ Extraído do arquivo mestre de 66 colunas da ANJUN:
 | **B** | 1 | `Código de barras` | Código de barras do pacote (chave primária da reconciliação). |
 | **C** | 2 | `Número de pedido de cliente` | Número de tracking do embarcador / marketplace (ex: `ANJZX...`). |
 | **D** | 3 | `No. do cliente` | **Código numérico: contém tanto código de Seller quanto de Marketplace.** |
-| **E** | 4 | `número da saca` | Código da saca de consolidação onde o pacote foi agrupado. |
+| **E** | 4 | `número da saca` | Código da saca de consolidação onde o pacote foi agrupado (apenas MD). |
 | **F** | 5 | `Número de escaneamento do veículo` | Registro da viagem/rota do veículo de coleta (ex: `AJV32858074`). |
 | **G** | 6 | `No. do pacote` | Código individual do pacote / etiqueta. |
 | **H** | 7 | `maneira de coleta` | **Modalidade de Coleta: `coleta porta-a-porta` vs `entrega porta-a-porta`.** |
@@ -162,7 +207,7 @@ Extraído do arquivo mestre de 66 colunas da ANJUN:
 
 ---
 
-## 6. Classificação Estrita da Malha: MiniDrop (MD) vs HUB Central
+## 7. Classificação Estrita da Malha: MiniDrop (MD) vs HUB Central
 
 ### 🏪 A. O que É MiniDrop (MD Legítimo)
 Lojas parceiras de rua, pontos de bairro e estabelecimentos comerciais credenciados para atendimento de balcão e recebimento de drop-offs.
@@ -177,42 +222,11 @@ Lojas parceiras de rua, pontos de bairro e estabelecimentos comerciais credencia
 
 ---
 
-## 7. Segmentação da Carteira de Clientes
+## 8. Segmentação da Carteira de Clientes
 
-A carteira de clientes da Anjun é dividida em **3 Segmentos Estratégicos**:
-
-### 🛒 1. Marketplaces & Plataformas Globais
-* **Shein**
-* **Temu**
-* **TikTok Logistics Brazil**
-* **Kwai**
-* **SZAnjun** (Crossborder)
-
-### 🏬 2. PA — Pontos Avançados & Ship-from-Store (Grandes Redes de Varejo)
-Grandes redes corporativas atendidas com equipe in-house ou coleta dedicada em lojas de shopping / centros de distribuição avançados:
-* **Lojas Renner:** `rennercabreuva` (CD Cabreúva)
-* **Camicado:** `camod`
-* **Youcom:** `youcom` (Moda jovem do Grupo Renner)
-* **C&A Brasil:** Dezenas de lojas de shopping mapeadas (`c&a_shopping morumbi`, `c&a_shopping ibirapuera`, etc.)
-* **Ri Happy:** Lojas de shopping (`rihappy_eldorado`, `rihappy_shopinterlagos`...)
-* **Casas Bahia**, **Samsonite**, **Hanesbrands**, **Lojas Melman**.
-
-### 📦 3. Sellers de Pickup (Coleta Porta a Porta)
-Vendedores independentes e marcas atendidas pelas vans da Anjun em rota:
-* Exemplos: `B4A Tecnologia e Comércio`, `Lescent Varejo`, `Beauty Hub Varejo`, `Maxmix Ltda`, `Linda Casa Enxovais`, `Ap Cosmetics`, `Shopmulti`, `Zakat`, `Premici`, `Playkids`.
-
----
-
-## 8. Regras de Dados, Fechamento e SLA
-
-1. **Total Oficial Absoluto (D-1):**
-   * No fechamento do dia anterior (D-1), o total de pedidos gerados reflete 100% da operação oficial Anjun (exemplo histórico: **1.030.159 pedidos em 03/11/2026**).
-   * A sincronização extrai a amostra detalhada de pacotes, mas preserva nos cards macro o número oficial exato.
-2. **Aging e SLA:**
-   * **Faixa Verde:** Até 24 horas (Dentro do prazo de SLA).
-   * **Faixa Amarela:** 24h a 48h (Atenção / Pré-alerta).
-   * **Faixa Laranja:** 48h a 72h (Risco alto de estouro de SLA).
-   * **Faixa Vermelha:** Acima de 72 horas (Crítico / Fora do SLA operacional).
+1. **Marketplaces & Plataformas Globais:** Shein, Temu, TikTok Logistics Brazil, Kwai, SZAnjun.
+2. **PA — Pontos Avançados & Ship-from-Store:** Lojas Renner (`rennercabreuva`), Camicado (`camod`), Youcom, C&A Brasil, Ri Happy, Casas Bahia, Samsonite, etc.
+3. **Sellers de Pickup:** B4A, Lescent, Beauty Hub, Maxmix, Linda Casa, Ap Cosmetics, Shopmulti, etc.
 
 ---
 
