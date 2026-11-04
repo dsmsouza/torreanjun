@@ -330,6 +330,23 @@ def gerar_snapshots(max_dias: int = 200, force_all: bool = False) -> dict:
         except Exception as e_sat:
             print(f"⚠️ Erro ao exportar rotas_saturacao: {e_sat}")
 
+        print("⏱️ [7/7] Exportando Relatórios Oficiais de SLA e Anomalias nos MDs...")
+        try:
+            from services.sla_servico import calcular_painel_sla_completo
+            painel_latest = calcular_painel_sla_completo(dia_recente)
+            bytes_totais += salvar_json("sla_latest.json", painel_latest)
+            bytes_totais += salvar_json("sla_abertos.json", {"items": painel_latest.get("pacotes_abertos", [])})
+            arquivos_gerados += 2
+
+            for d_sla in dias_exportar[:5]:
+                safe_ds = d_sla.replace("/", "-")
+                p_sla = calcular_painel_sla_completo(d_sla)
+                bytes_totais += salvar_json(f"sla_{safe_ds}.json", p_sla)
+                arquivos_gerados += 1
+        except Exception as e_sla:
+            print(f"⚠️ Erro ao exportar SLA e anomalias: {e_sla}")
+
+
     finally:
         db.close()
 

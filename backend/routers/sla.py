@@ -1,22 +1,76 @@
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from database.connection import get_db
 from models.models import PacoteSLA
 import pandas as pd
 import io
-from datetime import datetime
+import datetime
+from typing import Optional
+from services.sla_servico import calcular_painel_sla_completo, sincronizar_sla_macro_api
 
 router = APIRouter()
 
-def parse_date(date_str):
-    if pd.isna(date_str) or not date_str:
-        return None
+
+@router.get("/resumo")
+def get_sla_resumo(dia: Optional[str] = Query(None, description="Data base (DD/MM/YYYY) ou None para o dia mais recente")):
     try:
-        # Example: "2026-07-01 14:30:00"
-        return pd.to_datetime(date_str)
-    except (ValueError, TypeError):
-        return None
+        # Se dia não informado, pega a data de hoje ou mais recente
+        if not dia or dia.upper() in ["TODOS", "LATEST", "HOJE", ""]:
+            dia_ref = datetime.datetime.now().strftime("%d/%m/%Y")
+        else:
+            dia_ref = dia
+
+        dados = calcular_painel_sla_completo(dia_ref)
+        return dados
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/abertos")
+def get_abertos(
+    dia: Optional[str] = Query(None),
+    regional: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    md: Optional[str] = Query(None),
+    limit: int = Query(500, le=2000),
+    db: Session = Depends(get_db)
+):
+    try:
+        if not dia or dia.upper() in ["TODOS", "LATEST", "HOJE", ""]:
+            dia_ref = datetime.datetime.now().strftime("%d/%m/%Y")
+        else:
+            dia_ref = dia
+
+        painel = calcular_painel_sla_completo(dia_ref)
+        pacotes = painel.get("pacotes_abertos", [])
+
+        # Aplicar filtros
+        if regional and regional != "ALL":
+            pacotes = [p for p in pacotes if p.get("regional") == regional]
+        if status and status != "ALL":
+            pacotes = [p for p in pacotes if p.get("status") == status]
+        if md and md != "ALL":
+            pacotes = [p for p in pacotes if p.get("md") == md]
+
+        return {
+            "dia_base": dia_ref,
+            "total": len(pacotes),
+            "items": pacotes[:limit]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/sincronizar")
+def post_sincronizar_sla(dia: Optional[str] = Query(None)):
+    try:
+        dia_ref = dia or datetime.datetime.now().strftime("%d/%m/%Y")
+        res = sincronizar_sla_macro_api(dia_ref)
+        return {"status": "success", "dia_base": dia_ref, "dados": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/importar_abertos")
 async def importar_abertos(file: UploadFile = File(...), db: Session = Depends(get_db)):
@@ -24,27 +78,22 @@ async def importar_abertos(file: UploadFile = File(...), db: Session = Depends(g
         contents = await file.read()
         df = pd.read_excel(io.BytesIO(contents))
         
-        # We will map "saco selado/coletado" and "foi assinado" to PacoteSLA
-        # Let's clear the old ones to keep only the open ones
         db.query(PacoteSLA).delete()
-        
-        now = datetime.now()
-        
         points = []
         for index, row in df.iterrows():
             barcode = str(row.get('Código de Barras', row.get('Tracking', index)))
             if pd.isna(barcode) or barcode == 'nan': continue
             
-            status = str(row.get('Status', ''))
-            md = str(row.get('MD', row.get('Ponto', '')))
-            regional = str(row.get('Regional', ''))
+            status_val = str(row.get('Status', ''))
+            md_val = str(row.get('MD', row.get('Ponto', '')))
+            regional_val = str(row.get('Regional', ''))
             data_hora_str = str(row.get('Tempo real para coleta', row.get('Data', '')))
             
             p = PacoteSLA(
                 barcode=barcode,
-                status=status,
-                ponto_colecao=md,
-                estado_origem=regional, # Reusing this column for Regional
+                status=status_val,
+                ponto_colecao=md_val,
+                estado_origem=regional_val,
                 tempo_coleta=data_hora_str
             )
             points.append(p)
@@ -56,33 +105,3 @@ async def importar_abertos(file: UploadFile = File(...), db: Session = Depends(g
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/abertos")
-def get_abertos(db: Session = Depends(get_db)):
-    try:
-        rows = db.query(PacoteSLA).all()
-        now = datetime.now()
-        
-        results = []
-        for r in rows:
-            # Calculate dias parados
-            dias_parados = None
-            if r.tempo_coleta and r.tempo_coleta != 'nan':
-                try:
-                    dt = pd.to_datetime(r.tempo_coleta)
-                    delta = now - dt
-                    dias_parados = max(0, delta.days)
-                except (ValueError, TypeError):
-                    pass
-                    
-            results.append({
-                "barcode": r.barcode,
-                "status": r.status,
-                "md": r.ponto_colecao,
-                "regional": r.estado_origem,
-                "data_hora": r.tempo_coleta,
-                "dias_parados": dias_parados
-            })
-            
-        return {"items": results}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))

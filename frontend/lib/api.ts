@@ -531,6 +531,20 @@ async function resolveSnapshotRequest(urlStr: string): Promise<Response | null> 
       const data = await fetchStaticSnapshot("pas_ativos.json");
       if (data) return jsonResponse(data);
     }
+
+    if (path === "/api/sla/resumo") {
+      const data = await fetchStaticSnapshot(`sla_${safeDia}.json`, "sla_latest.json");
+      if (data) return jsonResponse(data);
+    }
+
+    if (path === "/api/sla/abertos") {
+      const data = await fetchStaticSnapshot("sla_abertos.json", "sla_latest.json");
+      if (data) {
+        if (data.items) return jsonResponse(data);
+        if (data.pacotes_abertos) return jsonResponse({ items: data.pacotes_abertos, total: data.pacotes_abertos.length });
+        return jsonResponse(data);
+      }
+    }
   } catch {
     // ignore
   }
