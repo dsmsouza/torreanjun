@@ -1743,7 +1743,7 @@ export default function CentralColetasPage() {
                         : "bg-slate-800/80 text-slate-400 hover:text-white"
                     }`}
                   >
-                    📦 Sellers & PMEs ({outrosClientesList.length})
+                    📦 Sellers de Pickup ({outrosClientesList.length})
                   </button>
                 </div>
               </div>
@@ -2094,13 +2094,13 @@ export default function CentralColetasPage() {
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
-                      <span>Demais Clientes & Embarcadores Cadastrados</span>
+                      <span>Sellers de Pickup (Coleta Porta a Porta)</span>
                       <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                         {outrosClientesList.length} exibidos
                       </span>
                     </h3>
                     <p className="text-xs text-slate-400">
-                      Use o menu dropdown ou a barra de busca abaixo para consultar rapidamente qualquer um dos 125+ clientes sem pesar a tela
+                      Vendedores e marcas atendidos via coleta direta de vans porta a porta (Pickup / Fábrica / Galpão)
                     </p>
                   </div>
 
