@@ -71,6 +71,7 @@ def init_vtags_table():
             enviado_por TEXT,
             enviado_em TEXT,
             imagem_nome TEXT,
+            pdf_url TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(dia_base, md_codigo, tag_number)
         );
@@ -314,7 +315,8 @@ def get_motoristas_agrupados(
             md_to_vtags[md] = []
         md_to_vtags[md].append({
             "tag_number": row["tag_number"],
-            "imagem_url": f"/api/vtags/imagem/{row['imagem_nome']}" if row["imagem_nome"] else None
+            "imagem_url": f"/api/vtags/imagem/{row['imagem_nome']}" if row["imagem_nome"] else None,
+            "pdf_url": row["pdf_url"] if "pdf_url" in row.keys() else None
         })
         if row["status_envio"] == "ENVIADO":
             md_status_envio[md] = {
@@ -570,24 +572,24 @@ def gerar_vtags_em_lote(
                     img_match = next((im[1] for im in img_nomes if im[0] == t_num), None)
                     cursor.execute("""
                         INSERT OR REPLACE INTO vtags_geradas (
-                            dia_base, md_codigo, site_id, tag_number, motorista, placa, rota, contato, suporte, imagem_nome
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            dia_base, md_codigo, site_id, tag_number, motorista, placa, rota, contato, suporte, imagem_nome, pdf_url
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         dia_base, md_cod, site_id, t_num,
                         item["motorista"], item["placa"], item["rota"], item["contato"], item["suporte"],
-                        img_match
+                        img_match, print_url
                     ))
                     vtags_salvas += 1
             else:
                 # Fallback caso não retorne o detalhe imediato
                 cursor.execute("""
                     INSERT OR REPLACE INTO vtags_geradas (
-                        dia_base, md_codigo, site_id, tag_number, motorista, placa, rota, contato, suporte, imagem_nome
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        dia_base, md_codigo, site_id, tag_number, motorista, placa, rota, contato, suporte, imagem_nome, pdf_url
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     dia_base, md_cod, site_id, f"PEND_{md_cod}",
                     item["motorista"], item["placa"], item["rota"], item["contato"], item["suporte"],
-                    None
+                    None, print_url
                 ))
                 vtags_salvas += 1
 

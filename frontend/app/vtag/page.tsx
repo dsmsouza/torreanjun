@@ -35,6 +35,7 @@ import {
 interface VtagItem {
   tag_number: string;
   imagem_url: string | null;
+  pdf_url?: string | null;
 }
 
 interface MdItem {
@@ -84,6 +85,98 @@ interface VtagStatusResponse {
 
 const API_BASE = typeof window !== "undefined" ? "" : (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000");
 
+// Função para juntar etiquetas e copiar imagem para a área de transferência (Clipboard)
+async function copiarEtiquetasParaClipboard(
+  motorista: string,
+  mds: MdItem[],
+  diaRef: string
+): Promise<boolean> {
+  try {
+    const urls: string[] = [];
+    mds.forEach((md) => {
+      md.vtags.forEach((v) => {
+        if (v.imagem_url) urls.push(v.imagem_url);
+      });
+    });
+
+    if (urls.length === 0) return false;
+
+    // Se tiver apenas 1 imagem
+    if (urls.length === 1) {
+      const res = await fetch(urls[0]);
+      const blob = await res.blob();
+      if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.write) {
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+        return true;
+      }
+      return false;
+    }
+
+    // Se tiver 2 ou mais etiquetas, junta num único card vertical de alta definição
+    const loadedImgs = await Promise.all(
+      urls.map((url) => {
+        return new Promise<HTMLImageElement>((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = url;
+        });
+      })
+    );
+
+    const canvas = document.createElement("canvas");
+    const width = 787;
+    const headerHeight = 75;
+    const itemHeight = 787;
+    const totalHeight = headerHeight + loadedImgs.length * itemHeight;
+
+    canvas.width = width;
+    canvas.height = totalHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return false;
+
+    // Fundo branco perfeito para bipagem
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, width, totalHeight);
+
+    // Faixa Superior
+    ctx.fillStyle = "#0F172A";
+    ctx.fillRect(0, 0, width, headerHeight);
+    ctx.fillStyle = "#38BDF8";
+    ctx.font = "bold 26px sans-serif";
+    ctx.fillText("ANJUN EXPRESS - VTAGS DE COLETA", 25, 38);
+    ctx.fillStyle = "#E2E8F0";
+    ctx.font = "16px sans-serif";
+    ctx.fillText(`Motorista: ${motorista}  •  Data: ${diaRef}`, 25, 62);
+
+    let currentY = headerHeight;
+    for (const img of loadedImgs) {
+      ctx.drawImage(img, 0, currentY, width, itemHeight);
+      currentY += itemHeight;
+    }
+
+    return new Promise<boolean>((resolve) => {
+      canvas.toBlob(async (blob) => {
+        if (blob && typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.write) {
+          try {
+            await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+            resolve(true);
+          } catch (e) {
+            console.warn("Erro ao escrever no clipboard:", e);
+            resolve(false);
+          }
+        } else {
+          resolve(false);
+        }
+      }, "image/png");
+    });
+  } catch (err) {
+    console.warn("Falha no copiarEtiquetasParaClipboard:", err);
+    return false;
+  }
+}
+
 export default function VtagPage() {
   const { user, nome, role, isMaster, isLider, isOperador, podeGerarVtag, suportePadrao } = useAuth();
 
@@ -100,6 +193,7 @@ export default function VtagPage() {
   const [suporteFiltro, setSuporteFiltro] = useState<string>("TODOS");
   const [search, setSearch] = useState<string>("");
   const [statusFiltro, setStatusFiltro] = useState<string>("TODOS");
+  const [destinoWpp, setDestinoWpp] = useState<"web" | "app">("web");
 
   // Modais
   const [modalTokenOpen, setModalTokenOpen] = useState<boolean>(false);
@@ -212,10 +306,31 @@ export default function VtagPage() {
 
     texto += `\n⚠️ _Por favor, apresente o código de barras no momento do bipe no ponto. Bom trabalho e boa rota!_`;
 
-    const telLimpo = m.telefone_wpp.replace(/\D/g, "");
-    const urlWpp = `https://web.whatsapp.com/send?phone=${telLimpo}&text=${encodeURIComponent(texto)}`;
+    // Incluir link do PDF da nuvem Anjun caso exista
+    m.mds.forEach((md) => {
+      const pdfUrl = md.vtags.find((v) => v.pdf_url)?.pdf_url;
+      if (pdfUrl) {
+        texto += `\n📲 _Link do Código de Barras (PDF Anjun):_\n${pdfUrl}\n`;
+      }
+    });
 
-    window.open(urlWpp, "_blank");
+    const telLimpo = m.telefone_wpp.replace(/\D/g, "");
+
+    // 1. Tentar auto-copiar imagem para a área de transferência
+    let copiouImagem = false;
+    try {
+      copiouImagem = await copiarEtiquetasParaClipboard(m.motorista, m.mds, diaRef);
+    } catch (e) {
+      console.warn("Aviso clipboard:", e);
+    }
+
+    // 2. Abrir WhatsApp (reaproveita mesma aba se Web, ou abre app do Windows se Desktop)
+    if (destinoWpp === "app") {
+      window.location.href = `whatsapp://send?phone=${telLimpo}&text=${encodeURIComponent(texto)}`;
+    } else {
+      const urlWpp = `https://web.whatsapp.com/send?phone=${telLimpo}&text=${encodeURIComponent(texto)}`;
+      window.open(urlWpp, "whatsapp_web_window");
+    }
 
     try {
       const agoraStr = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
@@ -244,8 +359,12 @@ export default function VtagPage() {
         )
       );
 
-      setSucessoMsg(`VTAG enviada e registrada para ${m.motorista}!`);
-      setTimeout(() => setSucessoMsg(null), 4000);
+      if (copiouImagem) {
+        setSucessoMsg(`📸 Mensagem aberta no WhatsApp e Código de Barras COPIADO! Dê Ctrl + V na conversa de ${m.motorista} para colar a imagem.`);
+      } else {
+        setSucessoMsg(`Mensagem aberta no WhatsApp para ${m.motorista}!`);
+      }
+      setTimeout(() => setSucessoMsg(null), 6000);
     } catch (err) {
       console.warn("Erro ao marcar como enviado no backend:", err);
     }
@@ -631,6 +750,32 @@ export default function VtagPage() {
             />
           </div>
 
+          {/* Seletor de Destino do WhatsApp (Web vs App) */}
+          <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 self-stretch sm:self-auto shrink-0">
+            <button
+              onClick={() => setDestinoWpp("web")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                destinoWpp === "web"
+                  ? "bg-slate-800 text-emerald-400 shadow border border-emerald-500/30"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+              title="Abre o WhatsApp Web na mesma aba (não abre guias repetidas)"
+            >
+              <span>🌐 Web (Aba Única)</span>
+            </button>
+            <button
+              onClick={() => setDestinoWpp("app")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5 ${
+                destinoWpp === "app"
+                  ? "bg-slate-800 text-emerald-400 shadow border border-emerald-500/30"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+              title="Abre direto no Aplicativo WhatsApp do Windows (sem abrir navegador)"
+            >
+              <span>💻 App Windows</span>
+            </button>
+          </div>
+
           <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 self-stretch sm:self-auto shrink-0">
             {["TODOS", "PENDENTE", "ENVIADO"].map((st) => (
               <button
@@ -780,6 +925,43 @@ export default function VtagPage() {
                         <span className="font-mono text-[10px] text-emerald-400">
                           por {m.enviado_por || "Suporte"} {m.enviado_em ? `às ${m.enviado_em}` : ""}
                         </span>
+                      </div>
+                    )}
+
+                    {/* Botões Rápidos de Imagem */}
+                    {m.total_vtags > 0 && (
+                      <div className="flex items-center gap-1.5 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            const diaRef = statusData?.dia_base || new Date().toLocaleDateString("pt-BR");
+                            const ok = await copiarEtiquetasParaClipboard(m.motorista, m.mds, diaRef);
+                            if (ok) {
+                              setSucessoMsg(`📸 Código de barras de ${m.motorista} copiado! Basta dar Ctrl + V no WhatsApp.`);
+                              setTimeout(() => setSucessoMsg(null), 5000);
+                            } else {
+                              alert("Para copiar: clique na VTAG para abrir e selecione 'Copiar Imagem'.");
+                            }
+                          }}
+                          className="flex-1 py-1 px-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500/50 text-[10px] font-bold text-slate-300 hover:text-cyan-300 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                          title="Copia o código de barras para o clipboard para você colar no WhatsApp com Ctrl+V"
+                        >
+                          <Copy className="w-3 h-3 text-cyan-400" />
+                          <span>Copiar Imagem (Ctrl+V)</span>
+                        </button>
+
+                        {m.mds[0]?.vtags[0]?.imagem_url && (
+                          <a
+                            href={m.mds[0].vtags[0].imagem_url}
+                            download={`VTAG_${m.motorista}_${m.mds[0].md_codigo}.png`}
+                            className="p-1 px-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white text-[10px] flex items-center gap-1 cursor-pointer"
+                            title="Baixar imagem do código de barras"
+                          >
+                            <Download className="w-3 h-3" />
+                            <span>Baixar</span>
+                          </a>
+                        )}
                       </div>
                     )}
 
