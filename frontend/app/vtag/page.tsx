@@ -122,6 +122,22 @@ export default function VtagPage() {
 
   // Modais
   const [modalTokenOpen, setModalTokenOpen] = useState<boolean>(false);
+  const [gerandoMotoristaNome, setGerandoMotoristaNome] = useState<string | null>(null);
+  const [relatorioGeracao, setRelatorioGeracao] = useState<{
+    aberto: boolean;
+    alvo: string;
+    totalSolicitados: number;
+    totalGerados: number;
+    totalSalvas: number;
+    totalFalhas: number;
+    falhas: Array<{
+      md: string;
+      motorista: string;
+      rota: string;
+      suporte: string;
+      motivo: string;
+    }>;
+  } | null>(null);
   const [novoToken, setNovoToken] = useState<string>("");
   const [salvandoToken, setSalvandoToken] = useState<boolean>(false);
 
@@ -259,16 +275,32 @@ export default function VtagPage() {
     const nomeOperador = nome || user || (suporteFiltro !== "TODOS" ? suporteFiltro : "Torre de Controle");
     const diaRef = statusData?.dia_base || new Date().toLocaleDateString("pt-BR");
 
+    // Verificação inteligente de MDs sem VTAG gerada
+    const totalMds = m.mds.length;
+    const mdsPendentes = m.mds.filter((i) => i.vtags.length === 0);
+
+    if (mdsPendentes.length > 0) {
+      const listaPendentes = mdsPendentes.map((i) => `  • ${i.md_codigo}`).join("\n");
+      const confirma = window.confirm(
+        `⚠️ ATENÇÃO: O motorista ${m.motorista} possui ${totalMds} MDs na rota, mas ${mdsPendentes.length} ainda NÃO possuem VTAGs geradas:\n\n${listaPendentes}\n\nDeseja enviar a mensagem no WhatsApp assim mesmo com os MDs já liberados?`
+      );
+      if (!confirma) return;
+    }
+
     let texto = `*TORRE DE CONTROLE ANJUN EXPRESS* 🚛\n`;
     texto += `Bom dia, *${m.motorista}*! Seguem suas VTAGs liberadas para a coleta de hoje (${diaRef}):\n\n`;
     texto += `📍 *Rota:* ${m.rota || "Padrão"}\n`;
     texto += `🚐 *Placa:* ${m.placa || "N/A"}\n`;
     texto += `👤 *Operador Responsável:* ${m.suporte}\n\n`;
-    texto += `📦 *MiniDrops da sua rota:* \n`;
+    texto += `📦 *MiniDrops da sua rota (${totalMds} no total):* \n`;
 
     m.mds.forEach((md) => {
-      const vtagsStr = md.vtags.length > 0 ? md.vtags.map((v) => v.tag_number).join(" e ") : "Gerada na Anjun";
-      texto += `  • *${md.md_codigo}* (VTAG: ${vtagsStr})\n`;
+      if (md.vtags.length > 0) {
+        const vtagsStr = md.vtags.map((v) => v.tag_number).join(" e ");
+        texto += `  • *${md.md_codigo}* (VTAGs: ${vtagsStr})\n`;
+      } else {
+        texto += `  • *${md.md_codigo}* ⏳ _(Aguardando liberação / Em processamento)_\n`;
+      }
     });
 
     texto += `\n⚠️ _Por favor, apresente o código de barras no momento do bipe no ponto. Bom trabalho e boa rota!_`;
@@ -368,13 +400,82 @@ export default function VtagPage() {
         throw new Error(data.detail || "Erro ao gerar VTAGs na Anjun.");
       }
 
-      setSucessoMsg(`Sucesso! ${data.mds_gerados_nesta_execucao} MDs processados e ${data.vtags_salvas} VTAGs oficiais geradas na Anjun.`);
+      if (data.total_falhas > 0) {
+        setRelatorioGeracao({
+          aberto: true,
+          alvo: suporteFiltro === "TODOS" ? "Todos os MDs de SP" : `Suporte ${suporteFiltro}`,
+          totalSolicitados: data.mds_solicitados || 0,
+          totalGerados: data.mds_gerados_nesta_execucao || 0,
+          totalSalvas: data.vtags_salvas || 0,
+          totalFalhas: data.total_falhas,
+          falhas: data.falhas || []
+        });
+        setSucessoMsg(`Geração concluída com alertas: ${data.mds_gerados_nesta_execucao} gerados e ${data.total_falhas} falhas reportadas.`);
+      } else {
+        setSucessoMsg(`Sucesso absoluto! Todos os ${data.mds_gerados_nesta_execucao} MDs foram gerados e ${data.vtags_salvas} VTAGs oficiais criadas.`);
+      }
+
       await carregarStatus();
       await carregarMotoristas();
     } catch (err: any) {
       setErroMsg(err.message || "Falha na chamada com a API Anjun.");
     } finally {
       setGerandoVtags(false);
+    }
+  };
+
+  // Geração de Todas as VTAGs de um Motorista Específico (Diego ou Ellen)
+  const handleGerarMotorista = async (motoristaNome: string, forcar: boolean = false) => {
+    if (!podeGerarVtag) {
+      alert("Acesso restrito: Apenas Diego ou Ellen têm permissão para gerar VTAGs oficiais.");
+      return;
+    }
+
+    if (!confirm(`Deseja gerar as VTAGs oficiais para todos os MDs da rota do motorista ${motoristaNome}?`)) {
+      return;
+    }
+
+    setGerandoMotoristaNome(motoristaNome);
+    setErroMsg(null);
+    setSucessoMsg(null);
+
+    try {
+      const p = new URLSearchParams();
+      p.append("motorista", motoristaNome);
+      p.append("qtd_por_md", "2");
+      p.append("usuario", user || "diego");
+      if (forcar) p.append("forcar", "true");
+
+      const res = await fetch(`${API_BASE}/api/vtags/gerar-vtags-anjun?${p.toString()}`, {
+        method: "POST"
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Erro ao gerar VTAGs para o motorista.");
+      }
+
+      if (data.total_falhas > 0) {
+        setRelatorioGeracao({
+          aberto: true,
+          alvo: `Motorista ${motoristaNome}`,
+          totalSolicitados: data.mds_solicitados || 0,
+          totalGerados: data.mds_gerados_nesta_execucao || 0,
+          totalSalvas: data.vtags_salvas || 0,
+          totalFalhas: data.total_falhas,
+          falhas: data.falhas || []
+        });
+        setSucessoMsg(`Geração do motorista finalizada: ${data.mds_gerados_nesta_execucao} gerados e ${data.total_falhas} pendências.`);
+      } else {
+        setSucessoMsg(`Sucesso! ${data.mds_gerados_nesta_execucao} MDs gerados e ${data.vtags_salvas} VTAGs oficiais criadas para ${motoristaNome}.`);
+      }
+
+      await carregarStatus();
+      await carregarMotoristas();
+    } catch (err: any) {
+      setErroMsg(err.message || "Falha na chamada com a API Anjun.");
+    } finally {
+      setGerandoMotoristaNome(null);
     }
   };
 
@@ -888,6 +989,35 @@ export default function VtagPage() {
 
                   {/* Rodapé / Botão de Disparo WhatsApp */}
                   <div className="pt-3 border-t border-slate-800 space-y-2">
+                    {/* Botão de Geração por Motorista (quando há MDs pendentes) */}
+                    {podeGerarVtag && (() => {
+                      const mdsPendentesCount = m.mds.filter(i => i.vtags.length === 0).length;
+                      if (mdsPendentesCount === 0) return null;
+                      return (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleGerarMotorista(m.motorista);
+                          }}
+                          disabled={gerandoVtags || gerandoMotoristaNome === m.motorista}
+                          className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-600/30 to-teal-600/30 hover:from-emerald-600/40 hover:to-teal-600/40 border border-emerald-500/40 text-[11px] font-bold text-emerald-300 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm hover:border-emerald-400"
+                          title={`Gera automaticamente as 2 VTAGs oficiais na Anjun para cada um dos ${mdsPendentesCount} MDs pendentes deste motorista`}
+                        >
+                          {gerandoMotoristaNome === m.motorista ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              <span>Gerando VTAGs da Rota de {m.motorista}...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>⚡ Gerar VTAGs deste Motorista ({mdsPendentesCount} pendente{mdsPendentesCount > 1 ? 's' : ''})</span>
+                            </>
+                          )}
+                        </button>
+                      );
+                    })()}
                     {enviado && (
                       <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-300 flex items-center justify-between">
                         <span className="font-semibold flex items-center gap-1.5">
@@ -1117,7 +1247,97 @@ export default function VtagPage() {
           </div>
         )}
 
+        {/* MODAL DE RELATÓRIO DE FALHAS / GERAÇÃO DA ANJUN */}
+        {relatorioGeracao?.aberto && (
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-[#0F1522] border border-amber-500/40 rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 max-h-[85vh] flex flex-col">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Relatório da Geração na Anjun</h3>
+                    <p className="text-xs text-slate-400">
+                      Alvo: <strong>{relatorioGeracao.alvo}</strong>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setRelatorioGeracao(null)}
+                  className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Resumo Estatístico */}
+              <div className="grid grid-cols-3 gap-3 shrink-0">
+                <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">MDs Solicitados</span>
+                  <span className="text-lg font-black text-white">{relatorioGeracao.totalSolicitados}</span>
+                </div>
+                <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/30">
+                  <span className="text-[10px] text-emerald-400 font-bold uppercase block">Gerados com Sucesso</span>
+                  <span className="text-lg font-black text-emerald-300">
+                    {relatorioGeracao.totalGerados} ({relatorioGeracao.totalSalvas} VTAGs)
+                  </span>
+                </div>
+                <div className="p-3 rounded-xl bg-rose-950/30 border border-rose-500/30">
+                  <span className="text-[10px] text-rose-400 font-bold uppercase block">Falhas / Não Cadastrados</span>
+                  <span className="text-lg font-black text-rose-400">{relatorioGeracao.totalFalhas}</span>
+                </div>
+              </div>
+
+              {/* Tabela de Falhas */}
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                <span className="text-xs font-bold text-slate-300 block">
+                  Detalhamento dos MiniDrops com impedimento na Anjun:
+                </span>
+                <div className="space-y-1.5">
+                  {relatorioGeracao.falhas.map((f, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs flex flex-col md:flex-row md:items-center justify-between gap-2"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-cyan-300 bg-cyan-950/40 px-2 py-0.5 rounded border border-cyan-500/30">
+                            {f.md}
+                          </span>
+                          <span className="text-slate-300 font-medium">{f.motorista || "Sem motorista"}</span>
+                          {f.rota && <span className="text-[11px] text-slate-400">({f.rota})</span>}
+                        </div>
+                        <p className="text-[11px] text-rose-300 font-medium">⚠️ {f.motivo}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleGerarMdEspecifico(f.md, 2, true)}
+                        className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-[10px] font-bold self-start md:self-auto cursor-pointer transition-colors"
+                      >
+                        Tentar Novamente
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Rodapé com botão de fechar */}
+              <div className="pt-3 border-t border-slate-800 flex justify-end shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setRelatorioGeracao(null)}
+                  className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl cursor-pointer"
+                >
+                  Entendido / Fechar Relatório
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* MODAL DE ATUALIZAÇÃO DO TOKEN DA ANJUN */}
+
         {modalTokenOpen && (
           <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-[#0F1522] border border-amber-500/40 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95">

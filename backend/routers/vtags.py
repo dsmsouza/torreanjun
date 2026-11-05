@@ -397,6 +397,7 @@ def get_motoristas_agrupados(
 @router.post("/gerar-vtags-anjun")
 def gerar_vtags_em_lote(
     suporte: Optional[str] = Query(None),
+    motorista: Optional[str] = Query(None),
     md_codigo: Optional[str] = Query(None),
     qtd_por_md: int = Query(2, ge=1, le=5),
     usuario: Optional[str] = Query(None),
@@ -440,6 +441,9 @@ def gerar_vtags_em_lote(
                 "telefone_wpp": "",
                 "suporte": "TORRE"
             }]
+    elif motorista:
+        target_mot = motorista.strip().upper()
+        itens_alvo = [i for i in dados["itens"] if i["motorista"].strip().upper() == target_mot]
     elif suporte and suporte.upper() != "TODOS":
         sup_up = suporte.upper().strip()
         itens_alvo = [i for i in itens_alvo if i["suporte"] == sup_up]
@@ -483,6 +487,12 @@ def gerar_vtags_em_lote(
         cursor.execute("DELETE FROM vtags_geradas WHERE dia_base = ? AND md_codigo = ?", (dia_base, target_norm))
         conn.commit()
         mds_ja_gerados.discard(target_norm)
+    elif motorista and forcar:
+        target_mot_raw = motorista.strip()
+        cursor.execute("DELETE FROM vtags_geradas WHERE dia_base = ? AND UPPER(motorista) = UPPER(?)", (dia_base, target_mot_raw))
+        conn.commit()
+        for it in itens_alvo:
+            mds_ja_gerados.discard(it["md"])
 
     for item in itens_alvo:
         md_cod = item["md"]
@@ -491,7 +501,7 @@ def gerar_vtags_em_lote(
 
         site_id = site_name_to_id.get(md_cod.upper())
         if not site_id:
-            falhas.append(f"{md_cod}: ID não localizado na Anjun")
+            falhas.append({"md": md_cod, "motorista": item.get("motorista", ""), "rota": item.get("rota", ""), "suporte": item.get("suporte", ""), "motivo": "Ponto não cadastrado no catálogo oficial da Anjun (siteId ausente)"})
             continue
 
         payload_gerar = {
@@ -503,7 +513,7 @@ def gerar_vtags_em_lote(
             r_gen = requests.post(f"{base_admin}/collectTagNumber/createTagNumber", headers=headers, json=payload_gerar, timeout=12)
             res_json = r_gen.json()
             if res_json.get("code") != 200:
-                falhas.append(f"{md_cod}: {res_json.get('msg', 'Erro desconhecido na Anjun')}")
+                falhas.append({"md": md_cod, "motorista": item.get("motorista", ""), "rota": item.get("rota", ""), "suporte": item.get("suporte", ""), "motivo": f"Anjun recusou: {res_json.get('msg', 'Erro desconhecido')}"})
                 continue
 
             mds_gerados += 1
@@ -598,17 +608,25 @@ def gerar_vtags_em_lote(
             conn.commit()
 
         except Exception as e_req:
-            falhas.append(f"{md_cod}: Exceção {e_req}")
+            falhas.append({"md": md_cod, "motorista": item.get("motorista", ""), "rota": item.get("rota", ""), "suporte": item.get("suporte", ""), "motivo": f"Exceção de rede/processamento: {e_req}"})
 
     conn.close()
 
+    status_geral = "sucesso"
+    if len(falhas) > 0:
+        status_geral = "parcial" if mds_gerados > 0 else "erro"
+
     return {
-        "status": "sucesso",
+        "status": status_geral,
         "dia_base": dia_base,
+        "alvo": "MD" if md_codigo else ("MOTORISTA" if motorista else "LOTE"),
+        "motorista": motorista,
+        "md_codigo": md_codigo,
+        "mds_solicitados": len(itens_alvo),
         "mds_gerados_nesta_execucao": mds_gerados,
         "vtags_salvas": vtags_salvas,
         "total_falhas": len(falhas),
-        "falhas": falhas[:20]
+        "falhas": falhas
     }
 
 
@@ -708,9 +726,9 @@ def get_card_motorista(dia_base: str = Query(...), motorista: str = Query(...)):
     cursor.execute("""
         SELECT md_codigo, tag_number, rota, placa, imagem_nome
         FROM vtags_geradas
-        WHERE dia_base = ? AND motorista = ?
-        ORDER BY id ASC
-    """, (dia_base, motorista))
+        WHERE dia_base = ? AND UPPER(motorista) = UPPER(?)
+        ORDER BY md_codigo ASC, id ASC
+    """, (dia_base, motorista.strip()))
     rows = cursor.fetchall()
     conn.close()
 
@@ -720,30 +738,90 @@ def get_card_motorista(dia_base: str = Query(...), motorista: str = Query(...)):
     rota = rows[0]["rota"] if rows[0]["rota"] else "Padrão"
     placa = rows[0]["placa"] if rows[0]["placa"] else "-"
 
-    img_paths = [dia_folder / r["imagem_nome"] for r in rows if r["imagem_nome"] and (dia_folder / r["imagem_nome"]).exists()]
-    if not img_paths:
+    md_map = {}
+    for r in rows:
+        md = r["md_codigo"]
+        if md not in md_map:
+            md_map[md] = []
+        if r["imagem_nome"] and (dia_folder / r["imagem_nome"]).exists():
+            md_map[md].append({
+                "tag_number": r["tag_number"],
+                "path": dia_folder / r["imagem_nome"]
+            })
+
+    total_valid_vtags = sum(len(v) for v in md_map.values())
+    if total_valid_vtags == 0:
         raise HTTPException(status_code=404, detail="Imagens das VTAGs ainda não foram renderizadas.")
 
     try:
-        from PIL import Image, ImageDraw
-        images = [Image.open(p) for p in img_paths]
-        width = 787
-        header_h = 90
-        item_h = 787
-        total_h = header_h + len(images) * item_h
+        from PIL import Image, ImageDraw, ImageFont
+        try:
+            font_title = ImageFont.truetype(r"C:\Windows\Fonts\arialbd.ttf", 26)
+            font_sub = ImageFont.truetype(r"C:\Windows\Fonts\arial.ttf", 17)
+            font_md = ImageFont.truetype(r"C:\Windows\Fonts\arialbd.ttf", 20)
+            font_tag = ImageFont.truetype(r"C:\Windows\Fonts\arialbd.ttf", 16)
+            font_foot = ImageFont.truetype(r"C:\Windows\Fonts\arial.ttf", 14)
+        except Exception:
+            font_title = font_sub = font_md = font_tag = font_foot = ImageFont.load_default()
 
-        card = Image.new("RGB", (width, total_h), (255, 255, 255))
+        card_w = 1200
+        header_h = 100
+        footer_h = 45
+        md_banner_h = 42
+        barcode_box_w = 560
+        barcode_box_h = 560
+        row_gap = 25
+
+        # Calcular altura total com base nos MDs e colunas
+        content_h = 0
+        for md, vtags in md_map.items():
+            if not vtags:
+                continue
+            num_rows = (len(vtags) + 1) // 2
+            content_h += md_banner_h + 12 + num_rows * (barcode_box_h + 30) + row_gap
+
+        total_h = header_h + content_h + footer_h + 20
+        card = Image.new("RGB", (card_w, total_h), (248, 250, 252))
         draw = ImageDraw.Draw(card)
 
-        # Faixa superior
-        draw.rectangle([0, 0, width, header_h], fill=(15, 23, 42))
-        draw.text((25, 18), "ANJUN EXPRESS - VTAGS DE COLETA", fill=(56, 189, 248))
-        draw.text((25, 52), f"Motorista: {motorista}  |  Rota: {rota}  |  Placa: {placa}  |  Data: {dia_base}", fill=(226, 232, 240))
+        # 1. Header escuro de alto contraste
+        draw.rectangle([0, 0, card_w, header_h], fill=(15, 23, 42))
+        draw.text((30, 20), "ANJUN EXPRESS - VTAGS OFICIAIS DE COLETA", fill=(56, 189, 248), font=font_title)
+        draw.text((30, 60), f"Motorista: {motorista}   |   Rota: {rota}   |   Placa: {placa}   |   Data: {dia_base}   |   MDs: {len(md_map)}", fill=(226, 232, 240), font=font_sub)
 
-        cur_y = header_h
-        for im in images:
-            card.paste(im, (0, cur_y))
-            cur_y += item_h
+        cur_y = header_h + 15
+        for md, vtags in md_map.items():
+            if not vtags:
+                continue
+            # Faixa identificadora de cada MiniDrop
+            draw.rounded_rectangle([25, cur_y, card_w - 25, cur_y + md_banner_h], radius=6, fill=(224, 231, 255), outline=(165, 180, 252))
+            draw.text((40, cur_y + 10), f"📦 MiniDrop: {md}   •   {len(vtags)} Janela(s) de Coleta", fill=(30, 58, 138), font=font_md)
+            cur_y += md_banner_h + 12
+
+            for idx, vt in enumerate(vtags):
+                col = idx % 2
+                col_x = 25 if col == 0 else 25 + barcode_box_w + 30
+
+                im_v = Image.open(vt["path"])
+                resized = im_v.resize((barcode_box_w, barcode_box_h), Image.Resampling.LANCZOS)
+                card.paste(resized, (col_x, cur_y))
+
+                # Borda sutil e elegante
+                draw.rectangle([col_x, cur_y, col_x + barcode_box_w, cur_y + barcode_box_h], outline=(203, 213, 225), width=2)
+
+                # Identificação da Janela e número da VTAG abaixo do barcode
+                lbl = f"Janela {idx + 1}: {vt['tag_number']}"
+                draw.text((col_x + 10, cur_y + barcode_box_h + 6), lbl, fill=(15, 23, 42), font=font_tag)
+
+                if col == 1 or idx == len(vtags) - 1:
+                    cur_y += barcode_box_h + 30
+
+            cur_y += row_gap
+
+        # Footer
+        draw.rectangle([0, total_h - footer_h, card_w, total_h], fill=(241, 245, 249))
+        draw.line([0, total_h - footer_h, card_w, total_h - footer_h], fill=(226, 232, 240), width=1)
+        draw.text((30, total_h - footer_h + 13), "⚠️ Apresente o código de barras no momento do bipe no ponto de coleta.", fill=(100, 116, 139), font=font_foot)
 
         card.save(card_path, "PNG")
         return FileResponse(
