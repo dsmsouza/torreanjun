@@ -135,6 +135,19 @@ export default function BarraSincronizacaoAnjun() {
     return new Intl.NumberFormat("pt-BR").format(n);
   };
 
+  const formatarDataFechada = (dt?: string) => {
+    if (!dt) return "04/11";
+    try {
+      if (dt.includes("-")) {
+        const partes = dt.split("-");
+        if (partes.length === 3) return `${partes[2]}/${partes[1]}`;
+      }
+      return dt;
+    } catch {
+      return dt;
+    }
+  };
+
   const formatarHora = (horaStr?: string | null) => {
     if (!horaStr) return "Aguardando";
     try {
@@ -279,10 +292,10 @@ export default function BarraSincronizacaoAnjun() {
                 <ShieldCheck className="w-3 h-3" />
                 Fechamento D-1 Oficial
               </span>
-              <span className="text-[11px] text-slate-500">{motores.dia_anterior?.data_fechada || "03/11"}</span>
+              <span className="text-[11px] text-slate-500">{formatarDataFechada(motores.dia_anterior?.data_fechada || fechamentos[0]?.data)}</span>
             </div>
             <div className="text-xl font-bold text-white mb-2">
-              {formatarNumero(motores.dia_anterior?.total_oficial || fechamentos[0]?.total_scan || 1030159)}
+              {formatarNumero(motores.dia_anterior?.total_oficial || fechamentos[0]?.total_scan || 878356)}
               <span className="text-xs font-normal text-slate-400 ml-1.5">total D-1</span>
             </div>
           </div>

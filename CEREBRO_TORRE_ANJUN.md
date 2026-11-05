@@ -253,19 +253,40 @@ O sistema já possui o módulo cliente e as credenciais de autenticação config
 
 ---
 
-## 10. Controle de Acesso Restrito e Blindagem de Operadores (VTAG & MAPA)
+## 10. Controle de Acesso, Autenticação e Matriz de Permissões
 
-1. **Padrão de Segurança (Zero Confiança):**
-   - Qualquer usuário novo, máquina na rede local (`http://10.30.100.183:3000`) ou janela anônima entra estritamente como **Operador**.
-2. **Rotas Permitidas para Operador:**
-   - 🏷️ **Distribuição VTAGs:** `/vtag`
-   - 🗺️ **Mapa da Malha:** `/mapa`
-3. **Bloqueio em Duas Camadas:**
-   - **Camada Servidor (`frontend/proxy.ts`):** Qualquer requisição para rotas restritas (`/`, `/config`, `/sla`, `/solicitacoes`, `/planejador-rotas`) sem o cookie `anjun_master_session=true` recebe imediatamente HTTP 307 de redirecionamento para `/vtag`.
-   - **Camada Visual (`frontend/components/Sidebar.tsx` e `AuthWrapper.tsx`):** O menu lateral renderiza **apenas** as 2 opções permitidas. O Copilot IA fica oculto.
-4. **Desbloqueio Master:**
-   - Para acessar a diretoria/dashboard completo, clica-se no botão `Master` no card do perfil e digita-se a senha de administrador (`admin123` / `anjun2026`). O sistema ativa `anjun_master_session=true` e libera todos os módulos.
-   - O botão `Bloquear` restaura a restrição imediatamente.
+1. **Tela de Login Obrigatória (`/login`):**
+   - Qualquer acesso sem sessão ativa em `http://10.30.100.183:3000/` é redirecionado compulsoriamente para `/login`.
+2. **Matriz de Usuários e Senhas Oficiais:**
+   - **Diego (Proprietário / Master):**
+     - Usuário: `diego` | Senha: `diego123` (ou `admin123` / `anjun2026`)
+     - Acesso Total a todos os módulos (`/`, `/config`, `/sla`, `/clientes`, `/solicitacoes`, `/planejador-rotas`).
+     - Permissão de Geração de VTAGs na Anjun: **SIM**.
+     - Redirecionamento após login: `/`.
+   - **Ellen (Líder da Torre):**
+     - Usuário: `ellen` | Senha: `ellen123`
+     - Acesso estrito a: **Distribuição VTAGs (`/vtag`)** e **Mapa da Malha (`/mapa`)**.
+     - Permissão de Geração de VTAGs em Lote: **SIM**.
+     - Disparo WhatsApp: Suporte Ellen ou qualquer motorista.
+     - Redirecionamento após login: `/vtag`.
+   - **Demais Suportes da Torre (Danilo, Gabriele, Ketley, Janaina, Nicolas):**
+     - Senhas no padrão `<nome>123`:
+       - Danilo: `danilo123`
+       - Gabriele: `gabriele123`
+       - Ketley: `ketley123`
+       - Janaina: `janaina123`
+       - Nicolas: `nicolas123`
+     - Acesso estrito a: **Distribuição VTAGs (`/vtag`)** e **Mapa da Malha (`/mapa`)**.
+     - Permissão de Geração de VTAGs: **NÃO (Travada)**.
+     - Disparo WhatsApp: Liberado para seus respectivos motoristas (aba auto-selecionada no login).
+3. **Bloqueio em Nível de Servidor (`proxy.ts`):**
+   - Usuário não autenticado -> redireciona para `/login`.
+   - Usuário Operador tentando acessar `/` ou rotas de diretoria -> redireciona para `/vtag`.
+4. **Proteção Antiduplicidade no WhatsApp:**
+   - Tabela `vtags_disparos_motoristas` registra `enviado_por` e `enviado_em`.
+   - Card exibe badge: `✅ Já encaminhado por <Nome> às <Hora>`.
+   - Botão vira "Reenviar no WhatsApp" com alerta de confirmação modal caso alguém tente reenviar.
+   - Sincronização automática a cada 10 segundos entre todas as máquinas dos operadores.
 
   - Payload: `{"printQty": 2, "siteId": <id_numerico_do_md>}`
 - **Listagem e Link do PDF:** `POST /collectTagNumber/page`
