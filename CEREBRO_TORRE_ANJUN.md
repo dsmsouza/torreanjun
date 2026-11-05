@@ -184,7 +184,13 @@ O menu lateral (`frontend/components/Sidebar.tsx`) foi otimizado e focado nas fu
    - **Banner de Alertas Inteligentes:** 1ª Bipagem na História, Pontos Não Cadastrados e **Auditoria de Misscan**.
    - **Auditoria de Misscan:** Modal com seletor de raio (3 km, 5 km, 10 km, 15 km), busca e listagem de MDs vizinhos recomendados com distância Haversine exata.
    - Abas: 1. Visão Geral Executiva | 2. Pontos de Coleta (MDs) | 3. Sellers & Embarcadores | 4. Horários de Bipagem (Coluna M) | 5. Linha do Tempo & Eventos | 6. Reconciliação & Aging.
-2. **Mapa da Malha (`/mapa`):**
+2. **Planejador 16h SP (`/planejador-rotas`):**
+   - Inteligência preditiva de fim de tarde para a malha de MiniDrops de São Paulo.
+   - Ingestão automática diária da planilha mais recente em `C:\ANJUN\PLANILHA DE ROTAS\`.
+   - Motor estatístico de pico: projeta o incremento horário das 16h às 18h via histórico (`detalhe_pico_historico`).
+   - Simulador de saturação e ponto de corte: calcula o backlog residual por rota, identifica veículos em risco de estouro (>100%) e permite rebalanceamento What-If em tempo real.
+   - Tabela de acurácia diária: compara o previsto das 16h00 com o fechamento oficial noturno.
+3. **Mapa da Malha (`/mapa`):**
    - Visualização geográfica Leaflet dos pontos da rede.
    - **Filtros e Controles:** Seletor de visualização de pontos **Ativos** vs **Inativos/Excluídos**, círculos de abrangência e calor de volumetria.
 3. **Configurações da Malha (`/config`):**
@@ -222,3 +228,19 @@ Antes de propor alterações ou responder sobre a operação:
    - Se for Pickup/PA: `coletado ➔ Carregamento ➔ Descarregamento ➔ Circuito fechado` (Sem saco selado!).
    - Se houver `Foi assinado`, aponte risco crítico de extravio.
    - Se houver Drop-off sem MD, use o endpoint `/api/coletas/misscan` para identificar os MDs prováveis por proximidade de CEP.
+
+
+---
+
+## 9. Integração com a API Anjun Express (`newmanage.anjunexpress.com`)
+
+O sistema já possui o módulo cliente e as credenciais de autenticação configuradas para comunicação direta com a plataforma corporativa da Anjun:
+- **Arquivo de Configuração de Sessão:** `backend/services/anjun_api_config.json`
+- **Módulo Cliente:** `backend/services/anjun_api_client.py`
+- **Usuário Conectado:** `mandarino` (Diego de Souza Mandarino / Site ANJUN1 / Org 71)
+- **Base URL da API:** `https://newmanage.anjunexpress.com/admin`
+- **Headers Padrão:** `token` (JWT), `Origin: https://manage.anjunexpress.com`, `Referer: https://manage.anjunexpress.com/`
+- **Rotas Mapeadas:**
+  - Ingestão de pedidos operacionais: `/collectOrder/page`
+  - Geração de VTAGs e veículos: tela `https://manage.anjunexpress.com/basicData/carNumber`
+- **Diretório da Planilha de Rotas Diária:** `C:\ANJUN\PLANILHA DE ROTAS` (arquivo atualizado diariamente por volta das 08:00 com os MDs, rotas, placas e telefones dos 91 motoristas).
