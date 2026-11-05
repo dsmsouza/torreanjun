@@ -846,22 +846,26 @@ export default function VtagPage() {
                             >
                               <span className="font-bold">{md.md_codigo}</span>
                               {hasVtag ? (
-                                <button
-                                  onClick={() => {
-                                    const v = md.vtags[0];
-                                    if (v.imagem_url) {
-                                      setModalZoomVtag({
-                                        vtag: v.tag_number,
-                                        md: md.md_codigo,
-                                        imagemUrl: `${API_BASE}${v.imagem_url}`
-                                      });
-                                    }
-                                  }}
-                                  className="px-1 rounded bg-cyan-500/20 text-[9px] text-cyan-300 hover:underline cursor-pointer"
-                                  title="Ver imagem do código de barras"
-                                >
-                                  {md.vtags.map((v) => v.tag_number).join(", ")}
-                                </button>
+                                <div className="flex items-center gap-1">
+                                  {md.vtags.map((v, vIdx) => (
+                                    <button
+                                      key={v.tag_number}
+                                      onClick={() => {
+                                        if (v.imagem_url) {
+                                          setModalZoomVtag({
+                                            vtag: v.tag_number,
+                                            md: `${md.md_codigo} (${vIdx + 1}ª Janela)`,
+                                            imagemUrl: `${API_BASE}${v.imagem_url}`
+                                          });
+                                        }
+                                      }}
+                                      className="px-1.5 py-0.5 rounded bg-cyan-500/20 hover:bg-cyan-500/40 text-[10px] text-cyan-300 font-bold hover:underline cursor-pointer transition-colors border border-cyan-500/30"
+                                      title={`Clique para ver o código de barras da ${vIdx + 1}ª Coleta (${v.tag_number})`}
+                                    >
+                                      {v.tag_number}
+                                    </button>
+                                  ))}
+                                </div>
                               ) : podeGerarVtag ? (
                                 <button
                                   onClick={() => handleGerarMdEspecifico(md.md_codigo, 2, false)}
