@@ -244,3 +244,12 @@ O sistema já possui o módulo cliente e as credenciais de autenticação config
   - Ingestão de pedidos operacionais: `/collectOrder/page`
   - Geração de VTAGs e veículos: tela `https://manage.anjunexpress.com/basicData/carNumber`
 - **Diretório da Planilha de Rotas Diária:** `C:\ANJUN\PLANILHA DE ROTAS` (arquivo atualizado diariamente por volta das 08:00 com os MDs, rotas, placas e telefones dos 91 motoristas).
+
+### 9.1. Endpoints Oficiais de VTAG Descobertos e Validados:
+- **Catálogo de MiniDrops (`siteId`):** `GET /site/queryOwnSite` (retorna todos os 4.206 MDs e seus IDs numéricos).
+- **Geração Automática de VTAGs:** `POST /collectTagNumber/createTagNumber`
+  - Payload: `{"printQty": 2, "siteId": <id_numerico_do_md>}`
+- **Listagem e Link do PDF:** `POST /collectTagNumber/page`
+  - Retorna o histórico de VTAGs geradas com o link direto do PDF na nuvem (`printUrl`).
+- **Detalhamento dos Códigos VTAG:** `POST /collectTagNumberDetail/page`
+  - Retorna os números exatos gerados (ex: `AJV33034228`, `AJV33034229`) vinculados ao MD.
