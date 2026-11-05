@@ -2,22 +2,33 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Lock, ArrowRight, ShieldCheck } from "lucide-react";
+import { Lock, ArrowRight, ShieldCheck, User, Users, Shield, Tag, Map, CheckCircle2 } from "lucide-react";
+
+interface UsuarioOption {
+  login: string;
+  nome: string;
+  role: "master" | "lider" | "operador";
+  suporte: string;
+  descricao: string;
+}
+
+const USUARIOS_PADRAO: UsuarioOption[] = [
+  { login: "diego", nome: "Diego Mandarino", role: "master", suporte: "TODOS", descricao: "Proprietário / Master (Acesso Completo)" },
+  { login: "ellen", nome: "Ellen", role: "lider", suporte: "ELLEN", descricao: "Líder da Torre (Gera VTAGs & Disparo WhatsApp)" },
+  { login: "danilo", nome: "Danilo", role: "operador", suporte: "DANILO", descricao: "Suporte da Torre (Disparo WhatsApp)" },
+  { login: "gabriele", nome: "Gabriele", role: "operador", suporte: "GABRIELE", descricao: "Suporte da Torre (Disparo WhatsApp)" },
+  { login: "ketley", nome: "Ketley", role: "operador", suporte: "KETLEY", descricao: "Suporte da Torre (Disparo WhatsApp)" },
+  { login: "janaina", nome: "Janaina", role: "operador", suporte: "JANAINA", descricao: "Suporte da Torre (Disparo WhatsApp)" },
+  { login: "nicolas", nome: "Nicolas", role: "operador", suporte: "NICOLAS", descricao: "Suporte da Torre (Disparo WhatsApp)" },
+];
 
 export default function LoginPage() {
+  const [selectedUser, setSelectedUser] = useState<UsuarioOption>(USUARIOS_PADRAO[0]);
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get("from") || "/";
-
-  // Prevenir que o usuário já logado veja a tela de login
-  useEffect(() => {
-    if (document.cookie.includes("admin_token")) {
-      router.push(redirectUrl);
-    }
-  }, [router, redirectUrl]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,141 +36,219 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/auth/login`, {
+      const response = await fetch("/api/auth/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ password }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          usuario: selectedUser.login,
+          password: password.trim(),
+        }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        
-        // Define the cookie with 24h expiration
-        document.cookie = `admin_token=${data.token}; path=/; max-age=86400; SameSite=Strict`;
-        
-        // Also keep in localStorage for some client requests if needed
-        localStorage.setItem("admin_token", data.token);
-        
-        // Redireciona com window.location.href para forçar o middleware a recarregar a rota protegida
-        window.location.href = redirectUrl;
+
+        // 1. Grava cookies de sessão
+        document.cookie = `anjun_session=true; path=/; max-age=604800; SameSite=Lax;`;
+        document.cookie = `anjun_user=${data.usuario}; path=/; max-age=604800; SameSite=Lax;`;
+        document.cookie = `anjun_role=${data.role}; path=/; max-age=604800; SameSite=Lax;`;
+
+        if (data.role === "master") {
+          document.cookie = `anjun_master_session=true; path=/; max-age=604800; SameSite=Lax;`;
+        } else {
+          // Garante remoção de cookie master anterior
+          document.cookie = `anjun_master_session=; Max-Age=-99999999; path=/;`;
+        }
+
+        // 2. Grava no localStorage para uso imediato nos componentes
+        localStorage.setItem("anjun_user", data.usuario);
+        localStorage.setItem("anjun_nome", data.nome);
+        localStorage.setItem("anjun_role", data.role);
+        localStorage.setItem("anjun_perfil", data.role);
+        localStorage.setItem("anjun_suporte_tab", data.suporte || "TODOS");
+        if (data.token) {
+          localStorage.setItem("admin_token", data.token);
+        }
+
+        window.dispatchEvent(new Event("perfilchange"));
+
+        // 3. Redirecionamento correto conforme o perfil
+        const dest = data.role === "master" ? "/" : "/vtag";
+        window.location.href = dest;
       } else {
-        const err = await response.json();
-        setError(err.detail || "Credenciais inválidas");
+        const err = await response.json().catch(() => ({ detail: "Senha incorreta." }));
+        setError(err.detail || "Senha incorreta. Tente novamente.");
       }
     } catch (err) {
-      setError("Erro ao conectar no servidor. Verifique se o backend está rodando.");
+      setError("Erro ao conectar no servidor. Verifique se o backend está ativo.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex w-full bg-[#090D16]">
-      {/* Left side: branding & image */}
-      <div className="hidden lg:flex w-1/2 bg-slate-900 relative overflow-hidden flex-col justify-between p-12">
-        {/* Abstract background elements */}
-        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-blue-600/20 blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-600/20 blur-[120px]" />
-        
+    <div className="min-h-screen flex w-full bg-[#090D16] text-slate-100 font-sans">
+      {/* Lado Esquerdo: Banner Corporativo */}
+      <div className="hidden lg:flex w-5/12 bg-gradient-to-br from-[#0c1322] via-[#090D16] to-[#0d1627] relative overflow-hidden flex-col justify-between p-12 border-r border-slate-800/80">
+        <div className="absolute top-[-15%] left-[-15%] w-[60%] h-[60%] rounded-full bg-emerald-600/10 blur-[130px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-cyan-600/10 blur-[120px]" />
+
         <div className="z-10 flex items-center space-x-3">
-          {/* ANJUN Logo SVG Representation */}
-          <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-6 h-6 text-white" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
+          <div className="w-10 h-10 bg-emerald-500/20 border border-emerald-500/40 rounded-xl flex items-center justify-center text-emerald-400 font-black shadow-lg shadow-emerald-500/10">
+            A
           </div>
-          <span className="text-2xl font-bold text-white tracking-tight">ANJUN <span className="text-blue-500">Express</span></span>
+          <div>
+            <span className="text-xl font-black text-white tracking-wider">ANJUN <span className="text-emerald-400">Torre</span></span>
+            <p className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">São Paulo First-Mile</p>
+          </div>
         </div>
 
         <div className="z-10 space-y-6 max-w-md">
-          <h1 className="text-4xl font-bold text-white leading-tight">Torre de Controle Operacional</h1>
-          <p className="text-slate-400 text-lg leading-relaxed">
-            Gestão avançada de malha, monitoramento de performance e controle de qualidade para excelência na primeira milha.
-          </p>
-          
-          <div className="flex items-center space-x-4 pt-8">
-            <div className="flex -space-x-4">
-              <div className="w-10 h-10 rounded-full bg-slate-800 border-2 border-[#090D16] flex items-center justify-center text-xs font-bold text-slate-300">SP</div>
-              <div className="w-10 h-10 rounded-full bg-blue-900 border-2 border-[#090D16] flex items-center justify-center text-xs font-bold text-blue-200">RJ</div>
-              <div className="w-10 h-10 rounded-full bg-indigo-900 border-2 border-[#090D16] flex items-center justify-center text-xs font-bold text-indigo-200">MG</div>
-            </div>
-            <span className="text-sm text-slate-500">Operação Nacional</span>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs font-semibold">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            Acesso Operacional Protegido
           </div>
+          <h1 className="text-3xl xl:text-4xl font-black text-white leading-tight">
+            Torre de Controle Operacional
+          </h1>
+          <p className="text-slate-400 text-sm leading-relaxed">
+            Distribuição de VTAGs oficiais, monitoramento de rotas e acompanhamento de coletas de MiniDrops em tempo real.
+          </p>
+
+          <div className="pt-4 space-y-2.5 text-xs text-slate-300">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span><strong>Diego:</strong> Acesso Master completo (Diretoria)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span><strong>Ellen:</strong> Líder da Torre — Geração de VTAGs e WhatsApp</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span><strong>Danilo, Gabriele, Ketley, Janaina, Nicolas:</strong> Envio por Suporte</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="z-10 text-[11px] text-slate-500 font-mono">
+          Anjun Express Logistics © 2026 — Rede Interna
         </div>
       </div>
 
-      {/* Right side: login form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 sm:p-12">
-        <div className="w-full max-w-md space-y-10">
-          
-          {/* Mobile Logo (visible only on small screens) */}
-          <div className="flex lg:hidden items-center justify-center space-x-3 mb-12">
-            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-6 h-6 text-white" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-            <span className="text-2xl font-bold text-white tracking-tight">ANJUN <span className="text-blue-500">Express</span></span>
-          </div>
-
-          <div className="space-y-3 text-center lg:text-left">
-            <h2 className="text-3xl font-bold text-white tracking-tight">
-              Acesso Restrito
-            </h2>
-            <p className="text-slate-400">
-              Digite a chave de acesso master para entrar no painel de controle.
+      {/* Lado Direito: Formulário de Autenticação */}
+      <div className="w-full lg:w-7/12 flex items-center justify-center p-6 sm:p-12">
+        <div className="w-full max-w-md space-y-7">
+          <div>
+            <h2 className="text-2xl font-black text-white tracking-tight">Identifique-se para Acessar</h2>
+            <p className="text-xs text-slate-400 mt-1">
+              Selecione o seu perfil e digite a sua senha de acesso.
             </p>
           </div>
 
-          <form className="space-y-6" onSubmit={handleLogin}>
-            <div className="space-y-4">
+          <form onSubmit={handleLogin} className="space-y-5">
+            {/* Seletor de Usuário */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                Selecione o Usuário
+              </label>
+              <div className="grid grid-cols-1 gap-2 max-h-56 overflow-y-auto pr-1">
+                {USUARIOS_PADRAO.map((u) => {
+                  const isSelected = selectedUser.login === u.login;
+                  return (
+                    <button
+                      key={u.login}
+                      type="button"
+                      onClick={() => {
+                        setSelectedUser(u);
+                        setError("");
+                      }}
+                      className={`w-full p-2.5 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
+                        isSelected
+                          ? "bg-emerald-500/15 border-emerald-500/50 shadow-md shadow-emerald-500/10"
+                          : "bg-slate-900/60 border-slate-800 hover:border-slate-700 hover:bg-slate-800/40"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                          u.role === "master"
+                            ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+                            : u.role === "lider"
+                            ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
+                            : "bg-slate-800 text-slate-300 border border-slate-700"
+                        }`}>
+                          <User className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white flex items-center gap-2">
+                            {u.nome}
+                            {u.role === "master" && (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
+                                Master
+                              </span>
+                            )}
+                            {u.role === "lider" && (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-mono">
+                                Líder Torre
+                              </span>
+                            )}
+                            {u.role === "operador" && (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">
+                                Suporte {u.suporte}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-400">{u.descricao}</p>
+                        </div>
+                      </div>
+
+                      {isSelected && (
+                        <div className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center text-slate-950 shrink-0">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Campo de Senha */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
+                Senha de Acesso ({selectedUser.nome})
+              </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-slate-500" />
-                </div>
                 <input
-                  id="password"
-                  name="password"
                   type="password"
+                  autoFocus
                   required
-                  className="block w-full pl-10 pr-3 py-3 border border-slate-700 rounded-xl bg-slate-800/50 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all sm:text-sm"
-                  placeholder="Chave de Acesso"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  placeholder={`Digite a senha para ${selectedUser.nome}...`}
+                  className="w-full px-4 py-3 pl-11 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
                 />
+                <Lock className="w-4 h-4 text-slate-500 absolute left-4 top-3.5" />
               </div>
+              <p className="text-[10px] text-slate-500">
+                Padrão: {selectedUser.login}123
+              </p>
             </div>
 
             {error && (
-              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 flex items-start space-x-2">
-                <ShieldCheck className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
-                <span className="text-sm text-red-400">{error}</span>
+              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                {error}
               </div>
             )}
 
-            <div>
-              <button
-                type="submit"
-                disabled={loading || !password}
-                className="group relative flex w-full justify-center items-center rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-[#090D16] transition-all disabled:opacity-70 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <>
-                    <span>Entrar no Painel</span>
-                    <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                  </>
-                )}
-              </button>
-            </div>
-            
-            <div className="mt-8 pt-6 border-t border-slate-800 flex items-center justify-center space-x-2 text-xs text-slate-500">
-              <ShieldCheck className="w-4 h-4" />
-              <span>Ambiente seguro e monitorado</span>
-            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 rounded-xl font-bold text-xs uppercase tracking-wider bg-emerald-500 hover:bg-emerald-400 text-slate-950 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-50"
+            >
+              {loading ? "Autenticando..." : `Entrar como ${selectedUser.nome}`}
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </form>
         </div>
       </div>

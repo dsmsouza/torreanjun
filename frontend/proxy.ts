@@ -4,7 +4,7 @@ import type { NextRequest } from 'next/server';
 export default function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Permitir arquivos estáticos, favicon e api
+  // Permitir arquivos estáticos, favicon, imagens e rotas de API
   if (
     pathname.startsWith('/api') ||
     pathname.startsWith('/_next') ||
@@ -14,29 +14,46 @@ export default function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Verifica se o usuário tem a sessão Master autenticada via cookie
+  const sessionCookie = request.cookies.get('anjun_session')?.value;
   const isMaster = request.cookies.get('anjun_master_session')?.value === 'true';
+  const isLoginPage = pathname === '/login' || pathname.startsWith('/login/');
 
-  // Se for Master, tem acesso livre a todas as páginas da Torre
+  // 1. USUÁRIO NÃO AUTENTICADO:
+  // Se não possui cookie de sessão, redireciona compulsoriamente para /login
+  if (!sessionCookie) {
+    if (!isLoginPage) {
+      const loginUrl = request.nextUrl.clone();
+      loginUrl.pathname = '/login';
+      return NextResponse.redirect(loginUrl);
+    }
+    return NextResponse.next();
+  }
+
+  // 2. USUÁRIO JÁ AUTENTICADO TENTANDO ACESSAR /login:
+  if (isLoginPage) {
+    const dest = request.nextUrl.clone();
+    dest.pathname = isMaster ? '/' : '/vtag';
+    return NextResponse.redirect(dest);
+  }
+
+  // 3. DIRETORIA MASTER (Diego):
+  // Acesso irrestrito a todos os módulos
   if (isMaster) {
     return NextResponse.next();
   }
 
-  // Se NÃO for Master (perfil Operador padrão na rede e anônimo):
-  // Rotas estritamente permitidas para operadores: /vtag e /mapa
+  // 4. EQUIPE OPERACIONAL / TORRE DE CONTROLE (Ellen, Danilo, Gabriele, Ketley, Janaina, Nicolas):
+  // Acesso estritamente restrito a /vtag e /mapa
   const isAllowedForOperador =
     pathname === '/vtag' ||
     pathname.startsWith('/vtag/') ||
     pathname === '/mapa' ||
-    pathname.startsWith('/mapa/') ||
-    pathname === '/login' ||
-    pathname.startsWith('/login/');
+    pathname.startsWith('/mapa/');
 
   if (!isAllowedForOperador) {
-    // Redireciona automaticamente qualquer tentativa de acessar /, /sla, /config, etc.
-    const url = request.nextUrl.clone();
-    url.pathname = '/vtag';
-    return NextResponse.redirect(url);
+    const vtagUrl = request.nextUrl.clone();
+    vtagUrl.pathname = '/vtag';
+    return NextResponse.redirect(vtagUrl);
   }
 
   return NextResponse.next();

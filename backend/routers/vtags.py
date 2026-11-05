@@ -41,6 +41,21 @@ def init_vtags_table():
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS vtags_disparos_motoristas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dia_base TEXT NOT NULL,
+            motorista TEXT NOT NULL,
+            placa TEXT,
+            suporte TEXT,
+            status_envio TEXT DEFAULT 'ENVIADO',
+            enviado_por TEXT NOT NULL,
+            enviado_em TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(dia_base, motorista)
+        );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_vtags_disp ON vtags_disparos_motoristas(dia_base, motorista);")
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS vtags_geradas (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             dia_base TEXT NOT NULL,
@@ -278,7 +293,16 @@ def get_motoristas_agrupados(
         WHERE dia_base = ?
     """, (dia_base,))
     vtags_db = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT motorista, status_envio, enviado_por, enviado_em 
+        FROM vtags_disparos_motoristas
+        WHERE dia_base = ?
+    """, (dia_base,))
+    disparos_rows = cursor.fetchall()
     conn.close()
+
+    disparos_map = {r["motorista"]: r for r in disparos_rows}
 
     # Mapear VTAGs por MD
     md_to_vtags: Dict[str, List[Dict[str, Any]]] = {}
@@ -302,6 +326,7 @@ def get_motoristas_agrupados(
     motoristas_map: Dict[str, Dict[str, Any]] = {}
     for item in dados["itens"]:
         mot = item["motorista"]
+        disp = disparos_map.get(mot)
         if mot not in motoristas_map:
             motoristas_map[mot] = {
                 "motorista": mot,
@@ -312,9 +337,9 @@ def get_motoristas_agrupados(
                 "suporte": item["suporte"],
                 "mds": [],
                 "total_vtags": 0,
-                "status_envio": "PENDENTE",
-                "enviado_por": None,
-                "enviado_em": None
+                "status_envio": disp["status_envio"] if disp else "PENDENTE",
+                "enviado_por": disp["enviado_por"] if disp else None,
+                "enviado_em": disp["enviado_em"] if disp else None
             }
         
         md_cod = item["md"]
@@ -367,8 +392,15 @@ def get_motoristas_agrupados(
 @router.post("/gerar-vtags-anjun")
 def gerar_vtags_em_lote(
     suporte: Optional[str] = Query(None),
-    qtd_por_md: int = Query(2, ge=1, le=5)
+    qtd_por_md: int = Query(2, ge=1, le=5),
+    usuario: Optional[str] = Query(None)
 ):
+    u_norm = (usuario or "").strip().lower()
+    if u_norm not in ["diego", "ellen", "admin", "mandarino"]:
+        raise HTTPException(
+            status_code=403, 
+            detail="Acesso negado. Apenas Diego (Master) ou Ellen (Líder da Torre) podem gerar as VTAGs oficiais."
+        )
     """
     Chama a API oficial da Anjun (POST /collectTagNumber/createTagNumber)
     para os MDs ativos da planilha do dia, gerando 2 VTAGs oficiais para cada um,
@@ -544,6 +576,18 @@ def marcar_como_enviado(payload: Dict[str, Any] = Body(...)):
     agora = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
     conn = get_db()
     cursor = conn.cursor()
+    suporte = payload.get("suporte", "")
+    placa = payload.get("placa", "")
+
+    cursor.execute("""
+        INSERT INTO vtags_disparos_motoristas (dia_base, motorista, placa, suporte, status_envio, enviado_por, enviado_em)
+        VALUES (?, ?, ?, ?, 'ENVIADO', ?, ?)
+        ON CONFLICT(dia_base, motorista) DO UPDATE SET
+            status_envio = 'ENVIADO',
+            enviado_por = excluded.enviado_por,
+            enviado_em = excluded.enviado_em;
+    """, (dia_base, motorista, placa, suporte, enviado_por, agora))
+
     cursor.execute("""
         UPDATE vtags_geradas
         SET status_envio = 'ENVIADO', enviado_por = ?, enviado_em = ?
@@ -553,7 +597,13 @@ def marcar_como_enviado(payload: Dict[str, Any] = Body(...)):
     conn.commit()
     conn.close()
 
-    return {"status": "sucesso", "motorista": motorista, "vtags_atualizadas": rows, "enviado_em": agora}
+    return {
+        "status": "sucesso",
+        "motorista": motorista,
+        "vtags_atualizadas": rows,
+        "enviado_por": enviado_por,
+        "enviado_em": agora
+    }
 
 
 @router.post("/atualizar-token")

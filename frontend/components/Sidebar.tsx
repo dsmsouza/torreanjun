@@ -5,35 +5,27 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../hooks/use-auth";
 import { 
-  LayoutDashboard, 
-  Globe, 
   MapPin, 
-  Users, 
-  Package, 
   Settings, 
   Shield,
   ShieldAlert, 
-  Activity, 
   LogOut,
   Map,
   Sun,
   Moon,
-  TrendingUp,
   Truck,
   Clock,
-  Search,
-  PackageSearch,
-  Sparkles,
   Rocket,
   Tag,
   Lock,
   KeyRound,
-  X
+  X,
+  User
 } from "lucide-react";
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { isMaster, isOperador, operadorNome, searchParamsStr, desbloquearMaster, bloquearOperador } = useAuth();
+  const { nome, role, isMaster, isLider, isOperador, logout, searchParamsStr, desbloquearMaster } = useAuth();
   
   const [currentTab, setCurrentTab] = useState<string | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
@@ -91,14 +83,14 @@ export default function Sidebar() {
       setSenhaInput("");
       window.location.reload();
     } else {
-      setErroSenha("Senha incorreta. Acesso não autorizado.");
+      setErroSenha("Senha incorreta. Apenas a senha master do Diego é válida.");
     }
   };
 
-  // Se o perfil for OPERADOR / SUPORTE, mostra EXCLUSIVAMENTE VTAG e MAPA
+  // Se NÃO for Master (Ellen, Danilo, Gabriele, etc.), mostra EXCLUSIVAMENTE VTAG e MAPA
   const menuCategories = isOperador ? [
     {
-      title: "Operação Restrita",
+      title: "Torre de Controle Operacional",
       items: [
         { name: "Distribuição VTAGs", path: "/vtag", icon: Tag, roleRequired: "Guest" },
         { name: "Mapa da Malha", path: "/mapa", icon: Map, roleRequired: "Guest" },
@@ -145,38 +137,29 @@ export default function Sidebar() {
           <div className="hidden md:flex m-3 p-3 rounded-xl bg-[#131926]/80 border border-border items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center">
-                <Shield className={`w-4 h-4 ${isMaster ? "text-amber-500" : "text-emerald-400"}`} />
+                <Shield className={`w-4 h-4 ${isMaster ? "text-amber-500" : (isLider ? "text-cyan-400" : "text-emerald-400")}`} />
               </div>
               <div>
                 <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
-                  {isOperador ? "Perfil Restrito" : "Perfil Operacional"}
+                  {isMaster ? "Diretoria Master" : (isLider ? "Liderança Torre" : "Suporte Torre")}
                 </p>
-                <p className="text-xs font-semibold text-white">
-                  {isOperador ? `Suporte: ${operadorNome || "Operador"}` : "Diretoria Master"}
+                <p className="text-xs font-semibold text-white truncate max-w-[110px]" title={nome}>
+                  {nome || "Operador"}
                 </p>
               </div>
             </div>
 
-            {isOperador ? (
+            {isOperador && (
               <button
                 onClick={() => {
                   setErroSenha("");
                   setShowModalSenha(true);
                 }}
                 className="text-[10px] text-amber-400 hover:text-amber-300 px-2 py-1 rounded bg-amber-500/10 border border-amber-500/30 cursor-pointer flex items-center gap-1 font-medium transition-all hover:bg-amber-500/20"
-                title="Desbloquear Acesso Master"
+                title="Desbloquear Acesso Master (Diego)"
               >
                 <Lock className="w-3 h-3" />
                 Master
-              </button>
-            ) : (
-              <button
-                onClick={bloquearOperador}
-                className="text-[10px] text-slate-300 hover:text-white px-2 py-1 rounded bg-slate-800 border border-slate-700 cursor-pointer flex items-center gap-1 font-medium transition-all hover:bg-slate-700"
-                title="Bloquear e voltar ao Modo Operador Restrito"
-              >
-                <ShieldAlert className="w-3 h-3 text-emerald-400" />
-                Bloquear
               </button>
             )}
           </div>
@@ -239,16 +222,11 @@ export default function Sidebar() {
           </button>
 
           <button
-            onClick={() => {
-              bloquearOperador();
-              document.cookie = 'admin_token=; Max-Age=-99999999; path=/';
-              localStorage.removeItem('admin_token');
-              window.location.href = '/vtag';
-            }}
+            onClick={logout}
             className="w-full flex items-center justify-center md:justify-start gap-3 px-3 py-3 md:px-4 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-all cursor-pointer"
           >
             <LogOut className="w-4 h-4 shrink-0" />
-            <span className="hidden md:inline">Restringir Sessão</span>
+            <span className="hidden md:inline">Sair da Sessão</span>
           </button>
         </div>
       </aside>
@@ -270,21 +248,21 @@ export default function Sidebar() {
               </div>
               <div>
                 <h3 className="text-base font-bold text-white">Desbloquear Master</h3>
-                <p className="text-xs text-slate-400">Acesso completo à Torre de Controle</p>
+                <p className="text-xs text-slate-400">Acesso completo à Diretoria (Diego)</p>
               </div>
             </div>
 
             <form onSubmit={handleDesbloqueio} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                  Senha de Administrador
+                  Senha do Diego
                 </label>
                 <input
                   type="password"
                   autoFocus
                   value={senhaInput}
                   onChange={(e) => setSenhaInput(e.target.value)}
-                  placeholder="Digite a senha..."
+                  placeholder="Digite diego123..."
                   className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-amber-500"
                 />
                 {erroSenha && (
