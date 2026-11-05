@@ -789,6 +789,22 @@ def get_resumo_coletas(
 
     regionais_flat.sort(key=lambda x: x["volume"], reverse=True)
 
+    # Total de pacotes com Misscan no dia (Dropoff sem ponto de colecao que avancou)
+    total_misscan = 0
+    try:
+        row_misscan = db.execute(text("""
+            SELECT COALESCE(SUM(total_pedidos), 0)
+            FROM criacao_pedidos_historico
+            WHERE dia_base LIKE :dia
+              AND (ponto_colecao IS NULL OR TRIM(ponto_colecao) IN ('', '-', 'nan', 'None', 'null'))
+              AND (LOWER(maneira_coleta) LIKE '%entrega%' OR LOWER(maneira_coleta) LIKE '%drop%')
+              AND LOWER(TRIM(status_pedido)) IN ('circuito fechado', 'carregamento', 'descarregamento', 'coletado', 'saco selado', 'foi assinado');
+        """), {"dia": _normalizar_parametro_dia(dia)}).fetchone()
+        if row_misscan:
+            total_misscan = int(row_misscan[0] or 0)
+    except Exception:
+        pass
+
     kpis_data = {
         "total_pedidos": total_pedidos,
         "total_mds": total_mds,
@@ -813,6 +829,8 @@ def get_resumo_coletas(
         "dropoff_pct": round(vol_dropoff / max(total_pedidos, 1) * 100, 1),
         "pickup_volume": vol_pickup,
         "pickup_pct": round(vol_pickup / max(total_pedidos, 1) * 100, 1),
+        "misscan_volume": total_misscan,
+        "misscan_pct": round(total_misscan / max(total_pedidos, 1) * 100, 1),
     }
 
     return {
@@ -827,7 +845,8 @@ def get_resumo_coletas(
             "total_nao_cadastrados": len(pontos_nao_cadastrados),
             "nao_cadastrados": pontos_nao_cadastrados[:15],
             "total_desvios_pickup": sum(d["volume"] for d in desvios_pickup_em_md),
-            "desvios_pickup_em_md": desvios_pickup_em_md[:15]
+            "desvios_pickup_em_md": desvios_pickup_em_md[:15],
+            "total_misscan": total_misscan
         },
         "clientes_breakdown": clientes_breakdown,
         "diagnostico_estado": gerar_diagnostico_estado_payload(
@@ -3685,3 +3704,206 @@ def get_reconciliacao_pacotes_endpoint(db: Session = Depends(get_db)):
     """Retorna o painel de reconciliação de pacotes atualizados retroativamente e pacotes há X dias sem atualização."""
     from services.reconciliacao_pacotes import construir_painel_atualizacoes_e_aging
     return construir_painel_atualizacoes_e_aging(db)
+
+
+@router.get("/misscan")
+def get_coletas_misscan(
+    dia: Optional[str] = Query(None),
+    raio_km: float = Query(5.0),
+    limite: int = Query(100),
+    db: Session = Depends(get_db)
+):
+    """
+    Auditoria de MISSCAN: Pacotes categorizados como DROPOFF (entrega porta-a-porta ou sellers de balcao),
+    mas com o campo 'ponto_colecao' VAZIO, que mesmo assim avancaram para status posteriores
+    (Circuito fechado, Carregamento, Descarregamento ou Coletado).
+    Calcula os possiveis MiniDrops em um raio de X km a partir do CEP e localizacao do remetente.
+    """
+    import math
+
+    def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+        R = 6371.0
+        p1, p2 = math.radians(lat1), math.radians(lat2)
+        dp = math.radians(lat2 - lat1)
+        dl = math.radians(lon2 - lon1)
+        a = math.sin(dp / 2)**2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2)**2
+        return round(2.0 * R * math.atan2(math.sqrt(a), math.sqrt(1.0 - a)), 2)
+
+    if not dia or dia.strip().upper() in ["", "TODOS"]:
+        row_dia = db.execute(text("SELECT dia_base FROM criacao_pedidos_historico ORDER BY SUBSTR(dia_base, 7, 4) || '-' || SUBSTR(dia_base, 4, 2) || '-' || SUBSTR(dia_base, 1, 2) DESC LIMIT 1;")).fetchone()
+        dia = row_dia[0] if row_dia else "02/11/2026"
+
+    # 1. Carregar todos os MDs da malha com coordenadas
+    rows_mds = db.execute(text("""
+        SELECT 
+            UPPER(TRIM(md_codigo)) as md_codigo,
+            COALESCE(nome_ponto, md_codigo) as nome_ponto,
+            cidade, estado, cep, latitude, longitude,
+            CASE WHEN funcionando = 1 THEN 'ATIVO' ELSE 'INATIVO' END as status
+        FROM malha_coordenadas
+        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+          AND latitude != 0 AND longitude != 0;
+    """)).fetchall()
+
+    mds_list = []
+    pfx5_coords: Dict[str, List[tuple[float, float]]] = {}
+    pfx4_coords: Dict[str, List[tuple[float, float]]] = {}
+    pfx3_coords: Dict[str, List[tuple[float, float]]] = {}
+    cidade_coords: Dict[str, List[tuple[float, float]]] = {}
+    mds_por_cidade: Dict[str, List[Dict[str, Any]]] = {}
+
+    for m in rows_mds:
+        md_cod = m[0]
+        nome = m[1]
+        cid = str(m[2] or "").strip().upper()
+        uf = str(m[3] or "").strip().upper()
+        raw_cep = str(m[4] or "").split(".")[0].strip().replace("-", "")
+        padded_cep = raw_cep.zfill(8) if raw_cep.isdigit() else raw_cep
+        lat = float(m[5])
+        lng = float(m[6])
+        st = m[7]
+
+        item = {
+            "md_codigo": md_cod,
+            "nome_ponto": nome,
+            "cidade": m[2],
+            "estado": m[3],
+            "cep": padded_cep,
+            "lat": lat,
+            "lng": lng,
+            "status": st
+        }
+        mds_list.append(item)
+
+        if len(padded_cep) >= 5 and padded_cep[:5].isdigit():
+            pfx5 = padded_cep[:5]
+            pfx5_coords.setdefault(pfx5, []).append((lat, lng))
+            pfx4_coords.setdefault(pfx5[:4], []).append((lat, lng))
+            pfx3_coords.setdefault(pfx5[:3], []).append((lat, lng))
+
+        if cid and uf:
+            chave_cid = f"{cid}-{uf}"
+            cidade_coords.setdefault(chave_cid, []).append((lat, lng))
+            mds_por_cidade.setdefault(chave_cid, []).append(item)
+
+    # Medias de coordenadas
+    pfx5_avg = {k: (sum(c[0] for c in v)/len(v), sum(c[1] for c in v)/len(v)) for k, v in pfx5_coords.items()}
+    pfx4_avg = {k: (sum(c[0] for c in v)/len(v), sum(c[1] for c in v)/len(v)) for k, v in pfx4_coords.items()}
+    pfx3_avg = {k: (sum(c[0] for c in v)/len(v), sum(c[1] for c in v)/len(v)) for k, v in pfx3_coords.items()}
+    cidade_avg = {k: (sum(c[0] for c in v)/len(v), sum(c[1] for c in v)/len(v)) for k, v in cidade_coords.items()}
+
+    # 2. Consultar os registros de Misscan
+    # Tenta operacional_pedidos_completo primeiro
+    rows_misscan = []
+    try:
+        rows_misscan = db.execute(text("""
+            SELECT 
+                COALESCE(NULLIF(TRIM(merchant_nome), ''), NULLIF(TRIM(remetente_nome), ''), 'Seller Não Identificado') as seller_nome,
+                merchant_id,
+                COALESCE(remetente_cep, '') as cep,
+                COALESCE(remetente_cidade, '') as cidade,
+                COALESCE(remetente_uf, '') as estado,
+                COALESCE(status_pedido, 'Circuito fechado') as status_pedido,
+                COUNT(*) as volume
+            FROM operacional_pedidos_completo
+            WHERE dia_base = :dia
+              AND (ponto_colecao IS NULL OR TRIM(ponto_colecao) IN ('', '-', 'nan', 'None', 'null'))
+              AND (LOWER(maneira_coleta) LIKE '%entrega%' OR LOWER(maneira_coleta) LIKE '%drop%')
+              AND LOWER(TRIM(status_pedido)) IN ('circuito fechado', 'carregamento', 'descarregamento', 'coletado', 'saco selado', 'foi assinado')
+            GROUP BY 1, 2, 3, 4, 5, 6
+            ORDER BY volume DESC;
+        """), {"dia": dia}).fetchall()
+    except Exception:
+        pass
+
+    if not rows_misscan:
+        rows_misscan = db.execute(text("""
+            SELECT 
+                COALESCE(NULLIF(TRIM(merchant_nome), ''), 'Seller Não Identificado') as seller_nome,
+                merchant_id,
+                COALESCE(cep_remetente, '') as cep,
+                COALESCE(cidade, '') as cidade,
+                COALESCE(estado, '') as estado,
+                COALESCE(status_pedido, 'Circuito fechado') as status_pedido,
+                SUM(total_pedidos) as volume
+            FROM criacao_pedidos_historico
+            WHERE dia_base = :dia
+              AND (ponto_colecao IS NULL OR TRIM(ponto_colecao) IN ('', '-', 'nan', 'None', 'null'))
+              AND (LOWER(maneira_coleta) LIKE '%entrega%' OR LOWER(maneira_coleta) LIKE '%drop%')
+              AND LOWER(TRIM(status_pedido)) IN ('circuito fechado', 'carregamento', 'descarregamento', 'coletado', 'saco selado', 'foi assinado')
+            GROUP BY 1, 2, 3, 4, 5, 6
+            ORDER BY volume DESC;
+        """), {"dia": dia}).fetchall()
+
+    total_pacotes_misscan = sum(int(r[6] or 0) for r in rows_misscan)
+    sellers_set = set(str(r[0]).strip() for r in rows_misscan if str(r[0]).strip())
+    total_sellers_afetados = len(sellers_set)
+
+    itens = []
+    for r in rows_misscan[:limite]:
+        s_nome, m_id, cep_raw, cid, uf, status_p, vol = r
+        clean_cep = str(cep_raw or "").split(".")[0].strip().replace("-", "")
+        clean_cep = clean_cep.zfill(8) if clean_cep.isdigit() else clean_cep
+        pfx5 = clean_cep[:5] if len(clean_cep) >= 5 else ""
+        pfx4 = clean_cep[:4] if len(clean_cep) >= 4 else ""
+        cid_up = str(cid or "").strip().upper()
+        uf_up = str(uf or "").strip().upper()
+        chave_cid = f"{cid_up}-{uf_up}"
+
+        # Descobrir coordenadas aproximadas do seller
+        seller_lat, seller_lng = None, None
+        if pfx5 in pfx5_avg:
+            seller_lat, seller_lng = pfx5_avg[pfx5]
+        elif pfx4 in pfx4_avg:
+            seller_lat, seller_lng = pfx4_avg[pfx4]
+        elif len(clean_cep) >= 3 and clean_cep[:3] in pfx3_avg:
+            seller_lat, seller_lng = pfx3_avg[clean_cep[:3]]
+        elif chave_cid in cidade_avg:
+            seller_lat, seller_lng = cidade_avg[chave_cid]
+
+        # Buscar MDs provaveis no raio
+        mds_no_raio = []
+        if seller_lat and seller_lng:
+            for md in mds_list:
+                if uf_up and md["estado"] and md["estado"].upper() != uf_up:
+                    continue
+                d = _haversine_km(seller_lat, seller_lng, md["lat"], md["lng"])
+                if d <= raio_km:
+                    mds_no_raio.append({
+                        "md_codigo": md["md_codigo"],
+                        "nome_ponto": md["nome_ponto"],
+                        "cidade": md["cidade"],
+                        "distancia_km": d,
+                        "status": md["status"]
+                    })
+            mds_no_raio.sort(key=lambda x: x["distancia_km"])
+
+        # Fallback: Se nao achou por raio, traz os MDs da mesma cidade
+        if not mds_no_raio and chave_cid in mds_por_cidade:
+            for md in mds_por_cidade[chave_cid][:3]:
+                mds_no_raio.append({
+                    "md_codigo": md["md_codigo"],
+                    "nome_ponto": md["nome_ponto"],
+                    "cidade": md["cidade"],
+                    "distancia_km": 0.0,
+                    "status": md["status"]
+                })
+
+        itens.append({
+            "seller": s_nome,
+            "merchant_id": m_id or "-",
+            "cep": clean_cep if clean_cep else "-",
+            "cidade": cid if cid else "-",
+            "estado": uf if uf else "-",
+            "status_pedido": status_p,
+            "volume": int(vol or 0),
+            "mds_provaveis": mds_no_raio[:4]
+        })
+
+    return {
+        "dia": dia,
+        "raio_km": raio_km,
+        "total_pacotes_misscan": total_pacotes_misscan,
+        "total_sellers_afetados": total_sellers_afetados,
+        "itens": itens
+    }

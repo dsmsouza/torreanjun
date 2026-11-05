@@ -2432,6 +2432,42 @@ export async function fetchSellersColetas(dia?: string, cliente?: string, region
   return res.json();
 }
 
+export interface MisscanMdProvavel {
+  md_codigo: string;
+  nome_ponto: string;
+  cidade: string;
+  distancia_km: number;
+  status: string;
+}
+
+export interface MisscanItem {
+  seller: string;
+  merchant_id?: string;
+  cep: string;
+  cidade: string;
+  estado: string;
+  status_pedido: string;
+  volume: number;
+  mds_provaveis: MisscanMdProvavel[];
+}
+
+export interface MisscanResponse {
+  dia: string;
+  raio_km: number;
+  total_pacotes_misscan: number;
+  total_sellers_afetados: number;
+  itens: MisscanItem[];
+}
+
+export async function fetchMisscanAuditoria(dia?: string, raio_km: number = 5.0): Promise<MisscanResponse> {
+  const p = new URLSearchParams();
+  if (dia) p.append("dia", dia);
+  p.append("raio_km", String(raio_km));
+  const res = await safeFetch(`${API_URL}/api/coletas/misscan?${p.toString()}`, { headers: getAuthHeaders() });
+  if (!res.ok) throw new Error("Falha ao carregar auditoria de Misscan.");
+  return res.json();
+}
+
 export async function fetchHorariosColetas(dia?: string, md?: string): Promise<any> {
   const p = new URLSearchParams();
   if (dia) p.append("dia", dia);

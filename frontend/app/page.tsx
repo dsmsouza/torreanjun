@@ -50,7 +50,10 @@ import {
   criarNotaDiarioBordo,
   removerNotaDiarioBordo,
   cadastrarPontoColeta,
-  otimizarPlanilha
+  otimizarPlanilha,
+  fetchMisscanAuditoria,
+  MisscanResponse,
+  MisscanItem
 } from "@/lib/api";
 
 type TabType = "visao_geral" | "mds" | "sellers" | "horarios" | "eventos" | "reconciliacao";
@@ -258,6 +261,53 @@ export default function CentralColetasPage() {
 
   // Modal de Pacotes e Detalhes do Cliente
   const [modalClienteOpen, setModalClienteOpen] = useState<boolean>(false);
+
+  // Auditoria de Misscan (Drop-offs sem Ponto de Coleção)
+  const [modalMisscanOpen, setModalMisscanOpen] = useState<boolean>(false);
+  const [loadingMisscan, setLoadingMisscan] = useState<boolean>(false);
+  const [misscanData, setMisscanData] = useState<MisscanResponse | null>(null);
+  const [misscanRaio, setMisscanRaio] = useState<number>(5.0);
+  const [misscanSearch, setMisscanSearch] = useState<string>("");
+
+  const abrirAuditoriaMisscan = async (raio: number = misscanRaio) => {
+    setModalMisscanOpen(true);
+    setLoadingMisscan(true);
+    try {
+      const data = await fetchMisscanAuditoria(selectedDia, raio);
+      setMisscanData(data);
+    } catch (err) {
+      console.warn("Aviso ao carregar auditoria de misscan:", err);
+    } finally {
+      setLoadingMisscan(false);
+    }
+  };
+
+  const handleMudarRaioMisscan = async (novoRaio: number) => {
+    setMisscanRaio(novoRaio);
+    setLoadingMisscan(true);
+    try {
+      const data = await fetchMisscanAuditoria(selectedDia, novoRaio);
+      setMisscanData(data);
+    } catch (err) {
+      console.warn("Aviso ao carregar auditoria de misscan:", err);
+    } finally {
+      setLoadingMisscan(false);
+    }
+  };
+
+  const filteredMisscanItens = useMemo(() => {
+    if (!misscanData?.itens) return [];
+    if (!misscanSearch.trim()) return misscanData.itens;
+    const q = misscanSearch.toLowerCase();
+    return misscanData.itens.filter((item: MisscanItem) =>
+      item.seller.toLowerCase().includes(q) ||
+      (item.merchant_id && item.merchant_id.toLowerCase().includes(q)) ||
+      item.cep.toLowerCase().includes(q) ||
+      item.cidade.toLowerCase().includes(q) ||
+      item.estado.toLowerCase().includes(q) ||
+      (item.mds_provaveis || []).some(m => m.md_codigo.toLowerCase().includes(q) || m.nome_ponto.toLowerCase().includes(q))
+    );
+  }, [misscanData, misscanSearch]);
   const [clienteDetalheAlvo, setClienteDetalheAlvo] = useState<string>("");
   const [clienteDetalheData, setClienteDetalheData] = useState<any>(null);
   const [loadingClienteDetalhe, setLoadingClienteDetalhe] = useState<boolean>(false);
@@ -952,8 +1002,8 @@ export default function CentralColetasPage() {
         )}
 
         {/* BANNER DE ALERTAS INTELIGENTES */}
-        {alertas && (alertas.primeira_bipagem?.length > 0 || alertas.nao_cadastrados?.length > 0) && (
-          <div className="px-6 pt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+        {alertas && (alertas.primeira_bipagem?.length > 0 || alertas.nao_cadastrados?.length > 0 || (alertas.misscan_volume || 0) > 0) && (
+          <div className="px-6 pt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {/* Alerta: Primeira Bipagem na História */}
             {alertas.primeira_bipagem?.length > 0 && (
               <div className="p-3.5 rounded-xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 flex items-start gap-3">
@@ -1040,6 +1090,37 @@ export default function CentralColetasPage() {
                         +{alertas.nao_cadastrados.length - 4} ver todos
                       </button>
                     )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Alerta: Misscan (Drop-offs sem Ponto de Coleção) */}
+            {(alertas.misscan_volume || 0) > 0 && (
+              <div className="p-3.5 rounded-xl bg-gradient-to-r from-orange-500/10 via-orange-500/5 to-transparent border border-orange-500/30 flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-orange-500/20 text-orange-400 flex items-center justify-center shrink-0">
+                  <Search className="w-4 h-4 animate-pulse" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold text-orange-300 flex items-center gap-1.5">
+                      🔍 {alertas.misscan_volume.toLocaleString("pt-BR")} Misscans Detectados ({alertas.misscan_pct || 0}%)
+                    </p>
+                    <span className="text-[10px] text-orange-400/80 bg-orange-500/15 px-2 py-0.5 rounded-full font-mono">
+                      Ação no Balcão
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Pacotes drop-off sem bipagem do MD parceiro de entrada. O MD perde remuneração e a rastreabilidade é afetada.
+                  </p>
+                  <div className="mt-2">
+                    <button
+                      onClick={() => abrirAuditoriaMisscan(5.0)}
+                      className="px-2.5 py-1 bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/40 text-orange-200 rounded-md text-[11px] font-medium flex items-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <MapPin className="w-3.5 h-3.5 text-orange-400" />
+                      Auditar MDs Prováveis por Raio
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1442,6 +1523,37 @@ export default function CentralColetasPage() {
                   </div>
                 </div>
               </div>
+
+              {/* CARD DE AUDITORIA DE MISSCAN */}
+              {(kpis?.misscan_volume || 0) > 0 && (
+                <div className="p-4 rounded-xl bg-gradient-to-r from-orange-950/40 via-[#131926] to-[#131926] border border-orange-500/35 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl shadow-orange-950/20">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-orange-500/20 text-orange-400 flex items-center justify-center shrink-0 border border-orange-500/30">
+                      <Search className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-orange-300">
+                          Auditoria de Misscan (Drop-offs sem Ponto de Coleção)
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-orange-500/20 text-orange-300 font-bold border border-orange-500/30">
+                          {(kpis.misscan_volume || 0).toLocaleString("pt-BR")} pacotes ({kpis.misscan_pct || 0}%)
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300 mt-1 max-w-2xl">
+                        Pacotes de modalidade <strong>Drop-off (entrega balcão)</strong> que avançaram no fluxo logístico sem registro de bipagem do MD de entrada. O sistema calcula a proximidade geodésica do Seller até a malha de MDs.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => abrirAuditoriaMisscan(5.0)}
+                    className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shrink-0 shadow-lg shadow-orange-950/50"
+                  >
+                    <MapPin className="w-4 h-4" />
+                    Auditar MDs Prováveis no Raio
+                  </button>
+                </div>
+              )}
 
               {/* ============================================================ */}
               {/* SEÇÃO DE CARDS POR MACRO-REGIÃO DO BRASIL + ESTADOS (UF) */}
@@ -4686,6 +4798,210 @@ export default function CentralColetasPage() {
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL DE AUDITORIA DE MISSCAN (DROP-OFFS SEM PONTO DE COLEÇÃO) */}
+        {modalMisscanOpen && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 md:p-6">
+            <div className="bg-[#0F1522] border border-orange-500/40 rounded-2xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+              {/* Cabeçalho */}
+              <div className="p-5 border-b border-slate-800 bg-[#131926] flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-orange-500/20 text-orange-400 border border-orange-500/30 flex items-center justify-center shrink-0">
+                    <Search className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold text-white">
+                        Auditoria de Misscan (Drop-offs sem Ponto de Coleção)
+                      </h3>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-orange-500/20 text-orange-300 font-bold border border-orange-500/30">
+                        Dia {misscanData?.dia || selectedDia}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Identificação de pacotes entregues em balcão que pularam o bipe de entrada do MiniDrop parceiro.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setModalMisscanOpen(false)}
+                  className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Barra de Filtros, Raio Geodésico e Totais */}
+              <div className="p-4 bg-slate-900/80 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3 flex-1 min-w-[280px]">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Buscar por Seller, Merchant ID, CEP, Cidade ou MD..."
+                      value={misscanSearch}
+                      onChange={(e) => setMisscanSearch(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-orange-500/50"
+                    />
+                  </div>
+                </div>
+
+                {/* Seletor de Raio de Coleta */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400 font-medium flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 text-orange-400" />
+                    Raio de Busca:
+                  </span>
+                  <div className="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800">
+                    {[3, 5, 10, 15].map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => handleMudarRaioMisscan(r)}
+                        className={`px-3 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${
+                          misscanRaio === r
+                            ? "bg-orange-500 text-slate-950 shadow"
+                            : "text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        {r} km
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Resumo Numérico */}
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-300 text-xs font-bold font-mono">
+                    {misscanData?.total_pacotes_misscan || 0} pacotes
+                  </span>
+                  <span className="px-3 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 text-xs font-mono">
+                    {misscanData?.total_sellers_afetados || 0} sellers
+                  </span>
+                </div>
+              </div>
+
+              {/* Conteúdo / Tabela de Sellers com MDs Prováveis */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {loadingMisscan ? (
+                  <div className="py-20 flex flex-col items-center justify-center text-slate-400 gap-3">
+                    <Loader2 className="w-8 h-8 text-orange-400 animate-spin" />
+                    <span className="text-xs">Calculando distâncias geodésicas (Haversine) e identificando MDs...</span>
+                  </div>
+                ) : filteredMisscanItens.length === 0 ? (
+                  <div className="py-16 text-center text-slate-400 space-y-2">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
+                    <p className="text-sm font-semibold text-white">Nenhum registro de Misscan encontrado</p>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto">
+                      Todos os pacotes Drop-off nesta data possuem o registro correto do MiniDrop de coleta inicial.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950/60">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="border-b border-slate-800 bg-[#131926] text-slate-400 font-semibold">
+                            <th className="py-3 px-4">Seller / Remetente</th>
+                            <th className="py-3 px-4">Origem (CEP / Cidade / UF)</th>
+                            <th className="py-3 px-4 text-center">Volume</th>
+                            <th className="py-3 px-4">Status Operacional</th>
+                            <th className="py-3 px-4">MDs Prováveis no Raio ({misscanRaio} km)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                          {filteredMisscanItens.map((item, idx) => (
+                            <tr key={item.seller + idx} className="hover:bg-slate-900/60 transition-colors">
+                              <td className="py-3 px-4">
+                                <div className="font-semibold text-white flex items-center gap-1.5">
+                                  <Store className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                                  <span>{item.seller}</span>
+                                </div>
+                                {item.merchant_id && (
+                                  <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
+                                    ID: {item.merchant_id}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="font-mono text-cyan-300 font-medium">
+                                  {item.cep ? (item.cep.length === 8 ? `${item.cep.slice(0,5)}-${item.cep.slice(5)}` : item.cep) : "CEP N/D"}
+                                </div>
+                                <div className="text-[11px] text-slate-400">
+                                  {item.cidade || "N/D"} - {item.estado || "BR"}
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <span className="px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 font-mono font-bold">
+                                  {item.volume.toLocaleString("pt-BR")}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                  item.status_pedido.toLowerCase().includes("circuito")
+                                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                    : "bg-blue-500/20 text-blue-300 border border-blue-500/30"
+                                }`}>
+                                  {item.status_pedido}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4">
+                                {item.mds_provaveis && item.mds_provaveis.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1.5 max-w-xl">
+                                    {item.mds_provaveis.map((md, mIdx) => (
+                                      <div
+                                        key={md.md_codigo + mIdx}
+                                        className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-orange-500/40 flex items-center gap-1.5 transition-colors"
+                                        title={`${md.nome_ponto} - ${md.cidade} (${md.distancia_km.toFixed(2)} km)`}
+                                      >
+                                        <span className="font-mono font-bold text-cyan-300 text-[11px]">
+                                          {md.md_codigo}
+                                        </span>
+                                        <span className="text-[10px] text-amber-300 font-mono bg-amber-500/10 px-1 py-0.2 rounded">
+                                          {md.distancia_km.toFixed(1)} km
+                                        </span>
+                                        <span className={`text-[9px] px-1 py-0.2 rounded font-medium ${
+                                          md.status === "Ativo"
+                                            ? "bg-emerald-500/20 text-emerald-400"
+                                            : "bg-slate-800 text-slate-400"
+                                        }`}>
+                                          {md.status}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-[11px] text-slate-500 italic">
+                                    Nenhum MD localizado no raio de {misscanRaio} km
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Rodapé Informativo */}
+              <div className="p-4 bg-[#131926] border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-400">
+                <div className="flex items-center gap-2">
+                  <Info className="w-4 h-4 text-orange-400 shrink-0" />
+                  <span>
+                    <strong>Impacto Operacional & Financeiro:</strong> O MiniDrop parceiro que recebeu o pacote no balcão sem bipar não recebe sua remuneração devida e a esteira da ANJUN perde a rastreabilidade inicial de custódia.
+                  </span>
+                </div>
+                <button
+                  onClick={() => setModalMisscanOpen(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-medium cursor-pointer transition-colors shrink-0 self-end sm:self-auto"
+                >
+                  Fechar
+                </button>
               </div>
             </div>
           </div>

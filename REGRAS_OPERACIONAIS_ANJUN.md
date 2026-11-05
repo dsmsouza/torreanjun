@@ -70,7 +70,38 @@ flowchart LR
 
 ---
 
-## 3. DROPOFF vs PICKUP: Como Medir com Precisão Cirúrgica
+## 3. Pulos de Etapas (Saltos de Bipagem Operacional)
+
+Na rotina da First-Mile, podem ocorrer **saltos de status** onde bipagens intermediárias são omitidas:
+* **Exemplo Clássico:** Pacote transita direto de `coletado` ou `saco selado` para `circuito fechado` sem registrar `Carregamento` nem `Descarregamento`.
+* **Diagnóstico Operacional:** Trata-se de uma falha de procedimento do motorista de rota ou do operador de doca (deixou de escanear o lote/veículo na subida ou na descida).
+* **Impacto:** Embora seja uma não-conformidade de processo, o desfecho final foi positivo (o pacote deu entrada no HUB e concluiu a First-Mile com sucesso).
+
+---
+
+## 4. O Fenômeno do MISSCAN (Drop-offs sem Ponto de Coleção)
+
+### 📌 A. O que É o MISSCAN?
+Ocorre quando um pacote é categorizado como **DROPOFF** (`entrega porta-a-porta` / seller de balcão), **MAS o campo `ponto de coleção` está VAZIO** (nulo, em branco ou `-`), e o pacote mesmo assim apresenta status posteriores como `Carregamento`, `Descarregamento` ou `Circuito fechado`!
+
+### 🔍 B. Causa-Raiz Operacional (Erro de Processo do MiniDrop)
+1. O vendedor deslocou-se e entregou fisicamente a encomenda no balcão do MiniDrop parceiro.
+2. O atendente do MD **NÃO BIPOU a entrada física do pacote** (não gerou o primeiro bip de custódia com o código do MD).
+3. Quando a van da Anjun encostou no MD para recolher a carga, os pacotes foram colocados no carro e, na sequência, receberam bipagem de `Carregamento` ou entraram direto na esteira de triagem do HUB (`Circuito fechado`).
+
+### ⚠️ C. Consequências Críticas:
+* **Financeira / Remuneração do MD:** Como o sistema não tem o registro do ponto de coleção que realizou o acolhimento, **o MiniDrop NÃO recebe a remuneração / comissão por esse pacote!**
+* **Rastreabilidade:** Perda do elo inicial de custódia entre o seller e o primeiro ponto físico da malha.
+
+### 🎯 D. Solução de Inteligência: Auditoria por Raio Geográfico (Km)
+Para auditar quais MiniDrops deveriam ter bipado o pacote e permitir a conciliação financeira:
+1. Pega-se a localização física de origem do Seller a partir da **Coluna AE (`CEP do remetente`)**, **Coluna AG (`Cidade de origem`)** e **Coluna AF (`Estado de origem`)**.
+2. Cruza-se por cálculo geodésico (Haversine) com a base de coordenadas dos MiniDrops parceiros (`malha_coordenadas`).
+3. Lista-se os **possíveis MiniDrops parceiros ativos em um raio de 3 a 5 km** daquele seller. O MD mais próximo (ou com histórico de atendimento daquele seller) é o provável ponto que recebeu a carga sem bipar!
+
+---
+
+## 5. DROPOFF vs PICKUP: Como Medir com Precisão Cirúrgica
 
 > **⚠️ Atenção sobre Nomenclaturas de Contrato (D2D, W2D, Cut-off, Normal):**  
 > As nomenclaturas da Coluna BH (`Tipo do pedido`) refletem o perfil do pedido no marketplace, mas **NÃO determinam sozinhas se houve Pickup ou Drop-off**.  
@@ -98,7 +129,7 @@ flowchart TD
 
 ---
 
-## 4. O Papel Vital da Atualização de Aging
+## 6. O Papel Vital da Atualização de Aging
 
 O **Aging (Envelhecimento do Backlog e Ciclo de Vida)** é a espinha dorsal que garante a integridade dos dados na Torre de Controle:
 
@@ -118,7 +149,7 @@ O **Aging (Envelhecimento do Backlog e Ciclo de Vida)** é a espinha dorsal que 
 
 ---
 
-## 5. Tipologia de Sellers: Sellers com PA (In-House) vs Somente Pickup
+## 7. Tipologia de Sellers: Sellers com PA (In-House) vs Somente Pickup
 
 ### 🏬 A. Seller com PA (Ponto Avançado / In-House Dedicado)
 * **Como funciona:** A Anjun aloca uma **equipe operacional própria dentro das dependências do seller**.
@@ -132,7 +163,7 @@ O **Aging (Envelhecimento do Backlog e Ciclo de Vida)** é a espinha dorsal que 
 
 ---
 
-## 6. Mapeamento das Colunas da Planilha Oficial (`02-11.xlsx`)
+## 8. Mapeamento das Colunas da Planilha Oficial (`02-11.xlsx`)
 
 Extraído do arquivo mestre de 66 colunas da ANJUN:
 
@@ -207,7 +238,7 @@ Extraído do arquivo mestre de 66 colunas da ANJUN:
 
 ---
 
-## 7. Classificação Estrita da Malha: MiniDrop (MD) vs HUB Central
+## 9. Classificação Estrita da Malha: MiniDrop (MD) vs HUB Central
 
 ### 🏪 A. O que É MiniDrop (MD Legítimo)
 Lojas parceiras de rua, pontos de bairro e estabelecimentos comerciais credenciados para atendimento de balcão e recebimento de drop-offs.
@@ -222,7 +253,7 @@ Lojas parceiras de rua, pontos de bairro e estabelecimentos comerciais credencia
 
 ---
 
-## 8. Segmentação da Carteira de Clientes
+## 10. Segmentação da Carteira de Clientes
 
 1. **Marketplaces & Plataformas Globais:** Shein, Temu, TikTok Logistics Brazil, Kwai, SZAnjun.
 2. **PA — Pontos Avançados & Ship-from-Store:** Lojas Renner (`rennercabreuva`), Camicado (`camod`), Youcom, C&A Brasil, Ri Happy, Casas Bahia, Samsonite, etc.
@@ -230,7 +261,7 @@ Lojas parceiras de rua, pontos de bairro e estabelecimentos comerciais credencia
 
 ---
 
-## 9. Arquitetura de Robôs e Segurança da Aplicação
+## 11. Arquitetura de Robôs e Segurança da Aplicação
 
 1. **Agendador 24/7 (`agendador_automatico.py`):**
    * Roda em segundo plano coletando dados hora a hora (07h às 23h), consolidando o D-1 às 00h05 e publicando o deploy noturno às 22h30.
