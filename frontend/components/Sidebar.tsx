@@ -262,7 +262,7 @@ export default function Sidebar() {
                   autoFocus
                   value={senhaInput}
                   onChange={(e) => setSenhaInput(e.target.value)}
-                  placeholder="Digite diego123..."
+                  placeholder="Digite a senha de administrador..."
                   className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-amber-500"
                 />
                 {erroSenha && (

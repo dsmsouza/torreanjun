@@ -225,14 +225,11 @@ export default function LoginPage() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder={`Digite a senha para ${selectedUser.nome}...`}
+                  placeholder="Digite sua senha de acesso..."
                   className="w-full px-4 py-3 pl-11 rounded-xl bg-slate-900 border border-slate-800 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
                 />
                 <Lock className="w-4 h-4 text-slate-500 absolute left-4 top-3.5" />
               </div>
-              <p className="text-[10px] text-slate-500">
-                Padrão: {selectedUser.login}123
-              </p>
             </div>
 
             {error && (
