@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import Sidebar from "@/components/Sidebar";
 import { useAuth } from "@/hooks/use-auth";
 import {
   Tag,
@@ -298,11 +297,8 @@ export default function VtagPage() {
   }, [motoristas]);
 
   return (
-    <div className="flex min-h-screen bg-[#090D16] text-slate-100 font-sans">
-      <Sidebar />
-
-      <main className="flex-1 ml-16 md:ml-64 p-4 md:p-8 space-y-6 max-w-7xl mx-auto">
-        {/* Cabeçalho Principal */}
+    <div className="space-y-6 pb-12">
+      {/* Cabeçalho Principal */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
           <div>
             <div className="flex items-center gap-2.5">
@@ -802,7 +798,6 @@ export default function VtagPage() {
             </div>
           </div>
         )}
-      </main>
     </div>
   );
 }

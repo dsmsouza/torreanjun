@@ -25,17 +25,23 @@ import {
   PackageSearch,
   Sparkles,
   Rocket,
-  Tag
+  Tag,
+  Lock,
+  KeyRound,
+  X
 } from "lucide-react";
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { role, activeRegional, isMaster, isOperador, operadorNome, alternarPerfil, searchParamsStr } = useAuth();
+  const { isMaster, isOperador, operadorNome, searchParamsStr, desbloquearMaster, bloquearOperador } = useAuth();
   
   const [currentTab, setCurrentTab] = useState<string | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [isOfflineLocal, setIsOfflineLocal] = useState<boolean>(false);
-  
+  const [showModalSenha, setShowModalSenha] = useState<boolean>(false);
+  const [senhaInput, setSenhaInput] = useState<string>("");
+  const [erroSenha, setErroSenha] = useState<string>("");
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       const h = window.location.hostname;
@@ -76,10 +82,23 @@ export default function Sidebar() {
     window.dispatchEvent(new Event("themechange"));
   };
 
+  const handleDesbloqueio = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErroSenha("");
+    const ok = desbloquearMaster(senhaInput);
+    if (ok) {
+      setShowModalSenha(false);
+      setSenhaInput("");
+      window.location.reload();
+    } else {
+      setErroSenha("Senha incorreta. Acesso não autorizado.");
+    }
+  };
+
   // Se o perfil for OPERADOR / SUPORTE, mostra EXCLUSIVAMENTE VTAG e MAPA
   const menuCategories = isOperador ? [
     {
-      title: "Acesso Operacional Restrito",
+      title: "Operação Restrita",
       items: [
         { name: "Distribuição VTAGs", path: "/vtag", icon: Tag, roleRequired: "Guest" },
         { name: "Mapa da Malha", path: "/mapa", icon: Map, roleRequired: "Guest" },
@@ -111,109 +130,187 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className="w-16 md:w-64 h-screen fixed left-0 top-0 bg-[#0C101B] border-r border-border flex flex-col justify-between z-30 transition-all duration-300">
-      <div className="flex flex-col h-full overflow-y-auto">
-        {/* Logo/Header */}
-        <div className="h-16 flex items-center justify-center md:justify-start px-6 border-b border-border gap-3 bg-[#0C101B] shrink-0">
-          <MapPin className="w-6 h-6 text-emerald-400 animate-pulse" />
-          <span className="hidden md:inline font-bold text-base text-white tracking-wider">
-            Torre ANJUN
-          </span>
+    <>
+      <aside className="w-16 md:w-64 h-screen fixed left-0 top-0 bg-[#0C101B] border-r border-border flex flex-col justify-between z-30 transition-all duration-300">
+        <div className="flex flex-col h-full overflow-y-auto">
+          {/* Logo/Header */}
+          <div className="h-16 flex items-center justify-center md:justify-start px-6 border-b border-border gap-3 bg-[#0C101B] shrink-0">
+            <MapPin className="w-6 h-6 text-emerald-400 animate-pulse" />
+            <span className="hidden md:inline font-bold text-base text-white tracking-wider">
+              Torre ANJUN
+            </span>
+          </div>
+
+          {/* Profile Card */}
+          <div className="hidden md:flex m-3 p-3 rounded-xl bg-[#131926]/80 border border-border items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center">
+                <Shield className={`w-4 h-4 ${isMaster ? "text-amber-500" : "text-emerald-400"}`} />
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                  {isOperador ? "Perfil Restrito" : "Perfil Operacional"}
+                </p>
+                <p className="text-xs font-semibold text-white">
+                  {isOperador ? `Suporte: ${operadorNome || "Operador"}` : "Diretoria Master"}
+                </p>
+              </div>
+            </div>
+
+            {isOperador ? (
+              <button
+                onClick={() => {
+                  setErroSenha("");
+                  setShowModalSenha(true);
+                }}
+                className="text-[10px] text-amber-400 hover:text-amber-300 px-2 py-1 rounded bg-amber-500/10 border border-amber-500/30 cursor-pointer flex items-center gap-1 font-medium transition-all hover:bg-amber-500/20"
+                title="Desbloquear Acesso Master"
+              >
+                <Lock className="w-3 h-3" />
+                Master
+              </button>
+            ) : (
+              <button
+                onClick={bloquearOperador}
+                className="text-[10px] text-slate-300 hover:text-white px-2 py-1 rounded bg-slate-800 border border-slate-700 cursor-pointer flex items-center gap-1 font-medium transition-all hover:bg-slate-700"
+                title="Bloquear e voltar ao Modo Operador Restrito"
+              >
+                <ShieldAlert className="w-3 h-3 text-emerald-400" />
+                Bloquear
+              </button>
+            )}
+          </div>
+
+          {/* Navigation Menu */}
+          <nav className="px-2 md:px-3 py-2 space-y-4">
+            {menuCategories.map((cat, catIdx) => (
+              <div key={catIdx} className="space-y-1">
+                <p className="hidden md:block text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1">
+                  {cat.title}
+                </p>
+                {cat.items.map((item) => {
+                  if (item.roleRequired === "Master" && !isMaster) return null;
+
+                  const currentPath = pathname.split("?")[0];
+                  const isActive = currentPath === item.path || (item.path === "/" && (currentPath === "/" || currentPath === "/coletas"));
+                  const Icon = item.icon;
+                  const baseHref = item.path.includes("?")
+                    ? `${item.path}${searchParamsStr ? `&${searchParamsStr.slice(1)}` : ""}`
+                    : `${item.path}${searchParamsStr}`;
+
+                  return (
+                    <Link
+                      key={item.path}
+                      href={baseHref}
+                      prefetch={true}
+                      className={`flex items-center justify-center md:justify-start gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
+                        isActive
+                          ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/10 font-bold"
+                          : "text-slate-400 hover:text-white hover:bg-slate-800/40"
+                      }`}
+                    >
+                      <Icon className="w-4 h-4 shrink-0" />
+                      <span className="hidden md:inline">{item.name}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            ))}
+          </nav>
         </div>
 
-        {/* Profile Card */}
-        <div className="hidden md:flex m-3 p-3 rounded-xl bg-[#131926]/80 border border-border items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center">
-              <Shield className={`w-4 h-4 ${isMaster ? "text-amber-500" : "text-emerald-400"}`} />
-            </div>
-            <div>
-              <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
-                {isOperador ? "Perfil Restrito" : "Perfil Operacional"}
-              </p>
-              <p className="text-xs font-semibold text-white">
-                {isOperador ? `Suporte: ${operadorNome || "Operador"}` : "Diretoria Master"}
-              </p>
-            </div>
-          </div>
+        {/* Theme Toggler & Logout */}
+        <div className="p-2 md:p-4 border-t border-border space-y-1">
           <button
-            onClick={() => alternarPerfil(isOperador ? "master" : "operador")}
-            className="text-[10px] text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800/80 border border-slate-700 cursor-pointer"
-            title={isOperador ? "Alternar para Modo Master" : "Alternar para Modo Operador Restrito"}
+            onClick={toggleTheme}
+            className="w-full flex items-center justify-center md:justify-start gap-3 px-3 py-3 md:px-4 rounded-lg text-sm font-medium text-muted-foreground hover:text-white hover:bg-slate-800/40 transition-all cursor-pointer"
           >
-            {isOperador ? "Master" : "Operador"}
+            {theme === "dark" ? (
+              <>
+                <Sun className="w-4 h-4 shrink-0 text-amber-500" />
+                <span className="hidden md:inline">Modo Claro</span>
+              </>
+            ) : (
+              <>
+                <Moon className="w-4 h-4 shrink-0 text-indigo-400" />
+                <span className="hidden md:inline">Modo Escuro</span>
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={() => {
+              bloquearOperador();
+              document.cookie = 'admin_token=; Max-Age=-99999999; path=/';
+              localStorage.removeItem('admin_token');
+              window.location.href = '/vtag';
+            }}
+            className="w-full flex items-center justify-center md:justify-start gap-3 px-3 py-3 md:px-4 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-all cursor-pointer"
+          >
+            <LogOut className="w-4 h-4 shrink-0" />
+            <span className="hidden md:inline">Restringir Sessão</span>
           </button>
         </div>
+      </aside>
 
-        {/* Navigation Menu */}
-        <nav className="px-2 md:px-3 py-2 space-y-4">
-          {menuCategories.map((cat, catIdx) => (
-            <div key={catIdx} className="space-y-1">
-              <p className="hidden md:block text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1">
-                {cat.title}
-              </p>
-              {cat.items.map((item) => {
-                if (item.roleRequired === "Master" && !isMaster) return null;
+      {/* Modal para Desbloquear Modo Master */}
+      {showModalSenha && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-[#111827] border border-slate-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl relative">
+            <button
+              onClick={() => setShowModalSenha(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white"
+            >
+              <X className="w-5 h-5" />
+            </button>
 
-                const currentPath = pathname.split("?")[0];
-                const isActive = currentPath === item.path || (item.path === "/" && (currentPath === "/" || currentPath === "/coletas"));
-                const Icon = item.icon;
-                const baseHref = item.path.includes("?")
-                  ? `${item.path}${searchParamsStr ? `&${searchParamsStr.slice(1)}` : ""}`
-                  : `${item.path}${searchParamsStr}`;
-
-                return (
-                  <Link
-                    key={item.path}
-                    href={baseHref}
-                    prefetch={true}
-                    className={`flex items-center justify-center md:justify-start gap-3 px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
-                      isActive
-                        ? "bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/10 font-bold"
-                        : "text-slate-400 hover:text-white hover:bg-slate-800/40"
-                    }`}
-                  >
-                    <Icon className="w-4 h-4 shrink-0" />
-                    <span className="hidden md:inline">{item.name}</span>
-                  </Link>
-                );
-              })}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                <KeyRound className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Desbloquear Master</h3>
+                <p className="text-xs text-slate-400">Acesso completo à Torre de Controle</p>
+              </div>
             </div>
-          ))}
-        </nav>
-      </div>
 
-      {/* Theme Toggler & Logout */}
-      <div className="p-2 md:p-4 border-t border-border space-y-1">
-        <button
-          onClick={toggleTheme}
-          className="w-full flex items-center justify-center md:justify-start gap-3 px-3 py-3 md:px-4 rounded-lg text-sm font-medium text-muted-foreground hover:text-white hover:bg-slate-800/40 transition-all cursor-pointer"
-        >
-          {theme === "dark" ? (
-            <>
-              <Sun className="w-4 h-4 shrink-0 text-amber-500" />
-              <span className="hidden md:inline">Modo Claro</span>
-            </>
-          ) : (
-            <>
-              <Moon className="w-4 h-4 shrink-0 text-indigo-400" />
-              <span className="hidden md:inline">Modo Escuro</span>
-            </>
-          )}
-        </button>
+            <form onSubmit={handleDesbloqueio} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Senha de Administrador
+                </label>
+                <input
+                  type="password"
+                  autoFocus
+                  value={senhaInput}
+                  onChange={(e) => setSenhaInput(e.target.value)}
+                  placeholder="Digite a senha..."
+                  className="w-full px-3.5 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-amber-500"
+                />
+                {erroSenha && (
+                  <p className="text-xs text-rose-400 mt-1.5">{erroSenha}</p>
+                )}
+              </div>
 
-        <button
-          onClick={() => {
-            document.cookie = 'admin_token=; Max-Age=-99999999; path=/';
-            localStorage.removeItem('admin_token');
-            window.location.href = '/login';
-          }}
-          className="w-full flex items-center justify-center md:justify-start gap-3 px-3 py-3 md:px-4 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-all cursor-pointer"
-        >
-          <LogOut className="w-4 h-4 shrink-0" />
-          <span className="hidden md:inline">Sair da Sessão</span>
-        </button>
-      </div>
-    </aside>
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowModalSenha(false)}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors shadow-lg shadow-amber-500/20"
+                >
+                  Confirmar Desbloqueio
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

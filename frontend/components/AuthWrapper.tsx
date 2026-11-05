@@ -1,37 +1,33 @@
 "use client";
 
-import React, { Suspense, useEffect, useState } from "react";
+import React, { Suspense, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "../hooks/use-auth";
 import Sidebar from "./Sidebar";
-import { ShieldAlert, KeyRound } from "lucide-react";
 import CopilotWidget from "./CopilotWidget";
 
 function AuthContent({ children }: { children: React.ReactNode }) {
-  const { isAuthorized } = useAuth();
+  const { isAuthorized, isOperador } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
 
-  // Em caso raro do middleware falhar ou client-side state apagar, 
-  // forçamos o push para login no client
+  // Guarda de rota estrita no client: Operador só acessa /vtag, /mapa e /login
   useEffect(() => {
-    if (!isAuthorized && pathname !== "/login") {
-      router.push(`/login?from=${encodeURIComponent(pathname)}`);
+    if (isOperador) {
+      const allowedPaths = ["/vtag", "/mapa", "/login"];
+      const currentClean = pathname.split("?")[0];
+      const isAllowed = allowedPaths.some(
+        (ap) => currentClean === ap || currentClean.startsWith(`${ap}/`)
+      );
+      if (!isAllowed) {
+        router.replace("/vtag");
+      }
     }
-  }, [isAuthorized, pathname, router]);
+  }, [isOperador, pathname, router]);
 
-  // Se estiver na página de login, não renderizamos Sidebar nem Main wrapper escuro
+  // Se estiver na página de login, não renderizamos Sidebar nem Main wrapper
   if (pathname === "/login") {
     return <>{children}</>;
-  }
-
-  // Se ainda estiver carregando auth state ou falhou mas vai redirecionar
-  if (!isAuthorized) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#090D16]">
-        <div className="text-sm text-blue-500 animate-pulse">Verificando segurança...</div>
-      </div>
-    );
   }
 
   return (
@@ -46,8 +42,8 @@ function AuthContent({ children }: { children: React.ReactNode }) {
         </div>
       </main>
 
-      {/* Copilot IA Inteligente (Grounded no SQLite) */}
-      <CopilotWidget />
+      {/* Copilot IA Inteligente (Grounded no SQLite) - Oculto no perfil restrito Operador */}
+      {!isOperador && <CopilotWidget />}
     </div>
   );
 }
