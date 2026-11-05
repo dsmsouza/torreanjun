@@ -4,12 +4,13 @@ import type { NextRequest } from 'next/server';
 export default function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Permitir arquivos estáticos, favicon, imagens e rotas de API
+  // Permitir arquivos estáticos, favicon, imagens, snapshots e rotas de API
   if (
     pathname.startsWith('/api') ||
     pathname.startsWith('/_next') ||
+    pathname.startsWith('/snapshot') ||
     pathname.startsWith('/favicon.ico') ||
-    pathname.match(/\.(png|jpg|jpeg|gif|svg|webp|ico|css|js)$/)
+    pathname.match(/\.(png|jpg|jpeg|gif|svg|webp|ico|css|js|json)$/)
   ) {
     return NextResponse.next();
   }

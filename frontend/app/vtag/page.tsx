@@ -27,7 +27,9 @@ import {
   Shield,
   Eye,
   Calendar,
-  Sparkles
+  Sparkles,
+  Target,
+  PlusCircle
 } from "lucide-react";
 
 interface VtagItem {
@@ -69,6 +71,7 @@ interface VtagStatusResponse {
   total_mds_planilha?: number;
   total_motoristas_planilha?: number;
   suportes_disponiveis?: string[];
+  lista_mds?: string[];
   estatisticas_banco?: {
     mds_com_vtag: number;
     motoristas_com_vtag: number;
@@ -102,6 +105,13 @@ export default function VtagPage() {
   const [modalTokenOpen, setModalTokenOpen] = useState<boolean>(false);
   const [novoToken, setNovoToken] = useState<string>("");
   const [salvandoToken, setSalvandoToken] = useState<boolean>(false);
+
+  // Modal MD Específico
+  const [modalMdOpen, setModalMdOpen] = useState<boolean>(false);
+  const [mdEspecificoInput, setMdEspecificoInput] = useState<string>("");
+  const [qtdMdEspecifico, setQtdMdEspecifico] = useState<number>(2);
+  const [forcarMdEspecifico, setForcarMdEspecifico] = useState<boolean>(false);
+  const [gerandoMdEspecifico, setGerandoMdEspecifico] = useState<boolean>(false);
 
   const [modalZoomVtag, setModalZoomVtag] = useState<{
     vtag: string;
@@ -281,6 +291,58 @@ export default function VtagPage() {
     }
   };
 
+  // Geração para MD Específico (Diego ou Ellen)
+  const handleGerarMdEspecifico = async (
+    mdEscolhido?: string,
+    qtdEscolhida?: number,
+    forcarEscolhido?: boolean
+  ) => {
+    if (!podeGerarVtag) {
+      alert("Acesso restrito: Apenas Diego ou Ellen têm permissão para gerar VTAGs oficiais.");
+      return;
+    }
+
+    const targetMd = (mdEscolhido || mdEspecificoInput).trim().toUpperCase();
+    if (!targetMd) {
+      alert("Por favor, selecione ou digite o código do MD (ex: MD-HAV-01).");
+      return;
+    }
+
+    const qtd = qtdEscolhida || qtdMdEspecifico || 2;
+    const forcar = forcarEscolhido !== undefined ? forcarEscolhido : forcarMdEspecifico;
+
+    setGerandoMdEspecifico(true);
+    setErroMsg(null);
+    setSucessoMsg(null);
+
+    try {
+      const p = new URLSearchParams();
+      p.append("md_codigo", targetMd);
+      p.append("qtd_por_md", qtd.toString());
+      p.append("usuario", user || "diego");
+      if (forcar) p.append("forcar", "true");
+
+      const res = await fetch(`${API_BASE}/api/vtags/gerar-vtags-anjun?${p.toString()}`, {
+        method: "POST"
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Erro ao gerar VTAG oficial para o MD.");
+      }
+
+      setSucessoMsg(`VTAG(s) gerada(s) com sucesso para o ${targetMd}! (${data.vtags_salvas} etiquetas criadas)`);
+      setModalMdOpen(false);
+      setMdEspecificoInput("");
+      await carregarStatus();
+      await carregarMotoristas();
+    } catch (err: any) {
+      setErroMsg(err.message || "Falha na chamada com a API Anjun.");
+    } finally {
+      setGerandoMdEspecifico(false);
+    }
+  };
+
   // Salvar novo Token da Anjun
   const handleSalvarToken = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -386,29 +448,45 @@ export default function VtagPage() {
               <Key className="w-3.5 h-3.5 opacity-70" />
             </div>
 
-            {/* Botão de Geração na Anjun (Apenas Diego e Ellen) */}
+            {/* Botões de Geração na Anjun (Apenas Diego e Ellen) */}
             {podeGerarVtag ? (
-              <button
-                onClick={handleGerarVtagsAnjun}
-                disabled={gerandoVtags || !statusData?.token_status?.valido}
-                className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg ${
-                  gerandoVtags
-                    ? "bg-slate-800 text-slate-500 cursor-not-allowed"
-                    : "bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 shadow-emerald-950/40"
-                }`}
-              >
-                {gerandoVtags ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Gerando na Anjun...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4" />
-                    Gerar VTAGs na Anjun (Lote)
-                  </>
-                )}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleGerarVtagsAnjun}
+                  disabled={gerandoVtags || gerandoMdEspecifico || !statusData?.token_status?.valido}
+                  className={`px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-lg ${
+                    gerandoVtags
+                      ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                      : "bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 shadow-emerald-950/40"
+                  }`}
+                  title="Gera 2 VTAGs oficiais para todos os MDs da carteira selecionada"
+                >
+                  {gerandoVtags ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Gerando em Lote...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Gerar VTAGs (Lote)
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setMdEspecificoInput("");
+                    setModalMdOpen(true);
+                  }}
+                  disabled={gerandoVtags || gerandoMdEspecifico || !statusData?.token_status?.valido}
+                  className="px-3.5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer bg-slate-900 border border-cyan-500/40 hover:border-cyan-400 text-cyan-300 shadow-lg hover:bg-cyan-950/30"
+                  title="Gerar ou testar VTAG oficial para um MD específico"
+                >
+                  <Target className="w-4 h-4 text-cyan-400" />
+                  <span>Gerar MD Específico</span>
+                </button>
+              </div>
             ) : (
               <div className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 text-xs flex items-center gap-2 font-medium">
                 <Shield className="w-3.5 h-3.5 text-amber-400 shrink-0" />
@@ -671,6 +749,16 @@ export default function VtagPage() {
                                 >
                                   {md.vtags.map((v) => v.tag_number).join(", ")}
                                 </button>
+                              ) : podeGerarVtag ? (
+                                <button
+                                  onClick={() => handleGerarMdEspecifico(md.md_codigo, 2, false)}
+                                  disabled={gerandoMdEspecifico || gerandoVtags}
+                                  className="px-1.5 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-[9px] text-emerald-300 font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                                  title="Gerar 2 VTAGs oficiais na Anjun para este MD agora"
+                                >
+                                  <Sparkles className="w-2.5 h-2.5" />
+                                  + Gerar
+                                </button>
                               ) : (
                                 <span className="text-[9px] text-slate-500 italic">sem vtag</span>
                               )}
@@ -758,6 +846,127 @@ export default function VtagPage() {
                 >
                   Fechar
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+                {/* MODAL DE GERAÇÃO PARA MD ESPECÍFICO */}
+        {modalMdOpen && (
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-[#0F1522] border border-cyan-500/40 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center">
+                    <Target className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Gerar VTAG de MD Específico</h3>
+                    <p className="text-xs text-slate-400">Emissão oficial imediata na Anjun para testes ou avulso</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setModalMdOpen(false)}
+                  className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                    Código do MiniDrop (MD):
+                  </label>
+                  <input
+                    type="text"
+                    list="mds-sugestoes"
+                    value={mdEspecificoInput}
+                    onChange={(e) => setMdEspecificoInput(e.target.value.toUpperCase())}
+                    placeholder="Ex: MD-HAV-01 ou MD-FRA-01"
+                    className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 uppercase"
+                  />
+                  <datalist id="mds-sugestoes">
+                    {(statusData?.lista_mds || []).map((m) => (
+                      <option key={m} value={m} />
+                    ))}
+                  </datalist>
+                  <span className="text-[11px] text-slate-500 mt-1 block">
+                    Digite qualquer MD ou escolha um da lista de rotas de hoje.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                    Quantidade de VTAGs:
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setQtdMdEspecifico(2)}
+                      className={`p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 cursor-pointer transition-all ${
+                        qtdMdEspecifico === 2
+                          ? "bg-cyan-500/20 border-cyan-500/50 text-cyan-300"
+                          : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      <span>2 VTAGs</span>
+                      <span className="text-[10px] font-normal opacity-75">Padrão (2 Ondas)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQtdMdEspecifico(1)}
+                      className={`p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 cursor-pointer transition-all ${
+                        qtdMdEspecifico === 1
+                          ? "bg-cyan-500/20 border-cyan-500/50 text-cyan-300"
+                          : "bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      <span>1 VTAG</span>
+                      <span className="text-[10px] font-normal opacity-75">Teste / Onda Única</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={forcarMdEspecifico}
+                      onChange={(e) => setForcarMdEspecifico(e.target.checked)}
+                      className="rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-0"
+                    />
+                    <span>Forçar re-geração (substitui se já tiver sido gerada hoje)</span>
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setModalMdOpen(false)}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleGerarMdEspecifico()}
+                    disabled={gerandoMdEspecifico || !mdEspecificoInput.trim()}
+                    className="px-5 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-lg shadow-cyan-950/40"
+                  >
+                    {gerandoMdEspecifico ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Gerando na Anjun...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Gerar VTAG Agora
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

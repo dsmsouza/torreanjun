@@ -263,6 +263,7 @@ def get_vtag_status():
         "total_mds_planilha": dados["total_mds_ativos"],
         "total_motoristas_planilha": len(motoristas_unicos),
         "suportes_disponiveis": ["TODOS"] + dados["suportes"],
+        "lista_mds": sorted(list(set(i["md"] for i in dados["itens"]))),
         "estatisticas_banco": stats
     }
 
@@ -392,8 +393,10 @@ def get_motoristas_agrupados(
 @router.post("/gerar-vtags-anjun")
 def gerar_vtags_em_lote(
     suporte: Optional[str] = Query(None),
+    md_codigo: Optional[str] = Query(None),
     qtd_por_md: int = Query(2, ge=1, le=5),
-    usuario: Optional[str] = Query(None)
+    usuario: Optional[str] = Query(None),
+    forcar: bool = Query(False)
 ):
     u_norm = (usuario or "").strip().lower()
     if u_norm not in ["diego", "ellen", "admin", "mandarino"]:
@@ -403,7 +406,7 @@ def gerar_vtags_em_lote(
         )
     """
     Chama a API oficial da Anjun (POST /collectTagNumber/createTagNumber)
-    para os MDs ativos da planilha do dia, gerando 2 VTAGs oficiais para cada um,
+    para os MDs ativos da planilha do dia (ou um MD específico), gerando VTAGs oficiais,
     baixando o PDF e fatiando as imagens de código de barras prontas para WhatsApp.
     """
     token_status = verificar_status_token()
@@ -417,7 +420,23 @@ def gerar_vtags_em_lote(
     dados = ler_dados_planilha_rotas(arquivo_rotas)
     itens_alvo = dados["itens"]
 
-    if suporte and suporte.upper() != "TODOS":
+    if md_codigo:
+        target_md = md_codigo.strip().upper()
+        md_encontrados = [i for i in dados["itens"] if i["md"].strip().upper() == target_md]
+        if md_encontrados:
+            itens_alvo = md_encontrados
+        else:
+            # MD avulso (caso queira gerar teste ou ponto fora da planilha)
+            itens_alvo = [{
+                "md": target_md,
+                "rota": "AVULSO",
+                "motorista": "AVULSO",
+                "placa": "-",
+                "contato": "",
+                "telefone_wpp": "",
+                "suporte": "TORRE"
+            }]
+    elif suporte and suporte.upper() != "TODOS":
         sup_up = suporte.upper().strip()
         itens_alvo = [i for i in itens_alvo if i["suporte"] == sup_up]
 
@@ -455,9 +474,15 @@ def gerar_vtags_em_lote(
     cursor.execute("SELECT DISTINCT md_codigo FROM vtags_geradas WHERE dia_base = ?", (dia_base,))
     mds_ja_gerados = set(r[0] for r in cursor.fetchall())
 
+    if md_codigo and forcar:
+        target_norm = md_codigo.strip().upper()
+        cursor.execute("DELETE FROM vtags_geradas WHERE dia_base = ? AND md_codigo = ?", (dia_base, target_norm))
+        conn.commit()
+        mds_ja_gerados.discard(target_norm)
+
     for item in itens_alvo:
         md_cod = item["md"]
-        if md_cod in mds_ja_gerados:
+        if md_cod in mds_ja_gerados and not (md_codigo and forcar):
             continue
 
         site_id = site_name_to_id.get(md_cod.upper())
