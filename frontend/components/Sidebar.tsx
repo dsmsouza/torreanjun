@@ -17,6 +17,7 @@ import {
   Clock,
   Rocket,
   Tag,
+  PackageCheck,
   Lock,
   KeyRound,
   X,
@@ -87,12 +88,13 @@ export default function Sidebar() {
     }
   };
 
-  // Se NÃO for Master (Ellen, Danilo, Gabriele, etc.), mostra EXCLUSIVAMENTE VTAG e MAPA
+  // Menu da Torre Operacional e Master
   const menuCategories = isOperador ? [
     {
       title: "Torre de Controle Operacional",
       items: [
-        { name: "Distribuição VTAGs", path: "/vtag", icon: Tag, roleRequired: "Guest" },
+        { name: "VTAGs MiniDrops (MD)", path: "/vtag", icon: Tag, roleRequired: "Guest" },
+        { name: "VTAGs Pickups (FM)", path: "/vtag-pickup", icon: PackageCheck, roleRequired: "Guest" },
         { name: "Mapa da Malha", path: "/mapa", icon: Map, roleRequired: "Guest" },
       ]
     }
@@ -101,7 +103,8 @@ export default function Sidebar() {
       title: "Operação & Coleta",
       items: [
         { name: "Central de Coletas", path: "/", icon: Truck, roleRequired: "Guest" },
-        { name: "Distribuição VTAGs", path: "/vtag", icon: Tag, roleRequired: "Guest" },
+        { name: "VTAGs MiniDrops (MD)", path: "/vtag", icon: Tag, roleRequired: "Guest" },
+        { name: "VTAGs Pickups (FM)", path: "/vtag-pickup", icon: PackageCheck, roleRequired: "Guest" },
         { name: "Planejador 16h SP", path: "/planejador-rotas", icon: Clock, roleRequired: "Guest" },
         { name: "SLA & Anomalias", path: "/sla", icon: ShieldAlert, roleRequired: "Guest" },
       ]

@@ -42,6 +42,7 @@ CACHE_SKIP_PREFIXES = [
     "/api/sincronizacao",
     "/api/planejador-rotas/",
     "/api/vtags/",
+    "/api/vtags-pickup/",
 ]
 
 class ResponseCacheMiddleware(BaseHTTPMiddleware):
@@ -167,6 +168,9 @@ app.include_router(planejador_rotas_router)
 
 from routers.vtags import router as vtags_router
 app.include_router(vtags_router)
+
+from routers.vtags_pickup import router as vtags_pickup_router
+app.include_router(vtags_pickup_router, prefix="/api/vtags-pickup", tags=["VTAGs Pickup"])
 
 
 

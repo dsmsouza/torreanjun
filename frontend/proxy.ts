@@ -8,6 +8,7 @@ export default function proxy(request: NextRequest) {
   if (
     pathname.startsWith('/api') ||
     pathname.startsWith('/vtag/motorista') ||
+    pathname.startsWith('/vtag-pickup/motorista') ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/snapshot') ||
     pathname.startsWith('/favicon.ico') ||
@@ -45,10 +46,12 @@ export default function proxy(request: NextRequest) {
   }
 
   // 4. EQUIPE OPERACIONAL / TORRE DE CONTROLE (Ellen, Danilo, Gabriele, Ketley, Janaina, Nicolas):
-  // Acesso estritamente restrito a /vtag e /mapa
+  // Acesso a /vtag, /vtag-pickup e /mapa
   const isAllowedForOperador =
     pathname === '/vtag' ||
     pathname.startsWith('/vtag/') ||
+    pathname === '/vtag-pickup' ||
+    pathname.startsWith('/vtag-pickup/') ||
     pathname === '/mapa' ||
     pathname.startsWith('/mapa/');
 
