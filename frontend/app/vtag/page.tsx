@@ -303,15 +303,34 @@ export default function VtagPage() {
       }
     });
 
-    texto += `\n⚠️ _Por favor, apresente o código de barras no momento do bipe no ponto. Bom trabalho e boa rota!_`;
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const linkPainelMotorista = `${origin}/vtag/motorista?dia=${encodeURIComponent(diaRef)}&motorista=${encodeURIComponent(m.motorista)}`;
+
+    texto += `\n📲 *Visualização Digital em Alta Resolução (Tela Cheia):*\n`;
+    texto += `Abra no celular para biper cada ponto com zoom máximo e alta qualidade:\n`;
+    texto += `👉 ${linkPainelMotorista}\n`;
+
+    // Links individuais de cada imagem de VTAG separadamente
+    const mdsLiberados = m.mds.filter((md) => md.vtags.length > 0);
+    if (mdsLiberados.length > 0) {
+      texto += `\n🔗 *Links Diretos de Cada Código de Barras (Separados):*\n`;
+      mdsLiberados.forEach((md) => {
+        texto += `📦 *${md.md_codigo}:*\n`;
+        md.vtags.forEach((v, vIdx) => {
+          if (v.imagem_url) {
+            texto += `  • Janela ${vIdx + 1} (${v.tag_number}): ${origin}${v.imagem_url}\n`;
+          }
+        });
+      });
+    }
 
     // Incluir link do PDF da nuvem Anjun caso exista
-    m.mds.forEach((md) => {
-      const pdfUrl = md.vtags.find((v) => v.pdf_url)?.pdf_url;
-      if (pdfUrl) {
-        texto += `\n📲 _Link do Código de Barras (PDF Anjun):_\n${pdfUrl}\n`;
-      }
-    });
+    const pdfs = m.mds.map(md => md.vtags.find(v => v.pdf_url)?.pdf_url).filter(Boolean);
+    if (pdfs.length > 0) {
+      texto += `\n📄 *PDF Oficial da Nuvem Anjun:*\n${pdfs[0]}\n`;
+    }
+
+    texto += `\n⚠️ _Por favor, apresente o código de barras no momento do bipe no ponto. Bom trabalho e boa rota!_`;
 
     const telLimpo = m.telefone_wpp.replace(/\D/g, "");
 
@@ -1054,6 +1073,17 @@ export default function VtagPage() {
                         >
                           <Download className="w-3.5 h-3.5 text-emerald-400" />
                           <span>Baixar</span>
+                        </a>
+
+                        <a
+                          href={`/vtag/motorista?dia=${encodeURIComponent(statusData?.dia_base || "")}&motorista=${encodeURIComponent(m.motorista)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-1.5 px-2.5 rounded-lg bg-cyan-950/40 border border-cyan-500/40 hover:border-cyan-400 text-cyan-300 hover:text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer shadow-sm transition-all"
+                          title="Abrir a tela mobile que o motorista acessa no celular em nova aba"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Visão Celular</span>
                         </a>
                       </div>
                     )}

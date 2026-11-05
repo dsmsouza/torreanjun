@@ -144,7 +144,13 @@ def verificar_status_token() -> Dict[str, Any]:
 def encontrar_planilha_rotas_recente() -> Optional[Path]:
     if not ROTAS_DIR.exists():
         return None
-    arquivos = [p for p in ROTAS_DIR.glob("*.xlsx") if not p.name.startswith("~$")]
+    # Priorizar arquivos de planejamento de rotas de MD (ignora consolidados de FM)
+    arquivos = [
+        p for p in ROTAS_DIR.glob("*.xlsx") 
+        if not p.name.startswith("~$") and ("rotas" in p.name.lower() or "rota" in p.name.lower()) and "consolidado fm" not in p.name.lower()
+    ]
+    if not arquivos:
+        arquivos = [p for p in ROTAS_DIR.glob("*.xlsx") if not p.name.startswith("~$") and "consolidado fm" not in p.name.lower()]
     if not arquivos:
         return None
     # Ordena pelo mtime mais recente

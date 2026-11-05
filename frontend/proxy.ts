@@ -4,9 +4,10 @@ import type { NextRequest } from 'next/server';
 export default function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Permitir arquivos estáticos, favicon, imagens, snapshots e rotas de API
+  // Permitir arquivos estáticos, favicon, imagens, snapshots, rotas de API e tela pública do motorista
   if (
     pathname.startsWith('/api') ||
+    pathname.startsWith('/vtag/motorista') ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/snapshot') ||
     pathname.startsWith('/favicon.ico') ||
