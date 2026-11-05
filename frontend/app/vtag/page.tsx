@@ -52,6 +52,7 @@ interface MotoristaItem {
   suporte: string;
   mds: MdItem[];
   total_vtags: number;
+  card_imagem_url?: string;
   status_envio: "PENDENTE" | "ENVIADO";
   enviado_por: string | null;
   enviado_em: string | null;
@@ -85,96 +86,20 @@ interface VtagStatusResponse {
 
 const API_BASE = typeof window !== "undefined" ? "" : (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000");
 
-// Função para juntar etiquetas e copiar imagem para a área de transferência (Clipboard)
-async function copiarEtiquetasParaClipboard(
-  motorista: string,
-  mds: MdItem[],
-  diaRef: string
-): Promise<boolean> {
+// Função para copiar o card completo da VTAG do motorista para a área de transferência
+async function copiarCardMotoristaParaClipboard(cardUrl: string): Promise<boolean> {
   try {
-    const urls: string[] = [];
-    mds.forEach((md) => {
-      md.vtags.forEach((v) => {
-        if (v.imagem_url) urls.push(v.imagem_url);
-      });
-    });
-
-    if (urls.length === 0) return false;
-
-    // Se tiver apenas 1 imagem
-    if (urls.length === 1) {
-      const res = await fetch(urls[0]);
-      const blob = await res.blob();
-      if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.write) {
-        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-        return true;
-      }
-      return false;
+    const res = await fetch(cardUrl);
+    if (!res.ok) return false;
+    const blob = await res.blob();
+    if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.write) {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      return true;
     }
-
-    // Se tiver 2 ou mais etiquetas, junta num único card vertical de alta definição
-    const loadedImgs = await Promise.all(
-      urls.map((url) => {
-        return new Promise<HTMLImageElement>((resolve, reject) => {
-          const img = new Image();
-          img.crossOrigin = "anonymous";
-          img.onload = () => resolve(img);
-          img.onerror = reject;
-          img.src = url;
-        });
-      })
-    );
-
-    const canvas = document.createElement("canvas");
-    const width = 787;
-    const headerHeight = 75;
-    const itemHeight = 787;
-    const totalHeight = headerHeight + loadedImgs.length * itemHeight;
-
-    canvas.width = width;
-    canvas.height = totalHeight;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return false;
-
-    // Fundo branco perfeito para bipagem
-    ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(0, 0, width, totalHeight);
-
-    // Faixa Superior
-    ctx.fillStyle = "#0F172A";
-    ctx.fillRect(0, 0, width, headerHeight);
-    ctx.fillStyle = "#38BDF8";
-    ctx.font = "bold 26px sans-serif";
-    ctx.fillText("ANJUN EXPRESS - VTAGS DE COLETA", 25, 38);
-    ctx.fillStyle = "#E2E8F0";
-    ctx.font = "16px sans-serif";
-    ctx.fillText(`Motorista: ${motorista}  •  Data: ${diaRef}`, 25, 62);
-
-    let currentY = headerHeight;
-    for (const img of loadedImgs) {
-      ctx.drawImage(img, 0, currentY, width, itemHeight);
-      currentY += itemHeight;
-    }
-
-    return new Promise<boolean>((resolve) => {
-      canvas.toBlob(async (blob) => {
-        if (blob && typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.write) {
-          try {
-            await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-            resolve(true);
-          } catch (e) {
-            console.warn("Erro ao escrever no clipboard:", e);
-            resolve(false);
-          }
-        } else {
-          resolve(false);
-        }
-      }, "image/png");
-    });
   } catch (err) {
-    console.warn("Falha no copiarEtiquetasParaClipboard:", err);
-    return false;
+    console.warn("Clipboard API bloqueada ou indisponível:", err);
   }
+  return false;
 }
 
 export default function VtagPage() {
@@ -280,6 +205,48 @@ export default function VtagPage() {
     setSuporteFiltro(sup);
   };
 
+  // Ação robusta para copiar imagem do motorista (ou baixar com 1 clique se o navegador for HTTP)
+  const handleAcaoCopiarImagem = async (m: MotoristaItem) => {
+    const diaRef = statusData?.dia_base || new Date().toLocaleDateString("pt-BR");
+    const cardUrl = m.card_imagem_url || `/api/vtags/card-motorista?dia_base=${encodeURIComponent(diaRef)}&motorista=${encodeURIComponent(m.motorista)}`;
+
+    // 1. Tentar cópia direta para a Área de Transferência
+    const copiou = await copiarCardMotoristaParaClipboard(cardUrl);
+
+    if (copiou) {
+      setSucessoMsg(`📸 Código de barras de ${m.motorista} copiado! Basta dar Ctrl + V no WhatsApp.`);
+      setTimeout(() => setSucessoMsg(null), 5000);
+      return;
+    }
+
+    // 2. Se o navegador na rede local (HTTP) bloqueou a API do clipboard:
+    // Baixa o arquivo automaticamente para Downloads e abre a pré-visualização para cópia rápida com botão direito
+    try {
+      const res = await fetch(cardUrl);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `VTAG_${m.motorista.replace(/\s+/g, '_')}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      setModalZoomVtag({
+        vtag: `VTAGs de ${m.motorista}`,
+        md: m.mds.map(i => i.md_codigo).join(", "),
+        imagemUrl: blobUrl
+      });
+
+      setSucessoMsg(`📥 Imagem salva em Downloads e aberta na tela! Você pode dar Ctrl+V se o navegador permitir ou arrastar para o WhatsApp.`);
+      setTimeout(() => setSucessoMsg(null), 6000);
+    } catch (e) {
+      console.error("Erro ao obter card:", e);
+      setErroMsg("Não foi possível baixar a imagem. Verifique se as VTAGs foram geradas na Anjun.");
+    }
+  };
+
   // Disparo / Abertura do WhatsApp com trava antiduplicidade
   const handleEnviarWhatsApp = async (m: MotoristaItem) => {
     if (m.status_envio === "ENVIADO") {
@@ -317,9 +284,10 @@ export default function VtagPage() {
     const telLimpo = m.telefone_wpp.replace(/\D/g, "");
 
     // 1. Tentar auto-copiar imagem para a área de transferência
+    const cardUrl = m.card_imagem_url || `/api/vtags/card-motorista?dia_base=${encodeURIComponent(diaRef)}&motorista=${encodeURIComponent(m.motorista)}`;
     let copiouImagem = false;
     try {
-      copiouImagem = await copiarEtiquetasParaClipboard(m.motorista, m.mds, diaRef);
+      copiouImagem = await copiarCardMotoristaParaClipboard(cardUrl);
     } catch (e) {
       console.warn("Aviso clipboard:", e);
     }
@@ -933,35 +901,26 @@ export default function VtagPage() {
                       <div className="flex items-center gap-1.5 pt-0.5">
                         <button
                           type="button"
-                          onClick={async (e) => {
+                          onClick={(e) => {
                             e.stopPropagation();
-                            const diaRef = statusData?.dia_base || new Date().toLocaleDateString("pt-BR");
-                            const ok = await copiarEtiquetasParaClipboard(m.motorista, m.mds, diaRef);
-                            if (ok) {
-                              setSucessoMsg(`📸 Código de barras de ${m.motorista} copiado! Basta dar Ctrl + V no WhatsApp.`);
-                              setTimeout(() => setSucessoMsg(null), 5000);
-                            } else {
-                              alert("Para copiar: clique na VTAG para abrir e selecione 'Copiar Imagem'.");
-                            }
+                            handleAcaoCopiarImagem(m);
                           }}
-                          className="flex-1 py-1 px-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500/50 text-[10px] font-bold text-slate-300 hover:text-cyan-300 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                          title="Copia o código de barras para o clipboard para você colar no WhatsApp com Ctrl+V"
+                          className="flex-1 py-1.5 px-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-cyan-500/50 text-[11px] font-bold text-slate-300 hover:text-cyan-300 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                          title="Copia a imagem com todos os códigos de barras deste motorista para colar com Ctrl+V no WhatsApp"
                         >
-                          <Copy className="w-3 h-3 text-cyan-400" />
+                          <Copy className="w-3.5 h-3.5 text-cyan-400" />
                           <span>Copiar Imagem (Ctrl+V)</span>
                         </button>
 
-                        {m.mds[0]?.vtags[0]?.imagem_url && (
-                          <a
-                            href={m.mds[0].vtags[0].imagem_url}
-                            download={`VTAG_${m.motorista}_${m.mds[0].md_codigo}.png`}
-                            className="p-1 px-2 rounded-lg bg-slate-900 border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white text-[10px] flex items-center gap-1 cursor-pointer"
-                            title="Baixar imagem do código de barras"
-                          >
-                            <Download className="w-3 h-3" />
-                            <span>Baixar</span>
-                          </a>
-                        )}
+                        <a
+                          href={m.card_imagem_url || `/api/vtags/card-motorista?dia_base=${encodeURIComponent(statusData?.dia_base || "")}&motorista=${encodeURIComponent(m.motorista)}`}
+                          download={`VTAG_${m.motorista.replace(/\s+/g, '_')}.png`}
+                          className="p-1.5 px-2.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                          title="Baixar imagem das etiquetas do motorista em alta resolução"
+                        >
+                          <Download className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Baixar</span>
+                        </a>
                       </div>
                     )}
 

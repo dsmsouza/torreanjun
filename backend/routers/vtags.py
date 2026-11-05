@@ -1,3 +1,4 @@
+import urllib.parse
 # -*- coding: utf-8 -*-
 """
 backend/routers/vtags.py — Módulo de Gestão, Geração em Lote e Distribuição de VTAGs (SP)
@@ -340,6 +341,7 @@ def get_motoristas_agrupados(
                 "suporte": item["suporte"],
                 "mds": [],
                 "total_vtags": 0,
+                "card_imagem_url": f"/api/vtags/card-motorista?dia_base={urllib.parse.quote(dia_base)}&motorista={urllib.parse.quote(mot)}",
                 "status_envio": disp["status_envio"] if disp else "PENDENTE",
                 "enviado_por": disp["enviado_por"] if disp else None,
                 "enviado_em": disp["enviado_em"] if disp else None
@@ -674,9 +676,84 @@ def atualizar_token_anjun(payload: Dict[str, str] = Body(...)):
 
 @router.get("/imagem/{imagem_nome}")
 def get_vtag_imagem(imagem_nome: str):
-    """Serve a imagem renderizada da VTAG."""
-    # Busca recursiva na pasta de static vtags
+    """Serve a imagem renderizada da VTAG com CORS liberado."""
     for p in STATIC_VTAGS_DIR.rglob(imagem_nome):
         if p.is_file():
-            return FileResponse(str(p), media_type="image/png")
+            return FileResponse(
+                str(p), 
+                media_type="image/png",
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, OPTIONS",
+                    "Cache-Control": "public, max-age=86400"
+                }
+            )
     raise HTTPException(status_code=404, detail="Imagem da VTAG não localizada.")
+
+
+@router.get("/card-motorista")
+def get_card_motorista(dia_base: str = Query(...), motorista: str = Query(...)):
+    """Gera e retorna a imagem combinada com todas as VTAGs do motorista em um único PNG."""
+    dia_safe = dia_base.replace("/", "-")
+    dia_folder = STATIC_VTAGS_DIR / dia_safe
+    dia_folder.mkdir(parents=True, exist_ok=True)
+    
+    mot_safe = re.sub(r'[^a-zA-Z0-9_\-]', '_', motorista)
+    card_filename = f"card_{mot_safe}.png"
+    card_path = dia_folder / card_filename
+
+    # Buscar VTAGs deste motorista no dia
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT md_codigo, tag_number, rota, placa, imagem_nome
+        FROM vtags_geradas
+        WHERE dia_base = ? AND motorista = ?
+        ORDER BY id ASC
+    """, (dia_base, motorista))
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="Nenhuma VTAG encontrada para este motorista.")
+
+    rota = rows[0]["rota"] if rows[0]["rota"] else "Padrão"
+    placa = rows[0]["placa"] if rows[0]["placa"] else "-"
+
+    img_paths = [dia_folder / r["imagem_nome"] for r in rows if r["imagem_nome"] and (dia_folder / r["imagem_nome"]).exists()]
+    if not img_paths:
+        raise HTTPException(status_code=404, detail="Imagens das VTAGs ainda não foram renderizadas.")
+
+    try:
+        from PIL import Image, ImageDraw
+        images = [Image.open(p) for p in img_paths]
+        width = 787
+        header_h = 90
+        item_h = 787
+        total_h = header_h + len(images) * item_h
+
+        card = Image.new("RGB", (width, total_h), (255, 255, 255))
+        draw = ImageDraw.Draw(card)
+
+        # Faixa superior
+        draw.rectangle([0, 0, width, header_h], fill=(15, 23, 42))
+        draw.text((25, 18), "ANJUN EXPRESS - VTAGS DE COLETA", fill=(56, 189, 248))
+        draw.text((25, 52), f"Motorista: {motorista}  |  Rota: {rota}  |  Placa: {placa}  |  Data: {dia_base}", fill=(226, 232, 240))
+
+        cur_y = header_h
+        for im in images:
+            card.paste(im, (0, cur_y))
+            cur_y += item_h
+
+        card.save(card_path, "PNG")
+        return FileResponse(
+            str(card_path),
+            media_type="image/png",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+                "Cache-Control": "public, max-age=3600"
+            }
+        )
+    except Exception as err:
+        raise HTTPException(status_code=500, detail=f"Erro ao compor card do motorista: {err}")
