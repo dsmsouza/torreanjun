@@ -248,6 +248,25 @@ O sistema já possui o módulo cliente e as credenciais de autenticação config
 ### 9.1. Endpoints Oficiais de VTAG Descobertos e Validados:
 - **Catálogo de MiniDrops (`siteId`):** `GET /site/queryOwnSite` (retorna todos os 4.206 MDs e seus IDs numéricos).
 - **Geração Automática de VTAGs:** `POST /collectTagNumber/createTagNumber`
+- **Consulta de Códigos Gerados (AJV...):** `POST /collectTagNumberDetail/page`
+- **Consulta de PDF Oficial na Nuvem:** `POST /collectTagNumber/page` (retorna o campo `printUrl`)
+
+---
+
+## 10. Controle de Acesso Restrito e Blindagem de Operadores (VTAG & MAPA)
+
+1. **Padrão de Segurança (Zero Confiança):**
+   - Qualquer usuário novo, máquina na rede local (`http://10.30.100.183:3000`) ou janela anônima entra estritamente como **Operador**.
+2. **Rotas Permitidas para Operador:**
+   - 🏷️ **Distribuição VTAGs:** `/vtag`
+   - 🗺️ **Mapa da Malha:** `/mapa`
+3. **Bloqueio em Duas Camadas:**
+   - **Camada Servidor (`frontend/proxy.ts`):** Qualquer requisição para rotas restritas (`/`, `/config`, `/sla`, `/solicitacoes`, `/planejador-rotas`) sem o cookie `anjun_master_session=true` recebe imediatamente HTTP 307 de redirecionamento para `/vtag`.
+   - **Camada Visual (`frontend/components/Sidebar.tsx` e `AuthWrapper.tsx`):** O menu lateral renderiza **apenas** as 2 opções permitidas. O Copilot IA fica oculto.
+4. **Desbloqueio Master:**
+   - Para acessar a diretoria/dashboard completo, clica-se no botão `Master` no card do perfil e digita-se a senha de administrador (`admin123` / `anjun2026`). O sistema ativa `anjun_master_session=true` e libera todos os módulos.
+   - O botão `Bloquear` restaura a restrição imediatamente.
+
   - Payload: `{"printQty": 2, "siteId": <id_numerico_do_md>}`
 - **Listagem e Link do PDF:** `POST /collectTagNumber/page`
   - Retorna o histórico de VTAGs geradas com o link direto do PDF na nuvem (`printUrl`).
