@@ -491,6 +491,21 @@ def gerar_vtags_em_lote(
             tag_master_id = rec_master[0].get("id") if rec_master else None
             print_url = rec_master[0].get("printUrl") if rec_master else None
 
+            # Obter a URL de impressao oficial do PDF na nuvem via /printTagNumber se print_url for null
+            if tag_master_id and not print_url:
+                try:
+                    r_p = requests.post(
+                        f"{base_admin}/collectTagNumber/printTagNumber",
+                        headers=headers,
+                        json={"tagNumberId": tag_master_id},
+                        timeout=12
+                    )
+                    res_p_data = r_p.json().get("data")
+                    if res_p_data and str(res_p_data).startswith("http"):
+                        print_url = res_p_data
+                except Exception as ep:
+                    print(f"Aviso ao chamar printTagNumber para {md_cod}: {ep}")
+
             # Baixar o PDF oficial se disponível e renderizar as imagens das páginas
             tags_detalhes = []
             if tag_master_id:
