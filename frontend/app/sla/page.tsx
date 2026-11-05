@@ -23,6 +23,14 @@ import { useAuth } from "../../hooks/use-auth";
 import { safeFetch } from "../../lib/api";
 
 export default function SLAOperacionalPage() {
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (localStorage.getItem("anjun_perfil") === "operador") {
+        window.location.href = "/vtag";
+      }
+    }
+  }, []);
+
   const { role, activeRegional } = useAuth();
 
   // Estados principais

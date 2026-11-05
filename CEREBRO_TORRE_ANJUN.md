@@ -253,3 +253,12 @@ O sistema já possui o módulo cliente e as credenciais de autenticação config
   - Retorna o histórico de VTAGs geradas com o link direto do PDF na nuvem (`printUrl`).
 - **Detalhamento dos Códigos VTAG:** `POST /collectTagNumberDetail/page`
   - Retorna os números exatos gerados (ex: `AJV33034228`, `AJV33034229`) vinculados ao MD.
+
+### 9.2. Módulo de VTAG & Controle de Acesso Restrito por Operador:
+- **Página de Distribuição:** `/vtag` (`frontend/app/vtag/page.tsx`)
+- **Backend API:** `backend/routers/vtags.py` (`/api/vtags/status`, `/api/vtags/motoristas`, `/api/vtags/gerar-vtags-anjun`, `/api/vtags/marcar-enviado`, `/api/vtags/atualizar-token`)
+- **Perfis de Acesso:**
+  - **Master (Líder da Torre):** Acesso total ao dashboard, configurações, SLA, financeiro e botão de geração na Anjun.
+  - **Operador (Suporte):** Acesso estritamente restrito a **`/vtag`** e **`/mapa`**. Se tentar abrir `/`, `/config`, `/sla`, é redirecionado automaticamente para `/vtag`.
+  - **Operadores Mapeados (Coluna P):** ELLEN (75 MDs), DANILO (62 MDs), GABRIELE (55 MDs), KETLEY (53 MDs), JANAINA (45 MDs), NICOLAS (37 MDs).
+  - **Disparo WhatsApp:** Cada operador abre sua carteira no IP local `http://10.30.100.183:3000/vtag` e dispara para seus ~15 motoristas direto do seu próprio WhatsApp Web, eliminando risco de banimento e concluindo o envio em menos de 2 minutos.

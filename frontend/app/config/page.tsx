@@ -53,6 +53,14 @@ import {
 } from "lucide-react";
 
 export default function ConfigPage() {
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (localStorage.getItem("anjun_perfil") === "operador") {
+        window.location.href = "/vtag";
+      }
+    }
+  }, []);
+
   const { isMaster } = useAuth();
 
   // Backup / Restore / Purge States

@@ -180,6 +180,14 @@ function gerarTextoDiagnosticoEstado(est: any, regiaoNome: string, dia: string) 
 }
 
 export default function CentralColetasPage() {
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (localStorage.getItem("anjun_perfil") === "operador") {
+        window.location.href = "/vtag";
+      }
+    }
+  }, []);
+
   const [loading, setLoading] = useState(true);
   const [dias, setDias] = useState<string[]>([]);
   const [meses, setMeses] = useState<string[]>([]);

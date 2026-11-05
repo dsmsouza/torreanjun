@@ -20,17 +20,18 @@ import {
   Moon,
   TrendingUp,
   Truck,
+  Clock,
   Search,
   PackageSearch,
   Sparkles,
-  Rocket
+  Rocket,
+  Tag
 } from "lucide-react";
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { role, activeRegional, isMaster, searchParamsStr } = useAuth();
+  const { role, activeRegional, isMaster, isOperador, operadorNome, alternarPerfil, searchParamsStr } = useAuth();
   
-  // Read current tab parameter from URL on client side to highlight correct item
   const [currentTab, setCurrentTab] = useState<string | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [isOfflineLocal, setIsOfflineLocal] = useState<boolean>(false);
@@ -48,7 +49,6 @@ export default function Sidebar() {
       };
       window.addEventListener("popstate", handlePopState);
 
-      // Initialize theme from localStorage or document class
       const storedTheme = localStorage.getItem("theme");
       const initialTheme = storedTheme === "light" ? "light" : "dark";
       setTheme(initialTheme);
@@ -73,15 +73,25 @@ export default function Sidebar() {
     } else {
       document.documentElement.classList.remove("light");
     }
-    // Dispatch custom event to notify other components (e.g. Leaflet Map)
     window.dispatchEvent(new Event("themechange"));
   };
 
-  const menuCategories = [
+  // Se o perfil for OPERADOR / SUPORTE, mostra EXCLUSIVAMENTE VTAG e MAPA
+  const menuCategories = isOperador ? [
+    {
+      title: "Acesso Operacional Restrito",
+      items: [
+        { name: "Distribuição VTAGs", path: "/vtag", icon: Tag, roleRequired: "Guest" },
+        { name: "Mapa da Malha", path: "/mapa", icon: Map, roleRequired: "Guest" },
+      ]
+    }
+  ] : [
     {
       title: "Operação & Coleta",
       items: [
         { name: "Central de Coletas", path: "/", icon: Truck, roleRequired: "Guest" },
+        { name: "Distribuição VTAGs", path: "/vtag", icon: Tag, roleRequired: "Guest" },
+        { name: "Planejador 16h SP", path: "/planejador-rotas", icon: Clock, roleRequired: "Guest" },
         { name: "SLA & Anomalias", path: "/sla", icon: ShieldAlert, roleRequired: "Guest" },
       ]
     },
@@ -112,16 +122,27 @@ export default function Sidebar() {
         </div>
 
         {/* Profile Card */}
-        <div className="hidden md:flex m-3 p-3 rounded-xl bg-[#131926]/80 border border-border items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center">
-            <Shield className={`w-4 h-4 ${isMaster ? "text-amber-500" : "text-blue-500"}`} />
+        <div className="hidden md:flex m-3 p-3 rounded-xl bg-[#131926]/80 border border-border items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center">
+              <Shield className={`w-4 h-4 ${isMaster ? "text-amber-500" : "text-emerald-400"}`} />
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                {isOperador ? "Perfil Restrito" : "Perfil Operacional"}
+              </p>
+              <p className="text-xs font-semibold text-white">
+                {isOperador ? `Suporte: ${operadorNome || "Operador"}` : "Diretoria Master"}
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Perfil Operacional</p>
-            <p className="text-xs font-semibold text-white">
-              {isMaster ? "Diretoria Master" : `Regional: ${activeRegional}`}
-            </p>
-          </div>
+          <button
+            onClick={() => alternarPerfil(isOperador ? "master" : "operador")}
+            className="text-[10px] text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800/80 border border-slate-700 cursor-pointer"
+            title={isOperador ? "Alternar para Modo Master" : "Alternar para Modo Operador Restrito"}
+          >
+            {isOperador ? "Master" : "Operador"}
+          </button>
         </div>
 
         {/* Navigation Menu */}

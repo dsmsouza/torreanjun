@@ -40,6 +40,8 @@ CACHE_SKIP_PREFIXES = [
     "/api/implantacao",
     "/api/coletas/",
     "/api/sincronizacao",
+    "/api/planejador-rotas/",
+    "/api/vtags/",
 ]
 
 class ResponseCacheMiddleware(BaseHTTPMiddleware):
@@ -159,6 +161,12 @@ app.include_router(copilot_router)
 
 from routers.sincronizacao import router as sincronizacao_router
 app.include_router(sincronizacao_router)
+
+from routers.planejador_rotas import router as planejador_rotas_router
+app.include_router(planejador_rotas_router)
+
+from routers.vtags import router as vtags_router
+app.include_router(vtags_router)
 
 
 
