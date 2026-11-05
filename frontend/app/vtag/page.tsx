@@ -177,9 +177,9 @@ export default function VtagPage() {
   }, [suportePadrao]);
 
   // 2. Carrega lista de motoristas agrupados
-  const carregarMotoristas = async () => {
+  const carregarMotoristas = async (isBackground: boolean = false) => {
     try {
-      setLoadingMotoristas(true);
+      if (!isBackground) setLoadingMotoristas(true);
       const p = new URLSearchParams();
       if (suporteFiltro && suporteFiltro !== "TODOS") p.append("suporte", suporteFiltro);
       if (search) p.append("search", search);
@@ -193,7 +193,7 @@ export default function VtagPage() {
     } catch (err) {
       console.warn("Aviso ao carregar motoristas:", err);
     } finally {
-      setLoadingMotoristas(false);
+      if (!isBackground) setLoadingMotoristas(false);
     }
   };
 
@@ -211,7 +211,7 @@ export default function VtagPage() {
   useEffect(() => {
     const timer = setInterval(() => {
       if (statusData?.possui_planilha) {
-        carregarMotoristas();
+        carregarMotoristas(true);
       }
     }, 10000);
     return () => clearInterval(timer);
@@ -882,7 +882,7 @@ export default function VtagPage() {
         </div>
 
         {/* LISTAGEM DOS CARDS DE MOTORISTAS */}
-        {loadingMotoristas ? (
+        {loadingMotoristas && motoristas.length === 0 ? (
           <div className="py-24 flex flex-col items-center justify-center text-slate-400 gap-3">
             <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
             <span className="text-xs">Carregando motoristas e VTAGs da carteira...</span>

@@ -163,9 +163,9 @@ export default function VtagPickupPage() {
   };
 
   // 2. Carrega lista de motoristas agrupados
-  const carregarMotoristas = async () => {
+  const carregarMotoristas = async (isBackground: boolean = false) => {
     try {
-      setLoadingMotoristas(true);
+      if (!isBackground) setLoadingMotoristas(true);
       const p = new URLSearchParams();
       if (canalFiltro && canalFiltro !== "TODOS") p.append("canal", canalFiltro);
       if (search) p.append("search", search);
@@ -179,7 +179,7 @@ export default function VtagPickupPage() {
     } catch (err) {
       console.warn("Aviso ao carregar motoristas de pickup:", err);
     } finally {
-      setLoadingMotoristas(false);
+      if (!isBackground) setLoadingMotoristas(false);
     }
   };
 
@@ -197,7 +197,7 @@ export default function VtagPickupPage() {
   useEffect(() => {
     const timer = setInterval(() => {
       if (statusData?.possui_planilha) {
-        carregarMotoristas();
+        carregarMotoristas(true);
       }
     }, 12000);
     return () => clearInterval(timer);
@@ -782,7 +782,7 @@ export default function VtagPickupPage() {
       </div>
 
       {/* Lista de Motoristas e Pickups */}
-      {loadingMotoristas ? (
+      {loadingMotoristas && motoristas.length === 0 ? (
         <div className="p-12 text-center space-y-3">
           <Loader2 className="w-8 h-8 text-cyan-400 animate-spin mx-auto" />
           <p className="text-xs text-slate-400 font-medium">Carregando coletas de Pickup...</p>

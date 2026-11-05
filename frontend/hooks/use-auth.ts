@@ -46,7 +46,7 @@ export function useAuth(): AuthState {
 
       // Bloqueio no Client: se não for Master, só acessa /vtag, /mapa e /login
       if (activeRole !== "master") {
-        const allowedPaths = ["/vtag", "/mapa", "/login"];
+        const allowedPaths = ["/vtag", "/vtag-pickup", "/mapa", "/login"];
         const currentClean = pathname.split("?")[0];
         const isAllowed = allowedPaths.some(
           (ap) => currentClean === ap || currentClean.startsWith(`${ap}/`)
