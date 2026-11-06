@@ -5,10 +5,10 @@
   "nome_real": "Diego de Souza Mandarino",
   "data_expiracao_iso": "2026-11-08T08:40:54",
   "expira_em_str": "08/11/2026 08:40",
-  "horas_restantes": 58.1,
-  "dias_restantes": 2.4,
+  "horas_restantes": 54.4,
+  "dias_restantes": 2.3,
   "expirado": false,
   "alerta_expiracao": false,
-  "mensagem": "Sessão conectada. Válida por mais 2.4 dias (até 08/11/2026 08:40).",
-  "atualizado_em": "05/11/2026 22:36:31"
+  "mensagem": "Sessão conectada. Válida por mais 2.3 dias (até 08/11/2026 08:40).",
+  "atualizado_em": "06/11/2026 02:15:50"
 }
